@@ -2,50 +2,56 @@ package com.g1.sketchbook.data
 
 import android.graphics.Bitmap
 import android.os.Build
+import android.util.Base64
 import com.g1.sketchbook.data.model.ArchiveEntry
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
-import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import java.io.ByteArrayOutputStream
 
 /**
- * Persists the *finished* daily canvas as a single compressed WebP so storage stays tiny,
- * while the live per-stroke data can be thrown away. This is what makes the gallery permanent
- * ("휘발되지 않는") even though each day's live canvas is cheap and disposable.
+ * Persists the *finished* daily canvas as a single compressed WebP so each day becomes a
+ * permanent gallery snapshot even though the live per-stroke data is cheap and disposable.
+ *
+ * The snapshot is Base64-encoded and stored directly in Realtime Database — this keeps the
+ * whole app on Firebase's free (Spark) plan, which no longer allows Cloud Storage. Images are
+ * downscaled + compressed hard so each entry stays small (~tens of KB).
  */
 class ArchiveRepository(
     private val db: FirebaseDatabase = FirebaseDatabase.getInstance(),
-    private val storage: FirebaseStorage = FirebaseStorage.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
 ) {
+    private fun archiveRef(roomId: String) =
+        db.getReference("rooms").child(roomId).child("archive")
+
+    /** True if this day has already been archived (used to avoid duplicate auto-archiving). */
+    suspend fun hasArchive(roomId: String, date: String): Boolean =
+        archiveRef(roomId).child(date).get().await().exists()
+
     suspend fun saveDaily(roomId: String, date: String, bitmap: Bitmap): ArchiveEntry {
         val scaled = downscale(bitmap, MAX_DIMEN)
         val bytes = compressWebp(scaled, QUALITY)
-
-        val ref = storage.reference.child("archive/$roomId/$date.webp")
-        ref.putBytes(bytes).await()
-        val url = ref.downloadUrl.await().toString()
+        val image = Base64.encodeToString(bytes, Base64.NO_WRAP)
 
         val user = auth.currentUser
         val entry = ArchiveEntry(
             date = date,
-            url = url,
+            image = image,
             savedBy = user?.uid.orEmpty(),
             savedByName = user?.displayName ?: "익명",
             savedAt = System.currentTimeMillis(),
         )
-        db.getReference("rooms").child(roomId).child("archive").child(date).setValue(entry).await()
+        archiveRef(roomId).child(date).setValue(entry).await()
         return entry
     }
 
     fun observeArchive(roomId: String): Flow<List<ArchiveEntry>> = callbackFlow {
-        val ref = db.getReference("rooms").child(roomId).child("archive")
+        val ref = archiveRef(roomId)
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val list = snapshot.children
@@ -84,7 +90,8 @@ class ArchiveRepository(
     }
 
     companion object {
-        private const val MAX_DIMEN = 1080
-        private const val QUALITY = 70
+        // Kept modest so the Base64 payload in Realtime Database stays small.
+        private const val MAX_DIMEN = 720
+        private const val QUALITY = 60
     }
 }

@@ -20,18 +20,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,20 +74,35 @@ fun GalleryScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(entries, key = { it.date }) { entry ->
+                    val image: ImageBitmap? = remember(entry.image) { decodeBase64Image(entry.image) }
                     Column(Modifier.fillMaxWidth()) {
-                        AsyncImage(
-                            model = entry.url,
-                            contentDescription = entry.date,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(12.dp)),
-                        )
+                        val thumbModifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                        if (image != null) {
+                            Image(
+                                bitmap = image,
+                                contentDescription = entry.date,
+                                contentScale = ContentScale.Crop,
+                                modifier = thumbModifier,
+                            )
+                        } else {
+                            Box(thumbModifier.background(MaterialTheme.colorScheme.surfaceVariant))
+                        }
                         Text(entry.date, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
             }
         }
     }
+}
+
+/** Decodes a Base64-encoded WebP archive snapshot into an [ImageBitmap], or null if it's unreadable. */
+private fun decodeBase64Image(data: String): ImageBitmap? {
+    if (data.isBlank()) return null
+    return runCatching {
+        val bytes = Base64.decode(data, Base64.NO_WRAP)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+    }.getOrNull()
 }

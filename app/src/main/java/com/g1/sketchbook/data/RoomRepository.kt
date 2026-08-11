@@ -115,6 +115,12 @@ class RoomRepository(
         awaitClose { ref.removeEventListener(listener) }
     }
 
+    /** One-shot read of a day's finished strokes (used by the daily auto-archiver). */
+    suspend fun getStrokesOnce(roomId: String, date: String): List<Stroke> {
+        val snapshot = dayStrokes(roomId, date).get().await()
+        return snapshot.children.mapNotNull { it.getValue(Stroke::class.java) }
+    }
+
     /** Pushes a finished stroke; returns its key. */
     fun pushStroke(roomId: String, date: String, stroke: Stroke): String {
         val ref = dayStrokes(roomId, date).push()

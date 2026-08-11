@@ -34,7 +34,8 @@ data class RoomMeta(
 @IgnoreExtraProperties
 data class ArchiveEntry(
     var date: String = "",
-    var url: String = "",
+    /** The day's snapshot as a Base64-encoded WebP, stored directly in Realtime Database (no Storage needed). */
+    var image: String = "",
     var savedBy: String = "",
     var savedByName: String = "",
     var savedAt: Long = 0L,

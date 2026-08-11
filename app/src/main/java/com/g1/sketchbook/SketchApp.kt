@@ -5,6 +5,7 @@ import com.g1.sketchbook.auth.GoogleAuthClient
 import com.g1.sketchbook.data.ArchiveRepository
 import com.g1.sketchbook.data.RoomRepository
 import com.g1.sketchbook.data.SessionStore
+import com.g1.sketchbook.work.ArchiveScheduler
 import com.google.firebase.database.FirebaseDatabase
 
 /** Simple manual DI container. Held by the Application so ViewModels can reach shared singletons. */
@@ -28,5 +29,7 @@ class SketchApp : Application() {
         // Keep the current day's canvas available offline / snappy on reconnect.
         FirebaseDatabase.getInstance().setPersistenceEnabled(true)
         graph = Graph(this)
+        // Line up the daily midnight auto-archive (reschedules itself each run).
+        ArchiveScheduler.schedule(this)
     }
 }

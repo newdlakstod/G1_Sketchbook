@@ -13,6 +13,8 @@ import androidx.lifecycle.viewModelScope
 import com.g1.sketchbook.SketchApp
 import com.g1.sketchbook.data.StrokeEvent
 import com.g1.sketchbook.data.model.Stroke
+import com.g1.sketchbook.work.archiveDayIfNeeded
+import com.g1.sketchbook.work.dayKey
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -75,6 +77,10 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         }
         liveJob = viewModelScope.launch {
             graph.roomRepository.observeLive(roomId, date, uid).collect { liveOthers = it }
+        }
+        // Catch up any day that a midnight background run may have missed (phone off, Doze, ...).
+        viewModelScope.launch {
+            runCatching { archiveDayIfNeeded(graph, roomId, dayKey(-1)) }
         }
     }
 
