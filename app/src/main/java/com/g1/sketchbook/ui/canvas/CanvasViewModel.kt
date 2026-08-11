@@ -86,7 +86,13 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
 
     fun chooseColor(argb: Long) { color = argb; erasing = false }
     fun chooseWidth(px: Float) { strokeWidthPx = px }
-    fun toggleErase() { erasing = !erasing }
+    fun setEraser(on: Boolean) { erasing = on }
+
+    /** Abandons the in-progress stroke without saving it (e.g. when a pinch gesture takes over). */
+    fun cancelStroke() {
+        currentPoints.clear()
+        if (roomId.isNotEmpty()) graph.roomRepository.clearLive(roomId, date, uid)
+    }
 
     fun onDragStart(pos: Offset, canvasSize: Offset) {
         currentPoints.clear()

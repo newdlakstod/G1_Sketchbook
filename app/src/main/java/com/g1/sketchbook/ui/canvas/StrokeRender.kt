@@ -3,6 +3,7 @@ package com.g1.sketchbook.ui.canvas
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.DiscretePathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
@@ -42,10 +43,16 @@ fun renderStrokesToBitmap(
         if (stroke.erase) {
             paint.shader = null
             paint.colorFilter = null
+            paint.pathEffect = null
             paint.color = stroke.color.toInt()
         } else {
+            val sw = paint.strokeWidth
             paint.shader = grainShader
             paint.colorFilter = PorterDuffColorFilter(stroke.color.toInt(), PorterDuff.Mode.SRC_IN)
+            paint.pathEffect = DiscretePathEffect(
+                (sw * 0.5f).coerceAtLeast(3f),
+                (sw * 0.22f).coerceAtLeast(1.2f),
+            )
         }
 
         if (pts.size == 2) {

@@ -28,9 +28,9 @@ private fun buildCrayonGrain(size: Int = 128): ImageBitmap {
         for (x in 0 until size) {
             val n = rnd.nextFloat()
             val alpha = when {
-                n < 0.14f -> 0                    // bare paper showing through
-                n < 0.38f -> rnd.nextInt(55, 130) // light, patchy coverage
-                else -> rnd.nextInt(150, 245)     // waxy, near-solid coverage
+                n < 0.24f -> 0                    // torn gaps / bare paper (grunge)
+                n < 0.46f -> rnd.nextInt(40, 120) // light, patchy coverage
+                else -> rnd.nextInt(155, 255)     // waxy, near-solid coverage
             }
             bmp.setPixel(x, y, android.graphics.Color.argb(alpha, 255, 255, 255))
         }

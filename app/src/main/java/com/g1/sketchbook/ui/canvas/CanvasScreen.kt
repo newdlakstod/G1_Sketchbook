@@ -4,7 +4,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,16 +24,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -47,11 +55,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import android.graphics.DiscretePathEffect
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke as DrawStroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toComposePathEffect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
@@ -67,7 +80,6 @@ private val Palette = listOf(
     0xFF1A1A2EL, 0xFFFF6B6BL, 0xFFFFA94DL, 0xFFFFD43BL,
     0xFF51CF66L, 0xFF4ECDC4L, 0xFF4DABF7L, 0xFF9775FAL, 0xFFFF8CC8L, 0xFFFFFFFFL,
 )
-private val Widths = listOf(4f, 8f, 16f, 32f)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -121,7 +133,7 @@ fun CanvasScreen(
                 saving = vm.saving,
                 onColor = vm::chooseColor,
                 onWidth = vm::chooseWidth,
-                onErase = vm::toggleErase,
+                onSetEraser = vm::setEraser,
                 onUndo = vm::undo,
                 onClear = vm::clearAll,
                 onSave = {
@@ -139,29 +151,61 @@ fun CanvasScreen(
             )
         },
     ) { padding ->
+        // Pinch-to-zoom / pan state. One finger draws; two fingers pan & zoom the canvas.
+        var scale by remember { mutableStateOf(1f) }
+        var offset by remember { mutableStateOf(Offset.Zero) }
+
         Box(
             Modifier
                 .padding(padding)
                 .fillMaxSize()
                 .background(PaperCanvas)
                 .paperTexture()
+                .pointerInput(roomId) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        val canvasPx = Offset(size.width.toFloat(), size.height.toFloat())
+                        var transforming = false
+                        var drawing = false
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val pressed = event.changes.filter { it.pressed }
+                            if (pressed.isEmpty()) break
+                            if (pressed.size >= 2) {
+                                // Two fingers: abandon any in-progress stroke and pan/zoom instead.
+                                if (drawing) { vm.cancelStroke(); drawing = false }
+                                transforming = true
+                                val zoom = event.calculateZoom()
+                                val pan = event.calculatePan()
+                                val centroid = event.calculateCentroid()
+                                val newScale = (scale * zoom).coerceIn(1f, 5f)
+                                var newOffset = (offset - centroid) * (newScale / scale) + centroid + pan
+                                newOffset = clampPan(newOffset, newScale, size)
+                                scale = newScale
+                                offset = newOffset
+                                event.changes.forEach { it.consume() }
+                            } else if (!transforming) {
+                                // One finger: draw. Map the touch back through the zoom/pan transform.
+                                val change = pressed.first()
+                                val content = (change.position - offset) / scale
+                                if (!drawing) { drawing = true; vm.onDragStart(content, canvasPx) }
+                                else vm.onDrag(content, canvasPx)
+                                change.consume()
+                            }
+                        }
+                        if (drawing && !transforming) vm.onDragEnd(canvasPx)
+                    }
+                }
         ) {
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(roomId) {
-                        detectDragGestures(
-                            onDragStart = { pos ->
-                                vm.onDragStart(pos, Offset(size.width.toFloat(), size.height.toFloat()))
-                            },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                vm.onDrag(change.position, Offset(size.width.toFloat(), size.height.toFloat()))
-                            },
-                            onDragEnd = {
-                                vm.onDragEnd(Offset(size.width.toFloat(), size.height.toFloat()))
-                            },
-                        )
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                        transformOrigin = TransformOrigin(0f, 0f)
                     }
             ) {
                 canvasSize = IntSize(size.width.toInt(), size.height.toInt())
@@ -171,7 +215,7 @@ fun CanvasScreen(
                 vm.strokes.forEach { drawStoredStroke(it.stroke, w, h) }
                 vm.liveOthers.values.forEach { drawStoredStroke(it, w, h) }
 
-                // Local in-progress stroke (screen-space width).
+                // Local in-progress stroke.
                 if (vm.currentPoints.isNotEmpty()) {
                     drawFlatPoints(
                         points = vm.currentPoints,
@@ -184,6 +228,13 @@ fun CanvasScreen(
             }
         }
     }
+}
+
+private fun clampPan(o: Offset, scale: Float, size: IntSize): Offset {
+    // Keep the paper covering the viewport: at scale s the content may shift by up to (s-1)*dimen.
+    val minX = -(scale - 1f) * size.width
+    val minY = -(scale - 1f) * size.height
+    return Offset(o.x.coerceIn(minX, 0f), o.y.coerceIn(minY, 0f))
 }
 
 @Composable
@@ -207,6 +258,7 @@ private fun MembersRow(members: List<Member>) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ToolBar(
     selectedColor: Long,
@@ -215,7 +267,7 @@ private fun ToolBar(
     saving: Boolean,
     onColor: (Long) -> Unit,
     onWidth: (Float) -> Unit,
-    onErase: () -> Unit,
+    onSetEraser: (Boolean) -> Unit,
     onUndo: () -> Unit,
     onClear: () -> Unit,
     onSave: () -> Unit,
@@ -244,42 +296,55 @@ private fun ToolBar(
                     )
                 }
             }
-            Spacer(Modifier.size(8.dp))
+
+            Spacer(Modifier.size(10.dp))
+
+            // Pen width slider, with a live preview dot.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Widths.forEach { wpx ->
-                    val selected = wpx == selectedWidth
+                Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
                     Box(
                         Modifier
-                            .size(40.dp)
-                            .clickable { onWidth(wpx) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            Modifier
-                                .size((wpx / 2 + 6).dp)
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    CircleShape,
-                                )
-                        )
-                    }
-                }
-                Spacer(Modifier.width(8.dp))
-                IconButton(onClick = onErase) {
-                    Icon(
-                        Icons.Filled.Delete,
-                        contentDescription = "지우개",
-                        tint = if (erasing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            .size((selectedWidth / 2f + 4f).coerceIn(4f, 30f).dp)
+                            .background(
+                                if (erasing) MaterialTheme.colorScheme.onSurfaceVariant else Color(selectedColor),
+                                CircleShape,
+                            )
                     )
                 }
+                Spacer(Modifier.width(6.dp))
+                Slider(
+                    value = selectedWidth,
+                    onValueChange = onWidth,
+                    valueRange = 2f..48f,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(Modifier.size(4.dp))
+
+            // Pen / eraser mode + actions.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(
+                    selected = !erasing,
+                    onClick = { onSetEraser(false) },
+                    label = { Text("펜") },
+                    leadingIcon = { Icon(Icons.Filled.Create, contentDescription = null, Modifier.size(18.dp)) },
+                )
+                Spacer(Modifier.width(8.dp))
+                FilterChip(
+                    selected = erasing,
+                    onClick = { onSetEraser(true) },
+                    label = { Text("지우개") },
+                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, Modifier.size(18.dp)) },
+                    colors = FilterChipDefaults.filterChipColors(),
+                )
+                Spacer(Modifier.weight(1f))
                 IconButton(onClick = onUndo) {
                     Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "실행취소")
                 }
-                Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onClear) {
                     Icon(Icons.Filled.Delete, contentDescription = "전체 지우기", tint = Color(0xFFE85555))
                 }
-                Spacer(Modifier.weight(1f))
                 IconButton(onClick = onSave, enabled = !saving) {
                     if (saving) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -334,7 +399,20 @@ private fun DrawScope.drawFlatPoints(
             i += 2
         }
     }
-    val style = DrawStroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
+    val style = DrawStroke(
+        width = sw,
+        cap = StrokeCap.Round,
+        join = StrokeJoin.Round,
+        // Ragged, hand-torn edges (grunge brush) — only for the textured pen, not the eraser.
+        pathEffect = if (textured) roughEdgeEffect(sw) else null,
+    )
     if (textured) drawPath(path, brush = CrayonBrush, style = style, colorFilter = tint)
     else drawPath(path, color, style = style)
 }
+
+/** Jitters the stroke outline so edges look torn/grungy; deviation scales with the pen width. */
+private fun roughEdgeEffect(strokePx: Float): PathEffect =
+    DiscretePathEffect(
+        (strokePx * 0.5f).coerceAtLeast(3f),
+        (strokePx * 0.22f).coerceAtLeast(1.2f),
+    ).toComposePathEffect()
