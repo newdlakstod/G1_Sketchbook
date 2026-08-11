@@ -1,41 +1,40 @@
-# PROGRESS — G1 Sketchbook
+# G1 Sketchbook — Progress
 
-친구·커플용 실시간 공유 스케치북 (Android, Kotlin/Compose, Firebase).
+실시간 공유 스케치북 (Android + Jetpack Compose + Firebase). 친구·커플이 하나의 방(room)에서
+매일 함께 그리고, 하루치 그림이 갤러리에 영구 보관되는 앱.
 
-## Done (2026-08-11)
-- **프로젝트 스캐폴드**: Gradle 8.11.1 wrapper, AGP 8.7.3, Kotlin 2.0.21, Compose BOM 2024.12, version catalog(`gradle/libs.versions.toml`). `compileSdk 35 / minSdk 24`.
-- **Firebase 연동**: Auth + Realtime Database + Storage (BOM 33.7.0), google-services 플러그인. `app/google-services.json`은 **빌드용 더미** — 실제 값으로 교체 필요.
-- **인증**: `auth/GoogleAuthClient` — Credential Manager(GoogleIdOption) → Firebase `signInWithCredential`. Web client ID는 `res/values/strings.xml`의 `web_client_id`에서 읽음(직접 붙여넣어야 함).
-- **방(Room)**: `data/RoomRepository` — 6자리 코드(혼동문자 제외)로 방 생성/참여, 멤버 등록, 실시간 획 동기화.
-- **실시간 드로잉**: `ui/canvas/` — Compose Canvas + `detectDragGestures`. 좌표는 **0~1 정규화**로 저장(기기 해상도 무관). 완성 획은 `days/{date}/strokes`에 push(ChildEventListener), 진행 중 획은 `days/{date}/live/{uid}`로 브로드캐스트(throttle 45ms, onDisconnect 정리). Undo(자기 획), 전체 지우기, 색/굵기/지우개.
-- **데일리 모드 + 갤러리**: 캔버스는 오늘 날짜별. "저장" 시 `renderStrokesToBitmap` → 1080px WebP(q70) → Storage `archive/{roomId}/{date}.webp`, 메타는 RTDB `rooms/{roomId}/archive/{date}`. `ui/gallery/`가 Coil로 그리드 표시.
-- **빌드 검증 완료**: `./gradlew :app:assembleDebug` → `app-debug.apk`(~19MB) 생성 성공. (JBR JDK21로 빌드)
-- **배포**: `.github/workflows/release.yml` — `v*` 태그 push 시 APK 빌드 → Release 첨부, 수동 실행도 지원.
-- **문서**: `README.md`에 Firebase 셋업 전 과정 정리.
+## Done
+- **Firebase 실연결**: 프로젝트 `g1-sketchbook`. Google 로그인 동작 (SHA-1 등록, 웹 OAuth 클라이언트 생성,
+  코드가 `default_web_client_id` 자동 생성값 사용). `app/google-services.json`은 실제 값.
+- **매일 자정 자동 아카이빙** (v1.1.0): `work/DailyArchive.kt`
+  - WorkManager 원타임 워커가 자정에 전날 캔버스를 렌더→저장, 다음 자정 재예약 (`ArchiveScheduler`).
+  - 놓친 날 보정: 방 입장 시 `CanvasViewModel.bind`에서 `archiveDayIfNeeded(어제)` 호출.
+- **무료 저장 전환** (v1.1.0): Firebase Storage(유료 Blaze 필요) 제거.
+  스냅샷을 WebP 압축 후 Base64로 **Realtime Database**의 `rooms/{roomId}/archive/{date}`에 저장.
+  `ArchiveEntry.url` → `ArchiveEntry.image(base64)`. 갤러리는 Base64 디코딩해 표시.
+- **UI 리디자인** (v1.1.0): 크림+네이비+동화풍 팔레트 (`ui/theme/Theme.kt`, 라이트 전용).
+  Welcome(네이비)·Home(카드형)·캔버스 떠있는 툴바.
+- **릴리스**: v1.0.0(초기) → v1.0.1(로그인 동작) → v1.1.0(아카이빙+디자인). 각 릴리스에 디버그 APK 첨부.
 
-## Next (실제 동작시키려면 — 코드 아님, 설정)
-1. Firebase 프로젝트 생성 → `google-services.json` 교체
-2. 디버그 SHA-1 등록(`./gradlew signingReport`) + Google 로그인 사용 설정
-3. RTDB/Storage 규칙 적용(README 참고)
-4. `strings.xml`의 `web_client_id` 채우기
-5. 실기기 2대로 실시간 동기화 스모크 테스트
-
-## Next (기능 아이디어 — 백로그)
-- 라이브 커서(누가 어디 그리는지 이름표) — 지금은 진행 중 "획"만 공유
-- 타임랩스/리플레이(저장된 획 순서 재생)
-- 자정 자동 아카이브 + 다음날 새 캔버스 자동 전환
-- 이어그리기(가틱폰) 게임 모드, 데일리 랜덤 주제
-- 초대 딥링크(코드 대신 링크 탭)
+## Next
+- 시안(참고 이미지)의 미구현 화면 = **신규 기능**:
+  - 여러 스케치북 목록/커버 그리드 + 하단 탭(Home/Sketchbooks) — 현재는 1방 단위 모델.
+  - 용지 크기/비율 선택(New sketchbook), 계정 설정 화면(Edit avatar/Notifications/…).
+  - 커스텀 손그림 마스코트/일러스트(지금은 이모지 플레이스홀더).
+- 갤러리 상세 보기(이미지 탭 시 크게), 아카이브 삭제.
+- `observeArchive`가 archive 노드 전체(base64 포함)를 한 번에 읽음 → 항목 많아지면
+  메타데이터/이미지 경로 분리 고려.
 
 ## Decisions
-- **네이티브 Android(Kotlin+Compose)** 선택 — 사용자가 "안드로이드 앱 + GitHub 배포" 명시.
-- **Firebase Realtime Database**(Firestore 아님) — 고빈도 획 업데이트에 지연·비용 유리.
-- **좌표 정규화(0~1)** — 기기 해상도 차이에도 그림이 맞게 스케일.
-- **완성본만 WebP 저장** — 실시간엔 벡터만, 아카이브는 압축 이미지 → 용량 최소화(사용자 요구).
-- **수동 DI(Graph)** — MVP엔 Hilt 과함.
-- **google-services.json 더미 커밋** — 누구나 즉시 빌드 가능하게. 실제 배포 전 교체.
+- **Storage 대신 RTDB+Base64**: 사용자가 무료(Spark) 유지 선택. 카드 등록 불필요.
+  이미지 작게 유지: `MAX_DIMEN=720`, `QUALITY=60`.
+- **자정 아카이빙은 클라이언트(WorkManager)**: Cloud Functions 스케줄러는 Blaze 전용이라 제외.
+  → 정확히 자정 보장 X(Doze/전원off), 그래서 "방 입장 시 보정"으로 신뢰성 확보.
+- **라이트 테마 고정**: 따뜻한 종이 디자인이라 다크스킴 없음.
 
 ## Open / Blockers
-- 로그인·동기화 **실기기 검증 미완**(실제 Firebase 프로젝트 필요, 위 Next 1~5).
-- 릴리스 APK는 현재 **debug 서명**으로 배포(친구 공유엔 충분). 정식 배포 시 release 서명키 + CI secrets 필요.
-- 자정 롤오버는 수동("저장" 버튼) — 자동화는 백로그.
+- **빌드 JDK**: 로컬에 standalone JDK 없음. Android Studio 번들 JBR(21) 사용.
+  사용자 환경변수 `JAVA_HOME = C:\Program Files\Android\Android Studio\jbr` 설정됨.
+  CLI 빌드 시 이 JAVA_HOME 필요.
+- **Realtime Database 보안 규칙**: 테스트 모드일 가능성 높음 → 배포 전 `auth != null` 등으로 잠글 것.
+- **Storage 미사용**: `firebase-storage` 의존성 제거함. 다시 쓰려면 Blaze 업그레이드 필요.
