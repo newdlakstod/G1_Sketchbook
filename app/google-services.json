@@ -1,14 +1,13 @@
 {
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "g1-sketchbook-demo",
-    "firebase_url": "https://g1-sketchbook-demo-default-rtdb.firebaseio.com",
-    "storage_bucket": "g1-sketchbook-demo.appspot.com"
+    "project_number": "956614865194",
+    "project_id": "g1-sketchbook",
+    "storage_bucket": "g1-sketchbook.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:956614865194:android:d03f3beebf647955a9ae53",
         "android_client_info": {
           "package_name": "com.g1.sketchbook"
         }
@@ -16,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDUMMYDUMMYDUMMYDUMMYDUMMYDUMMY0000"
+          "current_key": "AIzaSyBcICBsELx1YQuo9X_0vbv7Y_-KwcQOaVw"
         }
       ],
       "services": {
