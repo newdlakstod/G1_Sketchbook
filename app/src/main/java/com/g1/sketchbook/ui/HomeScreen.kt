@@ -11,16 +11,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,22 +44,35 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.g1.sketchbook.data.model.SketchbookRef
+import com.g1.sketchbook.ui.theme.paperTexture
+
+private val SpineColors = listOf(
+    Color(0xFF2B4C9B), Color(0xFF7E9A52), Color(0xFFDE7F3C),
+    Color(0xFFE0B23C), Color(0xFFCE7A7A), Color(0xFF5B8A8C),
+)
 
 @Composable
 fun HomeScreen(
     userName: String,
     busy: Boolean,
     error: String?,
+    sketchbooks: List<SketchbookRef>,
+    onOpenSketchbook: (SketchbookRef) -> Unit,
+    onRemoveSketchbook: (String) -> Unit,
     onCreateRoom: (String) -> Unit,
     onJoinRoom: (String) -> Unit,
     onSignOut: () -> Unit,
 ) {
-    var roomName by remember { mutableStateOf("") }
-    var joinCode by remember { mutableStateOf("") }
+    var showNew by remember { mutableStateOf(false) }
+    var showJoin by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<SketchbookRef?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .paperTexture()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 28.dp),
     ) {
@@ -69,83 +90,170 @@ fun HomeScreen(
             Avatar(userName)
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(24.dp))
 
-        // Hero card
-        Card(
-            Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-            shape = MaterialTheme.shapes.large,
-        ) {
-            Row(
-                Modifier.padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("🦆", fontSize = 44.sp)
-                Spacer(Modifier.size(14.dp))
-                Column {
-                    Text("함께 쓰는 스케치북", color = Color.White,
-                        fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text("새로 만들거나 친구의 코드로 참여하세요.",
-                        color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-                }
+        // Action icons: New / Join
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            ActionButton(
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                label = "새로 만들기",
+                container = MaterialTheme.colorScheme.primary,
+                onClick = { showNew = true },
+            )
+            ActionButton(
+                icon = { Icon(Icons.Filled.Key, contentDescription = null) },
+                label = "코드로 참여",
+                container = MaterialTheme.colorScheme.tertiary,
+                onClick = { showJoin = true },
+            )
+        }
+
+        Spacer(Modifier.height(28.dp))
+
+        Text("내 스케치북", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+
+        if (sketchbooks.isEmpty()) {
+            EmptyBooks()
+        } else {
+            sketchbooks.forEachIndexed { i, book ->
+                SketchbookCard(
+                    book = book,
+                    spine = SpineColors[i % SpineColors.size],
+                    onOpen = { onOpenSketchbook(book) },
+                    onDelete = { pendingDelete = book },
+                )
+                Spacer(Modifier.height(10.dp))
             }
         }
 
-        Spacer(Modifier.height(20.dp))
-
-        // Create
-        SectionCard(title = "새 스케치북 만들기", emoji = "✏️") {
-            OutlinedTextField(
-                value = roomName,
-                onValueChange = { roomName = it },
-                label = { Text("이름 (예: 우리 둘의 낙서장)") },
-                singleLine = true,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = { onCreateRoom(roomName) },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = MaterialTheme.shapes.small,
-            ) { Text("만들기", fontSize = 15.sp) }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // Join
-        SectionCard(title = "코드로 참여하기", emoji = "🔑") {
-            OutlinedTextField(
-                value = joinCode,
-                onValueChange = { joinCode = it.uppercase() },
-                label = { Text("6자리 코드") },
-                singleLine = true,
-                shape = MaterialTheme.shapes.small,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Characters,
-                    keyboardType = KeyboardType.Ascii,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = { onJoinRoom(joinCode) },
-                enabled = !busy && joinCode.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = MaterialTheme.shapes.small,
-            ) { Text("참여하기", fontSize = 15.sp) }
-        }
-
         error?.let {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
 
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             TextButton(onClick = onSignOut) { Text("로그아웃") }
+        }
+    }
+
+    if (showNew) {
+        InputDialog(
+            title = "새 스케치북 만들기",
+            label = "이름 (예: 우리 둘의 낙서장)",
+            confirmText = "만들기",
+            busy = busy,
+            transform = { it },
+            keyboard = KeyboardOptions.Default,
+            onConfirm = { onCreateRoom(it); showNew = false },
+            onDismiss = { showNew = false },
+        )
+    }
+    if (showJoin) {
+        InputDialog(
+            title = "코드로 참여하기",
+            label = "6자리 코드",
+            confirmText = "참여하기",
+            busy = busy,
+            transform = { it.uppercase() },
+            keyboard = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Characters,
+                keyboardType = KeyboardType.Ascii,
+            ),
+            onConfirm = { onJoinRoom(it); showJoin = false },
+            onDismiss = { showJoin = false },
+        )
+    }
+    pendingDelete?.let { book ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("목록에서 제거") },
+            text = { Text("‘${book.name}’ 을(를) 목록에서 지울까요?\n그림은 지워지지 않고, 코드로 다시 참여할 수 있어요.") },
+            confirmButton = {
+                TextButton(onClick = { onRemoveSketchbook(book.id); pendingDelete = null }) {
+                    Text("제거")
+                }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("취소") } },
+        )
+    }
+}
+
+@Composable
+private fun ActionButton(
+    icon: @Composable () -> Unit,
+    label: String,
+    container: Color,
+    onClick: () -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = container,
+            contentColor = Color.White,
+            modifier = Modifier.size(64.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) { icon() }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun SketchbookCard(
+    book: SketchbookRef,
+    spine: Color,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Card(
+        onClick = onOpen,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Notebook spine
+            Box(
+                Modifier
+                    .width(10.dp)
+                    .height(64.dp)
+                    .background(spine, RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp))
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.padding(vertical = 14.dp).weight(1f)) {
+                Text(book.name.ifBlank { "우리 스케치북" },
+                    fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text("코드 ${book.id}", fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Filled.Close, contentDescription = "목록에서 제거",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyBooks() {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("🦆", fontSize = 36.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("아직 스케치북이 없어요.", fontWeight = FontWeight.Bold)
+            Text("위의 ‘새로 만들기’ 또는 ‘코드로 참여’로 시작하세요.",
+                fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -166,20 +274,37 @@ private fun Avatar(name: String) {
 }
 
 @Composable
-private fun SectionCard(title: String, emoji: String, content: @Composable () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = MaterialTheme.shapes.medium,
-    ) {
-        Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(emoji, fontSize = 18.sp)
-                Spacer(Modifier.size(8.dp))
-                Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            }
-            Spacer(Modifier.height(12.dp))
-            content()
-        }
-    }
+private fun InputDialog(
+    title: String,
+    label: String,
+    confirmText: String,
+    busy: Boolean,
+    transform: (String) -> String,
+    keyboard: KeyboardOptions,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var value by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = transform(it) },
+                label = { Text(label) },
+                singleLine = true,
+                keyboardOptions = keyboard,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(value) },
+                enabled = !busy && value.isNotBlank(),
+            ) { Text(confirmText) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+    )
 }

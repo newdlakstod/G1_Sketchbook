@@ -31,6 +31,12 @@ data class RoomMeta(
     var createdAt: Long = 0L,
 )
 
+/** A sketchbook (room) the user has created or joined, remembered locally for the home list. */
+data class SketchbookRef(
+    val id: String = "",
+    val name: String = "",
+)
+
 @IgnoreExtraProperties
 data class ArchiveEntry(
     var date: String = "",

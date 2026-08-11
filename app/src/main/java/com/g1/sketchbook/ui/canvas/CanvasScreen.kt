@@ -59,6 +59,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.g1.sketchbook.data.model.Member
 import com.g1.sketchbook.data.model.Stroke
 import com.g1.sketchbook.ui.theme.PaperCanvas
+import com.g1.sketchbook.ui.theme.paperTexture
 
 private val Palette = listOf(
     0xFF1A1A2EL, 0xFFFF6B6BL, 0xFFFFA94DL, 0xFFFFD43BL,
@@ -141,6 +142,7 @@ fun CanvasScreen(
                 .padding(padding)
                 .fillMaxSize()
                 .background(PaperCanvas)
+                .paperTexture()
         ) {
             Canvas(
                 modifier = Modifier

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.g1.sketchbook.SketchApp
 import com.g1.sketchbook.data.model.Member
+import com.g1.sketchbook.data.model.SketchbookRef
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,6 +34,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     )
     val state: StateFlow<AppUiState> = _state.asStateFlow()
+
+    /** Sketchbooks the user has created/joined, for the home list (most recent first). */
+    private val _sketchbooks = MutableStateFlow(graph.sessionStore.sketchbooks())
+    val sketchbooks: StateFlow<List<SketchbookRef>> = _sketchbooks.asStateFlow()
+
+    private fun refreshSketchbooks() {
+        _sketchbooks.value = graph.sessionStore.sketchbooks()
+    }
+
+    /** Re-enters a sketchbook from the saved list without needing the code again. */
+    fun openRoom(ref: SketchbookRef) {
+        graph.sessionStore.currentRoomId = ref.id
+        graph.sessionStore.rememberSketchbook(ref) // bump to front
+        refreshSketchbooks()
+        _state.value = _state.value.copy(roomId = ref.id)
+    }
+
+    fun removeSketchbook(id: String) {
+        graph.sessionStore.forgetSketchbook(id)
+        refreshSketchbooks()
+    }
 
     /** Members of the currently-joined room, for the little presence row. */
     val members: StateFlow<List<Member>> = _state
@@ -65,6 +87,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { graph.roomRepository.createRoom(name) }
                 .onSuccess { code ->
                     graph.sessionStore.currentRoomId = code
+                    graph.sessionStore.rememberSketchbook(
+                        SketchbookRef(code, name.ifBlank { "우리 스케치북" })
+                    )
+                    refreshSketchbooks()
                     _state.value = _state.value.copy(roomId = code, busy = false)
                 }
                 .onFailure { e ->
@@ -81,6 +107,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     if (exists) {
                         val normalized = code.trim().uppercase()
                         graph.sessionStore.currentRoomId = normalized
+                        val name = runCatching { graph.roomRepository.getRoomName(normalized) }
+                            .getOrNull().orEmpty().ifBlank { normalized }
+                        graph.sessionStore.rememberSketchbook(SketchbookRef(normalized, name))
+                        refreshSketchbooks()
                         _state.value = _state.value.copy(roomId = normalized, busy = false)
                     } else {
                         _state.value = _state.value.copy(busy = false, error = "존재하지 않는 방 코드예요")

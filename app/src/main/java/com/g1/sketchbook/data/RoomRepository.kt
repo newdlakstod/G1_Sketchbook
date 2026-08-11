@@ -56,6 +56,11 @@ class RoomRepository(
         return true
     }
 
+    suspend fun getRoomName(roomId: String): String? {
+        val snapshot = room(roomId).child("meta").child("name").get().await()
+        return snapshot.getValue(String::class.java)
+    }
+
     private suspend fun addSelfAsMember(roomId: String) {
         val user = auth.currentUser ?: return
         val member = Member(

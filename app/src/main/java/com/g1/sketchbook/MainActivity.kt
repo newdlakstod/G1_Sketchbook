@@ -2,6 +2,7 @@ package com.g1.sketchbook
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
@@ -34,6 +35,7 @@ class MainActivity : ComponentActivity() {
 private fun AppRoot(appVm: AppViewModel = viewModel()) {
     val state by appVm.state.collectAsStateWithLifecycle()
     val members by appVm.members.collectAsStateWithLifecycle()
+    val sketchbooks by appVm.sketchbooks.collectAsStateWithLifecycle()
 
     when {
         state.user == null -> LoginScreen(
@@ -46,6 +48,9 @@ private fun AppRoot(appVm: AppViewModel = viewModel()) {
             userName = state.user?.displayName ?: "친구",
             busy = state.busy,
             error = state.error,
+            sketchbooks = sketchbooks,
+            onOpenSketchbook = appVm::openRoom,
+            onRemoveSketchbook = appVm::removeSketchbook,
             onCreateRoom = appVm::createRoom,
             onJoinRoom = appVm::joinRoom,
             onSignOut = appVm::signOut,
@@ -55,8 +60,12 @@ private fun AppRoot(appVm: AppViewModel = viewModel()) {
             val roomId = state.roomId!!
             var showGallery by remember(roomId) { mutableStateOf(false) }
             if (showGallery) {
+                // Back from the gallery returns to the canvas, not out of the app.
+                BackHandler { showGallery = false }
                 GalleryScreen(roomId = roomId, onBack = { showGallery = false })
             } else {
+                // Back from the canvas leaves the room to Home, not out of the app.
+                BackHandler { appVm.leaveRoom() }
                 CanvasScreen(
                     roomId = roomId,
                     members = members,

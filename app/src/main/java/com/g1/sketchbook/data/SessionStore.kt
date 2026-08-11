@@ -1,8 +1,14 @@
 package com.g1.sketchbook.data
 
 import android.content.Context
+import com.g1.sketchbook.data.model.SketchbookRef
+import org.json.JSONArray
+import org.json.JSONObject
 
-/** Tiny persistence for "which room am I in", so the app reopens straight into it. */
+/**
+ * Tiny local persistence: which room the app should reopen into, plus the list of sketchbooks
+ * the user has created/joined so they can re-enter without re-typing the code.
+ */
 class SessionStore(context: Context) {
     private val prefs = context.getSharedPreferences("g1_session", Context.MODE_PRIVATE)
 
@@ -12,7 +18,38 @@ class SessionStore(context: Context) {
             if (value == null) remove(KEY_ROOM) else putString(KEY_ROOM, value)
         }.apply()
 
+    /** Sketchbooks the user knows about, most-recently-opened first. */
+    fun sketchbooks(): List<SketchbookRef> {
+        val raw = prefs.getString(KEY_BOOKS, null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                SketchbookRef(o.getString("id"), o.optString("name"))
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** Adds/refreshes a sketchbook, moving it to the front (most recent). */
+    fun rememberSketchbook(ref: SketchbookRef) {
+        val list = sketchbooks().filter { it.id != ref.id }.toMutableList()
+        list.add(0, ref)
+        save(list.take(MAX_BOOKS))
+    }
+
+    fun forgetSketchbook(id: String) {
+        save(sketchbooks().filter { it.id != id })
+    }
+
+    private fun save(list: List<SketchbookRef>) {
+        val arr = JSONArray()
+        list.forEach { arr.put(JSONObject().put("id", it.id).put("name", it.name)) }
+        prefs.edit().putString(KEY_BOOKS, arr.toString()).apply()
+    }
+
     companion object {
         private const val KEY_ROOM = "current_room"
+        private const val KEY_BOOKS = "sketchbooks"
+        private const val MAX_BOOKS = 30
     }
 }
