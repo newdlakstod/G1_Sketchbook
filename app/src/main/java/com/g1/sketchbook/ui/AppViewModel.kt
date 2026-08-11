@@ -1,0 +1,103 @@
+package com.g1.sketchbook.ui
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.g1.sketchbook.SketchApp
+import com.g1.sketchbook.data.model.Member
+import com.google.firebase.auth.FirebaseUser
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+data class AppUiState(
+    val user: FirebaseUser? = null,
+    val roomId: String? = null,
+    val busy: Boolean = false,
+    val error: String? = null,
+)
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+class AppViewModel(app: Application) : AndroidViewModel(app) {
+    private val graph = (app as SketchApp).graph
+
+    private val _state = MutableStateFlow(
+        AppUiState(
+            user = graph.authClient.currentUser,
+            roomId = graph.sessionStore.currentRoomId,
+        )
+    )
+    val state: StateFlow<AppUiState> = _state.asStateFlow()
+
+    /** Members of the currently-joined room, for the little presence row. */
+    val members: StateFlow<List<Member>> = _state
+        .flatMapLatest { s ->
+            val id = s.roomId
+            if (id == null) emptyFlow() else graph.roomRepository.observeMembers(id)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun signIn() {
+        _state.value = _state.value.copy(busy = true, error = null)
+        viewModelScope.launch {
+            val result = graph.authClient.signIn()
+            _state.value = result.fold(
+                onSuccess = { user -> _state.value.copy(user = user, busy = false) },
+                onFailure = { e -> _state.value.copy(busy = false, error = e.message ?: "로그인 실패") },
+            )
+        }
+    }
+
+    fun signOut() {
+        graph.authClient.signOut()
+        graph.sessionStore.currentRoomId = null
+        _state.value = AppUiState()
+    }
+
+    fun createRoom(name: String) {
+        _state.value = _state.value.copy(busy = true, error = null)
+        viewModelScope.launch {
+            runCatching { graph.roomRepository.createRoom(name) }
+                .onSuccess { code ->
+                    graph.sessionStore.currentRoomId = code
+                    _state.value = _state.value.copy(roomId = code, busy = false)
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(busy = false, error = e.message ?: "방 생성 실패")
+                }
+        }
+    }
+
+    fun joinRoom(code: String) {
+        _state.value = _state.value.copy(busy = true, error = null)
+        viewModelScope.launch {
+            runCatching { graph.roomRepository.joinRoom(code) }
+                .onSuccess { exists ->
+                    if (exists) {
+                        val normalized = code.trim().uppercase()
+                        graph.sessionStore.currentRoomId = normalized
+                        _state.value = _state.value.copy(roomId = normalized, busy = false)
+                    } else {
+                        _state.value = _state.value.copy(busy = false, error = "존재하지 않는 방 코드예요")
+                    }
+                }
+                .onFailure { e ->
+                    _state.value = _state.value.copy(busy = false, error = e.message ?: "참여 실패")
+                }
+        }
+    }
+
+    fun leaveRoom() {
+        graph.sessionStore.currentRoomId = null
+        _state.value = _state.value.copy(roomId = null)
+    }
+
+    fun clearError() {
+        _state.value = _state.value.copy(error = null)
+    }
+}

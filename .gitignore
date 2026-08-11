@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# Firebase — replace the placeholder with YOUR own google-services.json,
+# but keep it out of the public repo (it ties the app to your Firebase project).
+# The committed placeholder lets the project build; delete this ignore line if
+# you intentionally want to track your real config.
+# /app/google-services.json

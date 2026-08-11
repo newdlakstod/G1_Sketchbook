@@ -1,0 +1,69 @@
+package com.g1.sketchbook
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.g1.sketchbook.ui.AppViewModel
+import com.g1.sketchbook.ui.HomeScreen
+import com.g1.sketchbook.ui.LoginScreen
+import com.g1.sketchbook.ui.canvas.CanvasScreen
+import com.g1.sketchbook.ui.gallery.GalleryScreen
+import com.g1.sketchbook.ui.theme.G1Theme
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            G1Theme {
+                AppRoot()
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppRoot(appVm: AppViewModel = viewModel()) {
+    val state by appVm.state.collectAsStateWithLifecycle()
+    val members by appVm.members.collectAsStateWithLifecycle()
+
+    when {
+        state.user == null -> LoginScreen(
+            busy = state.busy,
+            error = state.error,
+            onSignIn = appVm::signIn,
+        )
+
+        state.roomId == null -> HomeScreen(
+            userName = state.user?.displayName ?: "친구",
+            busy = state.busy,
+            error = state.error,
+            onCreateRoom = appVm::createRoom,
+            onJoinRoom = appVm::joinRoom,
+            onSignOut = appVm::signOut,
+        )
+
+        else -> {
+            val roomId = state.roomId!!
+            var showGallery by remember(roomId) { mutableStateOf(false) }
+            if (showGallery) {
+                GalleryScreen(roomId = roomId, onBack = { showGallery = false })
+            } else {
+                CanvasScreen(
+                    roomId = roomId,
+                    members = members,
+                    onOpenGallery = { showGallery = true },
+                    onLeaveRoom = appVm::leaveRoom,
+                )
+            }
+        }
+    }
+}
