@@ -2,20 +2,27 @@ package com.g1.sketchbook.ui
 
 import android.graphics.BitmapFactory
 import android.util.Base64
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,18 +58,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.g1.sketchbook.R
 import com.g1.sketchbook.data.model.ArchiveEntry
 import com.g1.sketchbook.data.model.SketchbookRef
 import com.g1.sketchbook.ui.theme.paperTexture
+
+private val CoverCream = Color(0xFFF3ECD9)
 
 private val SpineColors = listOf(
     Color(0xFF2B4C9B), Color(0xFF7E9A52), Color(0xFFDE7F3C),
@@ -284,12 +300,7 @@ private fun SketchbooksTab(
     onDelete: (SketchbookRef) -> Unit,
     onNew: () -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-    ) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("스케치북", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
             IconButton(onClick = onNew) { Icon(Icons.Filled.Add, contentDescription = "새 스케치북") }
@@ -299,10 +310,102 @@ private fun SketchbooksTab(
             Text("아직 스케치북이 없어요. + 로 만들어보세요.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
         } else {
-            sketchbooks.forEachIndexed { i, book ->
-                SketchbookCard(book, SpineColors[i % SpineColors.size], { onOpen(book) }, { onDelete(book) })
-                Spacer(Modifier.height(10.dp))
+            // Adaptive grid: more columns in landscape / on wider screens, fewer in portrait.
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 150.dp),
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(bottom = 16.dp),
+            ) {
+                itemsIndexed(sketchbooks, key = { _, b -> b.id }) { i, book ->
+                    NotebookCover(
+                        book = book,
+                        cover = SpineColors[i % SpineColors.size],
+                        onOpen = { onOpen(book) },
+                        onDelete = { onDelete(book) },
+                    )
+                }
             }
+        }
+    }
+}
+
+/** A spiral-bound notebook cover in the sample style: colored cover, spiral binding, cream duck, title. */
+@Composable
+private fun NotebookCover(
+    book: SketchbookRef,
+    cover: Color,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Box(Modifier.aspectRatio(0.78f)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp))
+                .background(cover)
+                .clickable(onClick = onOpen),
+        ) {
+            // Cream duck, softly filling the cover.
+            Image(
+                painter = painterResource(R.drawable.mascot_duck),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize(0.68f)
+                    .align(Alignment.Center)
+                    .padding(start = 14.dp),
+            )
+            // Spiral binding down the left edge.
+            SpiralBinding(
+                Modifier
+                    .fillMaxHeight()
+                    .width(20.dp)
+                    .align(Alignment.CenterStart),
+            )
+            // Title, bottom-left like the sample.
+            Text(
+                book.name.ifBlank { "우리 스케치북" },
+                color = CoverCream,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                lineHeight = 17.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 22.dp, end = 10.dp, bottom = 14.dp),
+            )
+        }
+        // Delete affordance.
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.align(Alignment.TopEnd).size(30.dp),
+        ) {
+            Icon(Icons.Filled.Close, contentDescription = "제거",
+                tint = CoverCream.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun SpiralBinding(modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val rings = 9
+        val slot = size.height / rings
+        val ringW = size.width * 0.85f
+        val ringH = slot * 0.5f
+        val left = size.width * 0.05f
+        val strokeW = size.width * 0.14f
+        for (i in 0 until rings) {
+            val cy = slot * i + slot / 2f
+            drawOval(
+                color = CoverCream.copy(alpha = 0.85f),
+                topLeft = Offset(left, cy - ringH / 2f),
+                size = Size(ringW, ringH),
+                style = Stroke(width = strokeW),
+            )
         }
     }
 }
@@ -350,29 +453,6 @@ private fun CircleAction(
         }
         Spacer(Modifier.height(6.dp))
         Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun SketchbookCard(book: SketchbookRef, spine: Color, onOpen: () -> Unit, onDelete: () -> Unit) {
-    Card(
-        onClick = onOpen,
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = MaterialTheme.shapes.medium,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(10.dp).height(64.dp)
-                .background(spine, RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp)))
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.padding(vertical = 14.dp).weight(1f)) {
-                Text(book.name.ifBlank { "우리 스케치북" }, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text("코드 ${book.id}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Filled.Close, contentDescription = "제거", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
     }
 }
 
