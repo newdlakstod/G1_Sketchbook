@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "956614865194",
+    "firebase_url": "https://g1-sketchbook-default-rtdb.firebaseio.com",
     "project_id": "g1-sketchbook",
     "storage_bucket": "g1-sketchbook.firebasestorage.app"
   },
@@ -12,7 +13,20 @@
           "package_name": "com.g1.sketchbook"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "956614865194-ikvhct7n55hocaoq61uv84e4jlbqcfna.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.g1.sketchbook",
+            "certificate_hash": "d282dcf6bdc1857647622856d72b9a8d9a33ff1b"
+          }
+        },
+        {
+          "client_id": "956614865194-k5f3kjslfbu2chglovdkm30jufd4id8p.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBcICBsELx1YQuo9X_0vbv7Y_-KwcQOaVw"
@@ -20,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "956614865194-k5f3kjslfbu2chglovdkm30jufd4id8p.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
