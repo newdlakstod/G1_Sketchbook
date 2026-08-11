@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.g1.sketchbook.SketchApp
+import com.g1.sketchbook.data.model.ArchiveEntry
 import com.g1.sketchbook.data.model.Member
 import com.g1.sketchbook.data.model.SketchbookRef
 import com.google.firebase.auth.FirebaseUser
@@ -13,6 +14,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -38,6 +41,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Sketchbooks the user has created/joined, for the home list (most recent first). */
     private val _sketchbooks = MutableStateFlow(graph.sessionStore.sketchbooks())
     val sketchbooks: StateFlow<List<SketchbookRef>> = _sketchbooks.asStateFlow()
+
+    /** Latest saved snapshot of the most-recent sketchbook, for the home preview card. */
+    val recentEntry: StateFlow<ArchiveEntry?> = _sketchbooks
+        .flatMapLatest { list ->
+            val id = list.firstOrNull()?.id
+            if (id == null) flowOf(null)
+            else graph.archiveRepository.observeArchive(id).map { it.firstOrNull() }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private fun refreshSketchbooks() {
         _sketchbooks.value = graph.sessionStore.sketchbooks()

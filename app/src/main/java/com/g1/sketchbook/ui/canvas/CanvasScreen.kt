@@ -55,16 +55,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import android.graphics.DiscretePathEffect
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke as DrawStroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toComposePathEffect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
@@ -399,20 +396,8 @@ private fun DrawScope.drawFlatPoints(
             i += 2
         }
     }
-    val style = DrawStroke(
-        width = sw,
-        cap = StrokeCap.Round,
-        join = StrokeJoin.Round,
-        // Ragged, hand-torn edges (grunge brush) — only for the textured pen, not the eraser.
-        pathEffect = if (textured) roughEdgeEffect(sw) else null,
-    )
+    // Smooth, stable outline (no per-frame jitter) — the graphite feel comes from the fixed grain.
+    val style = DrawStroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
     if (textured) drawPath(path, brush = CrayonBrush, style = style, colorFilter = tint)
     else drawPath(path, color, style = style)
 }
-
-/** Jitters the stroke outline so edges look torn/grungy; deviation scales with the pen width. */
-private fun roughEdgeEffect(strokePx: Float): PathEffect =
-    DiscretePathEffect(
-        (strokePx * 0.5f).coerceAtLeast(3f),
-        (strokePx * 0.22f).coerceAtLeast(1.2f),
-    ).toComposePathEffect()

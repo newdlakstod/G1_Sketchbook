@@ -36,6 +36,7 @@ private fun AppRoot(appVm: AppViewModel = viewModel()) {
     val state by appVm.state.collectAsStateWithLifecycle()
     val members by appVm.members.collectAsStateWithLifecycle()
     val sketchbooks by appVm.sketchbooks.collectAsStateWithLifecycle()
+    val recentEntry by appVm.recentEntry.collectAsStateWithLifecycle()
 
     when {
         state.user == null -> LoginScreen(
@@ -46,9 +47,11 @@ private fun AppRoot(appVm: AppViewModel = viewModel()) {
 
         state.roomId == null -> HomeScreen(
             userName = state.user?.displayName ?: "친구",
+            userEmail = state.user?.email ?: "",
             busy = state.busy,
             error = state.error,
             sketchbooks = sketchbooks,
+            recentEntry = recentEntry,
             onOpenSketchbook = appVm::openRoom,
             onRemoveSketchbook = appVm::removeSketchbook,
             onCreateRoom = appVm::createRoom,
