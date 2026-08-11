@@ -157,7 +157,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     companion object {
-        const val ERASE_COLOR = 0xFFFDF7F4L // matches light canvas background
+        const val ERASE_COLOR = 0xFFFBF6EAL // matches PaperCanvas background
         private const val LIVE_THROTTLE_MS = 45L
     }
 }

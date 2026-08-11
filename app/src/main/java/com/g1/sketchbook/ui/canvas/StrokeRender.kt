@@ -11,7 +11,7 @@ fun renderStrokesToBitmap(
     strokes: List<Stroke>,
     width: Int,
     height: Int,
-    backgroundColor: Int = 0xFFFDF7F4.toInt(),
+    backgroundColor: Int = 0xFFFBF6EA.toInt(), // matches PaperCanvas so eraser strokes blend
 ): Bitmap {
     val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)

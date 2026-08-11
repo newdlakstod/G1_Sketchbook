@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.g1.sketchbook.data.model.Member
 import com.g1.sketchbook.data.model.Stroke
+import com.g1.sketchbook.ui.theme.PaperCanvas
 
 private val Palette = listOf(
     0xFF1A1A2EL, 0xFFFF6B6BL, 0xFFFFA94DL, 0xFFFFD43BL,
@@ -139,7 +140,7 @@ fun CanvasScreen(
             Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .background(Color(0xFFFDF7F4))
+                .background(PaperCanvas)
         ) {
             Canvas(
                 modifier = Modifier
@@ -214,8 +215,14 @@ private fun ToolBar(
     onClear: () -> Unit,
     onSave: () -> Unit,
 ) {
-    Surface(tonalElevation = 3.dp) {
-        Column(Modifier.fillMaxWidth().padding(8.dp)) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(12.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(12.dp)) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(Palette) { c ->
                     val selected = !erasing && c == selectedColor
