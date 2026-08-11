@@ -1,12 +1,21 @@
 package com.g1.sketchbook.ui.canvas
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
+import android.graphics.Shader
+import androidx.compose.ui.graphics.asAndroidBitmap
 import com.g1.sketchbook.data.model.Stroke
 
-/** Renders finished strokes into a bitmap for the permanent gallery snapshot. */
+/**
+ * Renders finished strokes into a bitmap for the permanent gallery snapshot, using the same crayon
+ * grain as the live canvas: a repeating grain shader supplies uneven alpha and a SrcIn color filter
+ * paints it in the stroke color. Eraser strokes are drawn solid so they fully cover.
+ */
 fun renderStrokesToBitmap(
     strokes: List<Stroke>,
     width: Int,
@@ -17,6 +26,9 @@ fun renderStrokesToBitmap(
     val canvas = Canvas(bmp)
     canvas.drawColor(backgroundColor)
 
+    val grainShader = BitmapShader(
+        CrayonGrain.asAndroidBitmap(), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT,
+    )
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -26,8 +38,15 @@ fun renderStrokesToBitmap(
     for (stroke in strokes) {
         val pts = stroke.points
         if (pts.size < 2) continue
-        paint.color = stroke.color.toInt()
         paint.strokeWidth = (stroke.width * width).coerceAtLeast(1f)
+        if (stroke.erase) {
+            paint.shader = null
+            paint.colorFilter = null
+            paint.color = stroke.color.toInt()
+        } else {
+            paint.shader = grainShader
+            paint.colorFilter = PorterDuffColorFilter(stroke.color.toInt(), PorterDuff.Mode.SRC_IN)
+        }
 
         if (pts.size == 2) {
             canvas.drawPoint(pts[0] * width, pts[1] * height, paint)

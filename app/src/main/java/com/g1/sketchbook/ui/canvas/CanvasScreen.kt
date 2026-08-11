@@ -44,7 +44,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -176,6 +178,7 @@ fun CanvasScreen(
                         color = if (vm.erasing) Color(CanvasViewModel.ERASE_COLOR) else Color(vm.color),
                         strokePx = vm.strokeWidthPx,
                         w = w, h = h,
+                        textured = !vm.erasing,
                     )
                 }
             }
@@ -297,14 +300,30 @@ private fun DrawScope.drawStoredStroke(stroke: Stroke, w: Float, h: Float) {
         color = Color(stroke.color),
         strokePx = (stroke.width * w),
         w = w, h = h,
+        textured = !stroke.erase,
     )
 }
 
-private fun DrawScope.drawFlatPoints(points: List<Float>, color: Color, strokePx: Float, w: Float, h: Float) {
+/**
+ * Draws a stroke either as a solid line (eraser) or with the shared crayon grain: the grain brush
+ * supplies uneven alpha, and [ColorFilter.tint] with [BlendMode.SrcIn] paints it in the stroke's
+ * color — giving the chalky colored-pencil look.
+ */
+private fun DrawScope.drawFlatPoints(
+    points: List<Float>,
+    color: Color,
+    strokePx: Float,
+    w: Float,
+    h: Float,
+    textured: Boolean = true,
+) {
     if (points.size < 2) return
     val sw = strokePx.coerceAtLeast(1f)
+    val tint = if (textured) ColorFilter.tint(color, BlendMode.SrcIn) else null
     if (points.size == 2) {
-        drawCircle(color, sw / 2f, Offset(points[0] * w, points[1] * h))
+        val center = Offset(points[0] * w, points[1] * h)
+        if (textured) drawCircle(brush = CrayonBrush, radius = sw / 2f, center = center, colorFilter = tint)
+        else drawCircle(color, sw / 2f, center)
         return
     }
     val path = Path().apply {
@@ -315,5 +334,7 @@ private fun DrawScope.drawFlatPoints(points: List<Float>, color: Color, strokePx
             i += 2
         }
     }
-    drawPath(path, color, style = DrawStroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    val style = DrawStroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
+    if (textured) drawPath(path, brush = CrayonBrush, style = style, colorFilter = tint)
+    else drawPath(path, color, style = style)
 }
