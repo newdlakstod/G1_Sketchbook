@@ -10,7 +10,6 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
-import android.view.ScaleGestureDetector
 import android.view.View
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -64,11 +63,12 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var offY = 0f
 
     // gesture state
-    private val scaleDetector = ScaleGestureDetector(context, ScaleListener())
-    private var drawing = false
-    private var moved = false
+    private var gestureMode = false
+    private var strokeStarted = false
     private var maxPointers = 1
     private var downTime = 0L
+    private var gStartSpan = 0f; private var gStartFx = 0f; private var gStartFy = 0f
+    private var gPrevSpan = 0f; private var gPrevFx = 0f; private var gPrevFy = 0f
 
     private var acc = 0f
     private var lx = 0f; private var ly = 0f; private var lt = 0L
@@ -136,54 +136,66 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!drawEnabled) return false
-        if (!zoomLocked) scaleDetector.onTouchEvent(e)
+        val now = System.currentTimeMillis()
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                downTime = System.currentTimeMillis(); moved = false; maxPointers = 1
-                drawing = true; acc = 0f; lx = cx(e.x); ly = cy(e.y); lt = downTime
-                pushUndo(); strokePrep(); strokeStart(lx, ly); invalidate()
+                gestureMode = false; strokeStarted = false; maxPointers = 1; downTime = now
+                acc = 0f; lx = cx(e.x); ly = cy(e.y); lt = now
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 maxPointers = max(maxPointers, e.pointerCount)
-                if (e.pointerCount >= 2 && drawing) { restoreBase(); undo.removeLastOrNull(); drawing = false }
+                if (e.pointerCount >= 2) {
+                    if (strokeStarted) cancelStroke()   // a second finger => this was never a drawing
+                    gestureMode = true
+                    gStartSpan = span(e); val f = focus(e); gStartFx = f.first; gStartFy = f.second
+                    gPrevSpan = gStartSpan; gPrevFx = gStartFx; gPrevFy = gStartFy
+                }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (drawing && e.pointerCount == 1 && !scaleDetector.isInProgress) {
-                    val x = cx(e.x); val y = cy(e.y)
-                    val now = System.currentTimeMillis(); val dd = hypot(x - lx, y - ly); val v = dd / max(1L, now - lt)
-                    if (dd > 1.5f) moved = true
+                if (gestureMode) {
+                    if (!zoomLocked && e.pointerCount >= 2) pinchPan(e)
+                } else if (e.pointerCount == 1) {
+                    if (!strokeStarted) beginStroke(lx, ly)
+                    val x = cx(e.x); val y = cy(e.y); val dd = hypot(x - lx, y - ly); val v = dd / max(1L, now - lt)
                     strokeMove(lx, ly, x, y, v); lx = x; ly = y; lt = now; invalidate()
                 }
             }
-            MotionEvent.ACTION_POINTER_UP -> { /* keep multi-touch state until all up */ }
+            MotionEvent.ACTION_POINTER_UP -> { /* stay in gesture until all fingers up */ }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (drawing) { drawing = false; base = null; onStrokeEnd?.invoke() }
-                else {
-                    val dt = System.currentTimeMillis() - downTime
-                    if (!moved && dt < 260 && maxPointers >= 2) { if (maxPointers >= 3) redo() else undo() }
-                }
+                if (gestureMode) {
+                    val dt = now - downTime
+                    val spanCh = kotlin.math.abs(gPrevSpan - gStartSpan)
+                    val focusMove = hypot(gPrevFx - gStartFx, gPrevFy - gStartFy)
+                    if (dt < 280 && spanCh < 60f && focusMove < 60f && maxPointers >= 2) {
+                        if (maxPointers >= 3) redo() else undo()   // 2-finger tap = undo, 3-finger = redo
+                    }
+                } else if (strokeStarted) endStroke()
+                else { beginStroke(lx, ly); endStroke() }          // single tap = a dot
+                gestureMode = false; strokeStarted = false; maxPointers = 1
             }
         }
         return true
     }
 
-    private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        private var pfx = 0f; private var pfy = 0f
-        override fun onScaleBegin(d: ScaleGestureDetector): Boolean {
-            if (drawing) { restoreBase(); undo.removeLastOrNull(); drawing = false } // stop drawing when pinch starts
-            pfx = d.focusX; pfy = d.focusY; return true
-        }
-        override fun onScale(d: ScaleGestureDetector): Boolean {
-            val ns = (scale * d.scaleFactor).coerceIn(1f, 5f)
-            offX = d.focusX - (d.focusX - offX) * (ns / scale)
-            offY = d.focusY - (d.focusY - offY) * (ns / scale)
-            offX += d.focusX - pfx; offY += d.focusY - pfy
+    private fun span(e: MotionEvent) = if (e.pointerCount < 2) 0f else hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1))
+    private fun focus(e: MotionEvent): Pair<Float, Float> =
+        if (e.pointerCount < 2) e.x to e.y else ((e.getX(0) + e.getX(1)) / 2) to ((e.getY(0) + e.getY(1)) / 2)
+
+    private fun pinchPan(e: MotionEvent) {
+        val s = span(e); val f = focus(e)
+        if (gPrevSpan > 0f) {
+            val ns = (scale * (s / gPrevSpan)).coerceIn(1f, 5f)
+            offX = f.first - (f.first - offX) * (ns / scale) + (f.first - gPrevFx)
+            offY = f.second - (f.second - offY) * (ns / scale) + (f.second - gPrevFy)
             scale = ns
-            if (kotlin.math.abs(d.scaleFactor - 1f) > 0.01f || hypot(d.focusX - pfx, d.focusY - pfy) > 6f) moved = true
-            pfx = d.focusX; pfy = d.focusY
-            clampPan(); invalidate(); return true
         }
+        gPrevSpan = s; gPrevFx = f.first; gPrevFy = f.second
+        clampPan(); invalidate()
     }
+
+    private fun beginStroke(x: Float, y: Float) { pushUndo(); strokePrep(); strokeStart(x, y); strokeStarted = true; invalidate() }
+    private fun cancelStroke() { restoreBase(); undo.removeLastOrNull(); strokeStarted = false; invalidate() }
+    private fun endStroke() { base = null; onStrokeEnd?.invoke(); invalidate() }
 
     private fun clampPan() {
         val w = width.toFloat(); val h = height.toFloat()
