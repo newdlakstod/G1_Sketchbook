@@ -70,6 +70,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var prevDist = 0f
     private var prevFocusX = 0f
     private var prevFocusY = 0f
+    private var startDist = 0f
+    private var startFocusX = 0f
+    private var startFocusY = 0f
 
     private var acc = 0f
     private var lx = 0f; private var ly = 0f; private var lt = 0L
@@ -148,9 +151,10 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             MotionEvent.ACTION_POINTER_DOWN -> {
                 maxPointers = max(maxPointers, e.pointerCount)
                 if (e.pointerCount >= 2) {
-                    if (drawing) { restoreBase(); drawing = false } // cancel accidental stroke
-                    gesture = true
+                    if (drawing) { restoreBase(); undo.removeLastOrNull(); drawing = false } // cancel accidental stroke + its undo entry
+                    gesture = true; moved = false
                     prevDist = spacingOf(e); val f = focusOf(e); prevFocusX = f.first; prevFocusY = f.second
+                    startDist = prevDist; startFocusX = f.first; startFocusY = f.second
                 }
             }
             MotionEvent.ACTION_MOVE -> {
@@ -165,7 +169,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                             offX += f.first - prevFocusX; offY += f.second - prevFocusY
                             scale = ns
                         }
-                        if (hypot(d - prevDist, f.first - prevFocusX + f.second - prevFocusY) > 8f) moved = true
+                        if (kotlin.math.abs(d - startDist) > 12f ||
+                            hypot(f.first - startFocusX, f.second - startFocusY) > 12f) moved = true
                         prevDist = d; prevFocusX = f.first; prevFocusY = f.second
                         clampPan(); invalidate()
                     }
