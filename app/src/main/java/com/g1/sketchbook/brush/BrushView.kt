@@ -101,12 +101,16 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     private fun computeDisplay() {
         if (cw <= 0 || ch <= 0 || width <= 0 || height <= 0) return
-        val rw = if (rotationQ % 2 == 0) cw else ch
-        val rh = if (rotationQ % 2 == 0) ch else cw
+        // Auto-turn the page a quarter so its long side follows the screen's long side
+        // (a portrait page fills a landscape screen and vice-versa). Manual rotate adds on top.
+        val autoQ = if ((width > height) != (cw > ch)) 1 else 0
+        val q = (rotationQ + autoQ) % 4
+        val rw = if (q % 2 == 0) cw else ch
+        val rh = if (q % 2 == 0) ch else cw
         fitScale = min(width.toFloat() / rw, height.toFloat() / rh)
         disp.reset()
         disp.postTranslate(-cw / 2f, -ch / 2f)
-        disp.postRotate(rotationQ * 90f)
+        disp.postRotate(q * 90f)
         disp.postScale(fitScale, fitScale)
         disp.postTranslate(width / 2f, height / 2f)
         disp.postConcat(userM)          // apply pinch zoom/pan last, in view space

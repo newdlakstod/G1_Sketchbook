@@ -329,28 +329,24 @@ fun SketchbookCanvasScreen(bookId: String, onBack: () -> Unit) {
 
     BackHandler { saveCurrent(); onBack() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
-            val ratio = cw.toFloat() / ch
-            val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
-            val h = w / ratio
-            Box(Modifier.width(w).height(h)) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        BrushView(ctx).also { v ->
-                            v.paper = BitmapFactory.decodeResource(ctx.resources, bgDrawable(book.bgKey))
-                            v.initCanvas(cw, ch)
-                            v.loadContent(repo.loadPage(book.id, 0))
-                            view = v
-                        }
-                    },
-                    update = { v ->
-                        v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-                        v.erasing = erasing
-                        v.onStrokeEnd = { val pg = page; v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
-                    },
-                )
-            }
+        Box(Modifier.weight(1f).fillMaxWidth().padding(8.dp)) {
+            // BrushView fills the whole area and fits/auto-rotates the fixed-size page inside it.
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    BrushView(ctx).also { v ->
+                        v.paper = BitmapFactory.decodeResource(ctx.resources, bgDrawable(book.bgKey))
+                        v.initCanvas(cw, ch)
+                        v.loadContent(repo.loadPage(book.id, 0))
+                        view = v
+                    }
+                },
+                update = { v ->
+                    v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
+                    v.erasing = erasing
+                    v.onStrokeEnd = { val pg = page; v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
+                },
+            )
         }
         BrushControls(
             brush, color, sizeDp, opacity, erasing,
