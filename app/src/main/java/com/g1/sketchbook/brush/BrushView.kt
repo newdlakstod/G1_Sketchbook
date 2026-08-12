@@ -6,11 +6,11 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -20,11 +20,14 @@ import kotlin.random.Random
 enum class BrushType { PEN, PENCIL, CRAYON, WATER }
 
 /**
- * Bitmap-backed brush engine (Phase 0). Ports the web-demo feel to Android:
- *  - distance-accumulated stamping (speed-independent density),
- *  - pen drawn on its own layer then composited once at [opacity] (no dot buildup),
- *  - pencil = scattered graphite flecks, crayon = edge-biased waxy flecks (hollow-ish middle),
- *  - watercolor = layered irregular polygons via PorterDuff MULTIPLY over the opaque paper.
+ * Bitmap-backed brush engine (Phase 0).
+ *
+ * Unified architecture: every stroke is drawn onto its own transparent layer at full strength,
+ * then composited onto the canvas exactly once at [opacity]. This makes the opacity slider behave
+ * correctly for all brushes and keeps color visible.
+ *
+ * Texture is deposited perpendicular to the travel direction (a brush "nib" cross-section) so the
+ * grain spreads evenly across the stroke width instead of piling up on the centre line.
  */
 class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -36,18 +39,16 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     private var bmp: Bitmap? = null
     private var layer: Canvas? = null
-    private var penBmp: Bitmap? = null
-    private var penLayer: Canvas? = null
-    private var base: Bitmap? = null           // pre-stroke copy for pen compositing
+    private var strokeBmp: Bitmap? = null
+    private var strokeLayer: Canvas? = null
+    private var base: Bitmap? = null            // pre-stroke copy, for compositing this stroke
     private val undo = ArrayDeque<Bitmap>()
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pen = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
     }
-    private val penDotP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val compositeP = Paint()
-    private val multiply = PorterDuffXfermode(PorterDuff.Mode.MULTIPLY)
     private val path = Path()
     private val rnd = Random(7)
 
@@ -59,7 +60,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(b); paintPaper(c, w, h)
         bmp = b; layer = c
-        penBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); penLayer = Canvas(penBmp!!)
+        strokeBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); strokeLayer = Canvas(strokeBmp!!)
         invalidate()
     }
 
@@ -87,14 +88,16 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pushUndo(); acc = 0f; lx = x; ly = y; lt = System.currentTimeMillis()
-                if (brush == BrushType.PEN) { penPrep(); penDot(x, y) } else stamp(x, y, strokeSize / 2f)
-                invalidate()
+                strokePrep()
+                if (brush == BrushType.PEN) penDot(x, y)
+                else { val a = rnd.nextFloat() * 6.2832f; stampLayer(x, y, strokeSize / 2f, cos(a), sin(a)) }
+                composite(); invalidate()
             }
             MotionEvent.ACTION_MOVE -> {
                 val now = System.currentTimeMillis()
                 val d = hypot(x - lx, y - ly); val v = d / max(1L, now - lt)
                 if (brush == BrushType.PEN) penSeg(lx, ly, x, y, v) else seg(lx, ly, x, y, v)
-                lx = x; ly = y; lt = now; invalidate()
+                composite(); lx = x; ly = y; lt = now; invalidate()
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> base = null
         }
@@ -106,78 +109,82 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         return (aa shl 24) or (c and 0x00FFFFFF)
     }
 
-    // ---------- pen: uniform-opacity layer ----------
-    private fun penPrep() {
-        penLayer?.drawColor(0, PorterDuff.Mode.CLEAR)
+    // ---- stroke layer compositing (all brushes) ----
+    private fun strokePrep() {
+        strokeLayer?.drawColor(0, PorterDuff.Mode.CLEAR)
         base = bmp?.copy(Bitmap.Config.ARGB_8888, false)
     }
-    private fun penComposite() {
-        val c = layer ?: return; val b = base ?: return; val pb = penBmp ?: return
+    private fun composite() {
+        val c = layer ?: return; val b = base ?: return; val sb = strokeBmp ?: return
         c.drawBitmap(b, 0f, 0f, null)
         compositeP.alpha = (opacity.coerceIn(0f, 1f) * 255).toInt()
-        c.drawBitmap(pb, 0f, 0f, compositeP)
+        c.drawBitmap(sb, 0f, 0f, compositeP)
     }
+
     private fun penDot(x: Float, y: Float) {
-        penDotP.color = color or (0xFF shl 24)
-        penLayer?.drawCircle(x, y, max(1f, strokeSize / 2f), penDotP); penComposite()
+        fill.color = color or (0xFF shl 24)
+        strokeLayer?.drawCircle(x, y, max(1f, strokeSize / 2f), fill)
     }
     private fun penSeg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         val r = max(1f, (strokeSize / 2f) * (1 - minOf(0.45f, speed * 0.06f)))
         pen.color = color or (0xFF shl 24); pen.strokeWidth = r * 2
-        penLayer?.drawLine(x0, y0, x1, y1, pen); penComposite()
+        strokeLayer?.drawLine(x0, y0, x1, y1, pen)
     }
 
-    // ---------- textured brushes ----------
+    // ---- textured brushes: distance-accumulated, perpendicular deposit ----
     private fun seg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         var r = strokeSize / 2f
         if (brush == BrushType.PENCIL) r *= (1 - minOf(0.45f, speed * 0.06f)) // crayon/water: no speed
         r = max(1f, r)
-        val spacing = when (brush) { BrushType.WATER -> r * 0.7f; BrushType.CRAYON -> r * 0.30f; else -> r * 0.20f }
+        val spacing = when (brush) { BrushType.WATER -> r * 0.6f; BrushType.CRAYON -> r * 0.30f; else -> r * 0.25f }
         val dx = x1 - x0; val dy = y1 - y0; val d = hypot(dx, dy); if (d == 0f) return
         val nx = dx / d; val ny = dy / d
         var dist = spacing - acc; if (dist < 0) dist = 0f
-        while (dist <= d) { stamp(x0 + nx * dist, y0 + ny * dist, r); dist += spacing }
+        while (dist <= d) { stampLayer(x0 + nx * dist, y0 + ny * dist, r, nx, ny); dist += spacing }
         acc = d - (dist - spacing)
     }
 
-    private fun stamp(x: Float, y: Float, r: Float) {
-        val c = layer ?: return
+    /** Deposits texture at (x,y). Grain spreads along the perpendicular (px,py) of travel (nx,ny). */
+    private fun stampLayer(x: Float, y: Float, r: Float, nx: Float, ny: Float) {
+        val c = strokeLayer ?: return
+        val px = -ny; val py = nx
         when (brush) {
             BrushType.PENCIL -> {
-                val n = max(5f, r * r * 0.7f).toInt()
+                val n = max(4, (r * 0.9f).toInt())
                 for (i in 0 until n) {
-                    val a = rnd.nextFloat() * 6.2832f
-                    val rr = Math.pow(rnd.nextDouble(), 0.7).toFloat() * r * 1.15f
-                    val sx = x + cos(a) * rr; val sy = y + sin(a) * rr
-                    val al = (0.06f + rnd.nextFloat() * 0.5f) * opacity
+                    val t = rnd.nextFloat() * 2 - 1
+                    val off = t * r * 1.05f
+                    val j = (rnd.nextFloat() - 0.5f) * r * 0.3f
+                    val sx = x + px * off + nx * j; val sy = y + py * off + ny * j
+                    val al = 0.08f + rnd.nextFloat() * 0.42f
                     val ss = if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f
                     fill.color = withAlpha(color, al); c.drawRect(sx, sy, sx + ss, sy + ss, fill)
                 }
             }
             BrushType.CRAYON -> {
-                val m = max(10f, r * r * 1.2f).toInt()
-                for (j in 0 until m) {
-                    val a = rnd.nextFloat() * 6.2832f
-                    val rr = rnd.nextFloat() * r * 1.15f; val edge = rr / (r * 1.15f)
-                    if (rnd.nextFloat() > (0.15f + 0.85f * edge)) continue // hollow-ish middle
-                    val cx = x + cos(a) * rr; val cy = y + sin(a) * rr
-                    fill.color = withAlpha(color, (0.18f + rnd.nextFloat() * 0.6f) * opacity)
-                    val s = 1f + rnd.nextFloat() * 2f; c.drawRect(cx, cy, cx + s, cy + s, fill)
+                val n = max(6, (r * 1.1f).toInt())
+                for (i in 0 until n) {
+                    val t = rnd.nextFloat() * 2 - 1; val edge = abs(t)
+                    if (rnd.nextFloat() > (0.2f + 0.8f * edge)) continue // sparser centre -> hollow-ish
+                    val off = t * r * 1.15f
+                    val j = (rnd.nextFloat() - 0.5f) * r * 0.4f
+                    val sx = x + px * off + nx * j; val sy = y + py * off + ny * j
+                    fill.color = withAlpha(color, 0.20f + rnd.nextFloat() * 0.55f)
+                    val s = 1f + rnd.nextFloat() * 2f; c.drawRect(sx, sy, sx + s, sy + s, fill)
                 }
             }
             BrushType.WATER -> {
-                fill.xfermode = multiply
                 val R = r * 1.3f
                 fill.style = Paint.Style.FILL
-                for (L in 0 until 5) { buildBlob(x, y, R * (1 + L * 0.05f)); fill.color = withAlpha(color, 0.035f * opacity); c.drawPath(path, fill) }
+                for (L in 0 until 3) { buildBlob(x, y, R * (1 + L * 0.06f)); fill.color = withAlpha(color, 0.08f); c.drawPath(path, fill) }
                 buildBlob(x, y, R); fill.style = Paint.Style.STROKE; fill.strokeWidth = 1.5f
-                fill.color = withAlpha(color, 0.05f * opacity); c.drawPath(path, fill)
+                fill.color = withAlpha(color, 0.16f); c.drawPath(path, fill)
                 if (rnd.nextFloat() < 0.25f) {
                     val a = rnd.nextFloat() * 6.2832f; val dd = R * (0.6f + rnd.nextFloat() * 0.7f)
                     buildBlob(x + cos(a) * dd, y + sin(a) * dd, R * 0.5f)
-                    fill.style = Paint.Style.FILL; fill.color = withAlpha(color, 0.03f * opacity); c.drawPath(path, fill)
+                    fill.style = Paint.Style.FILL; fill.color = withAlpha(color, 0.06f); c.drawPath(path, fill)
                 }
-                fill.xfermode = null; fill.style = Paint.Style.FILL
+                fill.style = Paint.Style.FILL
             }
             else -> {}
         }
