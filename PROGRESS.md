@@ -46,6 +46,12 @@
   - firebase-database 의존성 재추가 + `Graph.shareRepository` 배선.
   - 결정: 2인 / 획마다 스냅샷 동기화 / 초대코드 참여 (사용자 선택).
 
+- **함께 그리기 다듬기** (v1.20.0, 2026-08-13):
+  - 분할 배치: 내 캔버스=가로 오른쪽/세로 하단(상대=왼쪽/위).
+  - 회전 시 내용 소실 수정: 패널을 `movableContentOf<Modifier>`로 감싸 Row↔Column 전환 때 BrushView/비트맵 유지.
+  - 공유 캔버스를 A4 규격으로 맞춤(`SHARE_SIZE=Catalog.size("a4")`, bg=drawing) → 저장 왜곡 방지. 상단 저장 버튼: `SketchbookRepository.create(...,"a4","drawing")+savePage` 후 Toast.
+  - 홈 브러시 놀이터 제거 + `brush/BrushPlaygroundScreen.kt` 삭제.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
