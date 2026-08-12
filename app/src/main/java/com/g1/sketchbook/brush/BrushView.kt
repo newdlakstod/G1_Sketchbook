@@ -10,7 +10,6 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -85,19 +84,21 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val x = e.x; val y = e.y
+        val layered = brush == BrushType.PEN || brush == BrushType.WATER
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pushUndo(); acc = 0f; lx = x; ly = y; lt = System.currentTimeMillis()
-                strokePrep()
-                if (brush == BrushType.PEN) penDot(x, y)
-                else { val a = rnd.nextFloat() * 6.2832f; stampLayer(x, y, strokeSize / 2f, cos(a), sin(a)) }
-                composite(); invalidate()
+                if (layered) strokePrep()
+                if (brush == BrushType.PEN) penDot(x, y) else stampDispatch(x, y, strokeSize / 2f)
+                if (layered) composite()
+                invalidate()
             }
             MotionEvent.ACTION_MOVE -> {
                 val now = System.currentTimeMillis()
                 val d = hypot(x - lx, y - ly); val v = d / max(1L, now - lt)
                 if (brush == BrushType.PEN) penSeg(lx, ly, x, y, v) else seg(lx, ly, x, y, v)
-                composite(); lx = x; ly = y; lt = now; invalidate()
+                if (layered) composite()
+                lx = x; ly = y; lt = now; invalidate()
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> base = null
         }
@@ -131,63 +132,68 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         strokeLayer?.drawLine(x0, y0, x1, y1, pen)
     }
 
-    // ---- textured brushes: distance-accumulated, perpendicular deposit ----
+    // ---- textured brushes: distance-accumulated stamping (matches the web demo) ----
     private fun seg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         var r = strokeSize / 2f
         if (brush == BrushType.PENCIL) r *= (1 - minOf(0.45f, speed * 0.06f)) // crayon/water: no speed
         r = max(1f, r)
-        val spacing = when (brush) { BrushType.WATER -> r * 0.6f; BrushType.CRAYON -> r * 0.18f; else -> r * 0.15f }
+        val spacing = when (brush) { BrushType.WATER -> r * 0.6f; BrushType.CRAYON -> r * 0.30f; else -> r * 0.20f }
         val dx = x1 - x0; val dy = y1 - y0; val d = hypot(dx, dy); if (d == 0f) return
         val nx = dx / d; val ny = dy / d
         var dist = spacing - acc; if (dist < 0) dist = 0f
-        while (dist <= d) { stampLayer(x0 + nx * dist, y0 + ny * dist, r, nx, ny); dist += spacing }
+        while (dist <= d) { stampDispatch(x0 + nx * dist, y0 + ny * dist, r); dist += spacing }
         acc = d - (dist - spacing)
     }
 
-    /** Deposits texture at (x,y). Grain spreads along the perpendicular (px,py) of travel (nx,ny). */
-    private fun stampLayer(x: Float, y: Float, r: Float, nx: Float, ny: Float) {
-        val c = strokeLayer ?: return
-        val px = -ny; val py = nx
+    private fun stampDispatch(x: Float, y: Float, r: Float) {
         when (brush) {
-            BrushType.PENCIL -> {
-                val n = max(8, (r * 2.0f).toInt())
-                for (i in 0 until n) {
-                    val t = rnd.nextFloat() * 2 - 1
-                    val off = t * r * 1.05f
-                    val j = (rnd.nextFloat() - 0.5f) * r * 0.3f
-                    val sx = x + px * off + nx * j; val sy = y + py * off + ny * j
-                    val al = 0.15f + rnd.nextFloat() * 0.55f
-                    val ss = if (rnd.nextFloat() < 0.25f) 1.7f else 1.1f
-                    fill.color = withAlpha(color, al); c.drawRect(sx, sy, sx + ss, sy + ss, fill)
-                }
-            }
-            BrushType.CRAYON -> {
-                val n = max(10, (r * 2.4f).toInt())
-                for (i in 0 until n) {
-                    val t = rnd.nextFloat() * 2 - 1; val edge = abs(t)
-                    if (rnd.nextFloat() > (0.4f + 0.6f * edge)) continue // slightly sparser centre
-                    val off = t * r * 1.15f
-                    val j = (rnd.nextFloat() - 0.5f) * r * 0.4f
-                    val sx = x + px * off + nx * j; val sy = y + py * off + ny * j
-                    fill.color = withAlpha(color, 0.30f + rnd.nextFloat() * 0.6f)
-                    val s = 1.2f + rnd.nextFloat() * 2.2f; c.drawRect(sx, sy, sx + s, sy + s, fill)
-                }
-            }
-            BrushType.WATER -> {
-                val R = r * 1.3f
-                fill.style = Paint.Style.FILL
-                for (L in 0 until 3) { buildBlob(x, y, R * (1 + L * 0.06f)); fill.color = withAlpha(color, 0.08f); c.drawPath(path, fill) }
-                buildBlob(x, y, R); fill.style = Paint.Style.STROKE; fill.strokeWidth = 1.5f
-                fill.color = withAlpha(color, 0.16f); c.drawPath(path, fill)
-                if (rnd.nextFloat() < 0.25f) {
-                    val a = rnd.nextFloat() * 6.2832f; val dd = R * (0.6f + rnd.nextFloat() * 0.7f)
-                    buildBlob(x + cos(a) * dd, y + sin(a) * dd, R * 0.5f)
-                    fill.style = Paint.Style.FILL; fill.color = withAlpha(color, 0.06f); c.drawPath(path, fill)
-                }
-                fill.style = Paint.Style.FILL
-            }
+            BrushType.PENCIL -> stampPencil(x, y, r)
+            BrushType.CRAYON -> stampCrayon(x, y, r)
+            BrushType.WATER -> stampWater(x, y, r)
             else -> {}
         }
+    }
+
+    // Pencil/crayon draw straight onto the canvas so overlapping stamps accumulate into a dense,
+    // round-ended stroke (a filled disc of flecks per stamp) — exactly like the web playground.
+    private fun stampPencil(x: Float, y: Float, r: Float) {
+        val c = layer ?: return
+        val n = max(5f, r * r * 0.7f).toInt()
+        for (i in 0 until n) {
+            val a = rnd.nextFloat() * 6.2832f
+            val rr = Math.pow(rnd.nextDouble(), 0.7).toFloat() * r * 1.15f
+            val sx = x + cos(a) * rr; val sy = y + sin(a) * rr
+            val al = (0.06f + rnd.nextFloat() * 0.5f) * opacity
+            val ss = if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f
+            fill.color = withAlpha(color, al); c.drawRect(sx, sy, sx + ss, sy + ss, fill)
+        }
+    }
+    private fun stampCrayon(x: Float, y: Float, r: Float) {
+        val c = layer ?: return
+        val m = max(10f, r * r * 1.2f).toInt()
+        for (j in 0 until m) {
+            val a = rnd.nextFloat() * 6.2832f
+            val rr = rnd.nextFloat() * r * 1.15f; val edge = rr / (r * 1.15f)
+            if (rnd.nextFloat() > (0.15f + 0.85f * edge)) continue // waxy, slightly hollow middle
+            val cx = x + cos(a) * rr; val cy = y + sin(a) * rr
+            fill.color = withAlpha(color, (0.18f + rnd.nextFloat() * 0.6f) * opacity)
+            val s = 1f + rnd.nextFloat() * 2f; c.drawRect(cx, cy, cx + s, cy + s, fill)
+        }
+    }
+    // Watercolor draws on the stroke layer, composited once at [opacity].
+    private fun stampWater(x: Float, y: Float, r: Float) {
+        val c = strokeLayer ?: return
+        val R = r * 1.3f
+        fill.style = Paint.Style.FILL
+        for (L in 0 until 3) { buildBlob(x, y, R * (1 + L * 0.06f)); fill.color = withAlpha(color, 0.08f); c.drawPath(path, fill) }
+        buildBlob(x, y, R); fill.style = Paint.Style.STROKE; fill.strokeWidth = 1.5f
+        fill.color = withAlpha(color, 0.16f); c.drawPath(path, fill)
+        if (rnd.nextFloat() < 0.25f) {
+            val a = rnd.nextFloat() * 6.2832f; val dd = R * (0.6f + rnd.nextFloat() * 0.7f)
+            buildBlob(x + cos(a) * dd, y + sin(a) * dd, R * 0.5f)
+            fill.style = Paint.Style.FILL; fill.color = withAlpha(color, 0.06f); c.drawPath(path, fill)
+        }
+        fill.style = Paint.Style.FILL
     }
 
     // Tyler-Hobbs style irregular blob into [path]
