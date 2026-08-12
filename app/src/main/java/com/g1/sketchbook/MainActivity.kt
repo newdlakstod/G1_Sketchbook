@@ -45,6 +45,7 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
                 onTab = vm::selectTab,
                 onTheme = vm::setTheme,
                 onSignOut = vm::signOut,
+                onRename = vm::saveNickname,
             )
         }
     }

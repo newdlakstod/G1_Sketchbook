@@ -2,6 +2,7 @@ package com.g1.sketchbook.sketchbook
 
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,7 +60,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -88,6 +96,68 @@ private val CoverColors = listOf(
     Color(0xFF2B4C9B), Color(0xFF7E9A52), Color(0xFFDE7F3C),
     Color(0xFFE0B23C), Color(0xFFCE7A7A), Color(0xFF5B8A8C),
 )
+private val PAPER_KEYS = listOf("a5", "a4", "a3")
+private val DISPLAY_KEYS = listOf("mobile", "tablet", "desktop")
+
+@Composable
+private fun SizeRow(list: List<CanvasSize>, selected: String, onSelect: (String) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        list.forEach { s ->
+            val on = s.key == selected
+            Column(
+                Modifier.weight(1f).clickable { onSelect(s.key) }.padding(4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                SizeIcon(s.key, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    Modifier.fillMaxWidth().height(64.dp))
+                Spacer(Modifier.height(6.dp))
+                Text(s.label, fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                    color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                Text("${s.w} × ${s.h}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** Line-art size icons: folded-corner page (paper) and phone/tablet/monitor (display). */
+@Composable
+private fun SizeIcon(key: String, color: Color, modifier: Modifier) {
+    Canvas(modifier) {
+        val w = size.width; val h = size.height
+        val sw = minOf(w, h) * 0.05f
+        val st = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        when (key) {
+            "mobile" -> {
+                val pw = w * 0.40f; val ph = h * 0.94f; val l = (w - pw) / 2; val t = (h - ph) / 2; val r = pw * 0.22f
+                drawRoundRect(color, Offset(l, t), Size(pw, ph), CornerRadius(r, r), style = st)
+                drawLine(color, Offset(l + pw * 0.34f, t + ph * 0.09f), Offset(l + pw * 0.66f, t + ph * 0.09f), sw, StrokeCap.Round)
+                drawLine(color, Offset(l + pw * 0.32f, t + ph * 0.92f), Offset(l + pw * 0.68f, t + ph * 0.92f), sw, StrokeCap.Round)
+            }
+            "tablet" -> {
+                val pw = w * 0.94f; val ph = h * 0.72f; val l = (w - pw) / 2; val t = (h - ph) / 2; val r = ph * 0.14f
+                drawRoundRect(color, Offset(l, t), Size(pw, ph), CornerRadius(r, r), style = st)
+                drawCircle(color, sw * 0.6f, Offset(w / 2, t + ph * 0.10f))
+                drawLine(color, Offset(w / 2 - pw * 0.08f, t + ph * 0.90f), Offset(w / 2 + pw * 0.08f, t + ph * 0.90f), sw, StrokeCap.Round)
+            }
+            "desktop" -> {
+                val pw = w * 0.94f; val ph = h * 0.62f; val l = (w - pw) / 2; val t = h * 0.06f; val r = ph * 0.12f
+                drawRoundRect(color, Offset(l, t), Size(pw, ph), CornerRadius(r, r), style = st)
+                drawLine(color, Offset(w / 2, t + ph), Offset(w / 2, t + ph + h * 0.16f), sw, StrokeCap.Round)
+                drawLine(color, Offset(w / 2 - pw * 0.20f, t + ph + h * 0.16f), Offset(w / 2 + pw * 0.20f, t + ph + h * 0.16f), sw, StrokeCap.Round)
+            }
+            else -> { // paper page with folded corner
+                val pw = w * 0.60f; val ph = h * 0.92f; val l = (w - pw) / 2; val t = (h - ph) / 2; val f = pw * 0.28f
+                drawPath(Path().apply {
+                    moveTo(l, t); lineTo(l + pw - f, t); lineTo(l + pw, t + f)
+                    lineTo(l + pw, t + ph); lineTo(l, t + ph); close()
+                }, color, style = st)
+                drawPath(Path().apply {
+                    moveTo(l + pw - f, t); lineTo(l + pw - f, t + f); lineTo(l + pw, t + f)
+                }, color, style = st)
+            }
+        }
+    }
+}
 /** Entry point for the 스케치북 tab: list → create → canvas (internal navigation). */
 @Composable
 fun SketchbookTab() {
@@ -184,22 +254,10 @@ private fun CreateSketchbookScreen(onCancel: () -> Unit, onCreate: (String, Stri
         OutlinedTextField(name, { name = it.take(20) }, label = { Text("이름") }, singleLine = true,
             shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
 
-        Spacer(Modifier.height(20.dp)); Text("캔버스 크기", fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(Catalog.sizes) { s ->
-                val on = s.key == sizeKey
-                Column(horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable { sizeKey = s.key }.padding(4.dp)) {
-                    Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
-                        Box(Modifier.fillMaxSize(0.9f).aspectRatio(s.ratio)
-                            .border(if (on) 3.dp else 1.5.dp,
-                                if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                RoundedCornerShape(4.dp)))
-                    }
-                    Text(s.label, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal)
-                }
-            }
-        }
+        Spacer(Modifier.height(20.dp)); Text("캔버스 크기 · 종이", fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp))
+        SizeRow(Catalog.sizes.filter { it.key in PAPER_KEYS }, sizeKey) { sizeKey = it }
+        Spacer(Modifier.height(16.dp)); Text("캔버스 크기 · 디스플레이", fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp))
+        SizeRow(Catalog.sizes.filter { it.key in DISPLAY_KEYS }, sizeKey) { sizeKey = it }
 
         Spacer(Modifier.height(20.dp)); Text("배경", fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
