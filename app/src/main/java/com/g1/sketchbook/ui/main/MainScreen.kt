@@ -71,9 +71,9 @@ fun MainScreen(
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
                 0 -> com.g1.sketchbook.sketchbook.SketchbookTab()
-                1 -> Placeholder("그림일기", "오늘의 그림일기 캔버스\n(다음 단계에서 구현)")
+                1 -> com.g1.sketchbook.diary.DiaryScreen()
                 2 -> HomeTab(nickname)
-                3 -> Placeholder("일기달력", "지난 그림일기를 달력으로\n(다음 단계에서 구현)")
+                3 -> com.g1.sketchbook.diary.DiaryCalendarScreen()
                 else -> SettingsTab(nickname, theme, onTheme, onSignOut)
             }
         }

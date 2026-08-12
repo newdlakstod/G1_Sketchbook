@@ -34,6 +34,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var color = 0xFF2B4C9B.toInt()
     var strokeSize = 20f   // diameter, px
     var opacity = 1f       // 0..1
+    var drawEnabled = true // false = read-only (e.g. a locked past diary)
     var paper: Bitmap? = null
 
     private var bmp: Bitmap? = null
@@ -104,6 +105,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (!drawEnabled) return false
         val x = e.x; val y = e.y
         val layered = brush == BrushType.PEN || brush == BrushType.WATER
         when (e.actionMasked) {
