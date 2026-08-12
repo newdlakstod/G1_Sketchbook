@@ -136,7 +136,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         var r = strokeSize / 2f
         if (brush == BrushType.PENCIL) r *= (1 - minOf(0.45f, speed * 0.06f)) // crayon/water: no speed
         r = max(1f, r)
-        val spacing = when (brush) { BrushType.WATER -> r * 0.6f; BrushType.CRAYON -> r * 0.30f; else -> r * 0.25f }
+        val spacing = when (brush) { BrushType.WATER -> r * 0.6f; BrushType.CRAYON -> r * 0.18f; else -> r * 0.15f }
         val dx = x1 - x0; val dy = y1 - y0; val d = hypot(dx, dy); if (d == 0f) return
         val nx = dx / d; val ny = dy / d
         var dist = spacing - acc; if (dist < 0) dist = 0f
@@ -150,27 +150,27 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         val px = -ny; val py = nx
         when (brush) {
             BrushType.PENCIL -> {
-                val n = max(4, (r * 0.9f).toInt())
+                val n = max(8, (r * 2.0f).toInt())
                 for (i in 0 until n) {
                     val t = rnd.nextFloat() * 2 - 1
                     val off = t * r * 1.05f
                     val j = (rnd.nextFloat() - 0.5f) * r * 0.3f
                     val sx = x + px * off + nx * j; val sy = y + py * off + ny * j
-                    val al = 0.08f + rnd.nextFloat() * 0.42f
-                    val ss = if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f
+                    val al = 0.15f + rnd.nextFloat() * 0.55f
+                    val ss = if (rnd.nextFloat() < 0.25f) 1.7f else 1.1f
                     fill.color = withAlpha(color, al); c.drawRect(sx, sy, sx + ss, sy + ss, fill)
                 }
             }
             BrushType.CRAYON -> {
-                val n = max(6, (r * 1.1f).toInt())
+                val n = max(10, (r * 2.4f).toInt())
                 for (i in 0 until n) {
                     val t = rnd.nextFloat() * 2 - 1; val edge = abs(t)
-                    if (rnd.nextFloat() > (0.2f + 0.8f * edge)) continue // sparser centre -> hollow-ish
+                    if (rnd.nextFloat() > (0.4f + 0.6f * edge)) continue // slightly sparser centre
                     val off = t * r * 1.15f
                     val j = (rnd.nextFloat() - 0.5f) * r * 0.4f
                     val sx = x + px * off + nx * j; val sy = y + py * off + ny * j
-                    fill.color = withAlpha(color, 0.20f + rnd.nextFloat() * 0.55f)
-                    val s = 1f + rnd.nextFloat() * 2f; c.drawRect(sx, sy, sx + s, sy + s, fill)
+                    fill.color = withAlpha(color, 0.30f + rnd.nextFloat() * 0.6f)
+                    val s = 1.2f + rnd.nextFloat() * 2.2f; c.drawRect(sx, sy, sx + s, sy + s, fill)
                 }
             }
             BrushType.WATER -> {
