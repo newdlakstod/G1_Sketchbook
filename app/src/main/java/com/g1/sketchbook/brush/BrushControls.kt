@@ -57,18 +57,18 @@ fun BrushControls(
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp)) {
         if (panel != 0) {
             Surface(
-                shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 6.dp, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 6.dp, modifier = Modifier.padding(bottom = 8.dp),
             ) {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (panel == 1) {
-                        Text("굵기", fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                        Slider(sizeDp, onSize, valueRange = 2f..48f, modifier = Modifier.weight(1f))
-                        Text("${sizeDp.toInt()}", fontSize = 12.sp, modifier = Modifier.width(30.dp))
+                        Text("굵기", fontSize = 12.sp, modifier = Modifier.width(46.dp))
+                        Slider(sizeDp, onSize, valueRange = 2f..48f, modifier = Modifier.width(150.dp))
+                        Text("${sizeDp.toInt()}", fontSize = 12.sp, modifier = Modifier.width(28.dp))
                     } else {
                         Text("불투명도", fontSize = 12.sp, modifier = Modifier.width(52.dp))
-                        Slider(opacity, onOpacity, valueRange = 0f..100f, modifier = Modifier.weight(1f))
-                        Text("${opacity.toInt()}%", fontSize = 12.sp, modifier = Modifier.width(40.dp))
+                        Slider(opacity, onOpacity, valueRange = 0f..100f, modifier = Modifier.width(150.dp))
+                        Text("${opacity.toInt()}%", fontSize = 12.sp, modifier = Modifier.width(38.dp))
                     }
                 }
             }
