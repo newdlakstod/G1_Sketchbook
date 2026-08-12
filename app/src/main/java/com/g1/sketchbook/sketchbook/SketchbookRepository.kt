@@ -9,9 +9,13 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlin.random.Random
 
-/** A canvas size option (portrait dimensions; ratio drives the on-screen aspect). */
+/** A canvas size option. Paper sizes are millimetres; device sizes are pixels. */
 data class CanvasSize(val key: String, val label: String, val w: Int, val h: Int) {
     val ratio: Float get() = w.toFloat() / h.toFloat()
+    val isPaper: Boolean get() = key == "a5" || key == "a4" || key == "a3"
+    /** Actual canvas resolution: paper mm -> px at [dpi]; devices are already px. */
+    fun pxW(dpi: Int = 200): Int = if (isPaper) Math.round(w / 25.4 * dpi).toInt() else w
+    fun pxH(dpi: Int = 200): Int = if (isPaper) Math.round(h / 25.4 * dpi).toInt() else h
 }
 
 /** A paper background option (maps to a drawable by [key] in the UI layer). */

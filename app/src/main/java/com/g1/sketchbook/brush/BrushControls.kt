@@ -19,13 +19,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BorderColor
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Rotate90DegreesCw
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -44,7 +47,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import com.g1.sketchbook.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -55,18 +57,26 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.g1.sketchbook.R
 
 val BrushPalette = listOf(
     0xFF223150L, 0xFF2B4C9BL, 0xFF4DABF7L, 0xFF4ECDC4L, 0xFF6E9646L,
     0xFFE0A53CL, 0xFFE05454L, 0xFFCE7A7AL, 0xFF9775FAL, 0xFFFFFFFFL,
 )
 
-/** Single-row floating dock; width/opacity open a small slider popup anchored above their button. */
+/** Single-row floating dock. Optional leading controls (back / page nav / rotate) show when provided. */
 @Composable
 fun BrushControls(
-    brush: BrushType, color: Long, sizeDp: Float, opacity: Float, erasing: Boolean, zoomLocked: Boolean,
+    brush: BrushType, color: Long, sizeDp: Float, opacity: Float, erasing: Boolean,
     onBrush: (BrushType) -> Unit, onColor: (Long) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
-    onToggleErase: () -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onClear: () -> Unit, onToggleZoomLock: () -> Unit,
+    onToggleErase: () -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onClear: () -> Unit,
+    onBack: (() -> Unit)? = null,
+    onRotate: (() -> Unit)? = null,
+    pageLabel: String? = null,
+    onPrevPage: (() -> Unit)? = null,
+    onNextPage: (() -> Unit)? = null,
+    onAddPage: (() -> Unit)? = null,
+    onDeletePage: (() -> Unit)? = null,
 ) {
     var panel by remember { mutableIntStateOf(0) } // 0 none, 1 width, 2 opacity
     val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
@@ -77,10 +87,21 @@ fun BrushControls(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
         Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 8.dp),
+            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
+            if (pageLabel != null) {
+                IconBtn(Icons.Filled.ChevronLeft, "이전 페이지") { onPrevPage?.invoke() }
+                Text(pageLabel, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                IconBtn(Icons.Filled.ChevronRight, "다음 페이지") { onNextPage?.invoke() }
+                IconBtn(Icons.Filled.Add, "페이지 추가") { onAddPage?.invoke() }
+                IconBtn(Icons.Filled.Remove, "페이지 삭제") { onDeletePage?.invoke() }
+            }
+            onRotate?.let { IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전", onClick = it) }
+            if (onBack != null || pageLabel != null || onRotate != null) VDivider()
+
             BrushBtn(!erasing && brush == BrushType.PEN, { onBrush(BrushType.PEN) }) { t ->
                 Icon(Icons.Filled.BorderColor, "볼펜", tint = t, modifier = Modifier.size(24.dp))
             }
@@ -108,36 +129,26 @@ fun BrushControls(
 
             VDivider()
 
-            // width button + popup above it
             Box {
                 Box(Modifier.size(40.dp).clickable { panel = if (panel == 1) 0 else 1 }, contentAlignment = Alignment.Center) {
                     Box(Modifier.size((sizeDp / 2f + 6f).coerceIn(6f, 30f).dp)
                         .background(if (erasing) MaterialTheme.colorScheme.onSurfaceVariant else Color(color), CircleShape))
                 }
-                if (panel == 1) {
-                    Popup(popupPositionProvider = AboveAnchor(gap), onDismissRequest = { panel = 0 },
-                        properties = PopupProperties(focusable = true)) {
-                        SliderCard("굵기", "${sizeDp.toInt()}", sizeDp, 2f..48f, onSize) { onSize(10f) }
-                    }
+                if (panel == 1) Popup(AboveAnchor(gap), { panel = 0 }, PopupProperties(focusable = true)) {
+                    SliderCard("굵기", "${sizeDp.toInt()}", sizeDp, 2f..48f, onSize) { onSize(10f) }
                 }
             }
-            // opacity button + popup above it
             Box {
                 Box(Modifier.height(40.dp).clickable { panel = if (panel == 2) 0 else 2 }.padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
                     Text("${opacity.toInt()}%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
-                if (panel == 2) {
-                    Popup(popupPositionProvider = AboveAnchor(gap), onDismissRequest = { panel = 0 },
-                        properties = PopupProperties(focusable = true)) {
-                        SliderCard("불투명도", "${opacity.toInt()}%", opacity, 0f..100f, onOpacity) { onOpacity(100f) }
-                    }
+                if (panel == 2) Popup(AboveAnchor(gap), { panel = 0 }, PopupProperties(focusable = true)) {
+                    SliderCard("불투명도", "${opacity.toInt()}%", opacity, 0f..100f, onOpacity) { onOpacity(100f) }
                 }
             }
 
             VDivider()
 
-            IconBtn(if (zoomLocked) Icons.Filled.Lock else Icons.Filled.LockOpen, "확대 잠금",
-                tint = if (zoomLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, onClick = onToggleZoomLock)
             IconBtn(Icons.AutoMirrored.Filled.Undo, "되돌리기", onClick = onUndo)
             IconBtn(Icons.AutoMirrored.Filled.Redo, "다시 실행", onClick = onRedo)
             IconBtn(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555), onClick = onClear)
@@ -145,7 +156,6 @@ fun BrushControls(
     }
 }
 
-/** Reference-style slider card: label, reset, value chip, thin track. */
 @Composable
 private fun SliderCard(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>,
                        onChange: (Float) -> Unit, onReset: () -> Unit) {
@@ -154,7 +164,7 @@ private fun SliderCard(label: String, valueText: String, value: Float, range: Cl
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 Box(Modifier.size(30.dp).clickable { onReset() }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Refresh, "기본값", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Filled.Rotate90DegreesCw, "기본값", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.width(6.dp))
                 Box(Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 5.dp)) {
@@ -194,7 +204,7 @@ private fun IconBtn(icon: ImageVector, desc: String, tint: Color = MaterialTheme
 
 @Composable
 private fun VDivider() {
-    Spacer(Modifier.width(3.dp))
+    Spacer(Modifier.width(2.dp))
     Box(Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant))
-    Spacer(Modifier.width(3.dp))
+    Spacer(Modifier.width(2.dp))
 }

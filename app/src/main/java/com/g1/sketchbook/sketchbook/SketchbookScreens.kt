@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -160,36 +162,29 @@ private fun SizeIcon(key: String, color: Color, modifier: Modifier) {
         }
     }
 }
-/** Entry point for the 스케치북 tab: list → create → canvas (internal navigation). */
+/** 스케치북 tab: cover list + create. Opening a book is handled at the app root (full-screen canvas). */
 @Composable
-fun SketchbookTab() {
+fun SketchbookTab(onOpenBook: (String) -> Unit) {
     val context = LocalContext.current
     val repo = remember { SketchbookRepository(context) }
-    var books by remember { mutableStateOf(repo.list()) }
-    var mode by remember { mutableStateOf<String>("list") } // list | create | <sketchbook id>
+    var refresh by remember { mutableIntStateOf(0) }
+    val books = remember(refresh) { repo.list() }
+    var creating by remember { mutableStateOf(false) }
 
-    when (mode) {
-        "create" -> {
-            BackHandler { mode = "list" }
-            CreateSketchbookScreen(
-                onCancel = { mode = "list" },
-                onCreate = { name, size, bg -> val sb = repo.create(name, size, bg); books = repo.list(); mode = sb.id },
-            )
-        }
-        "list" -> SketchbookListScreen(
-            books = books,
-            onCreate = { mode = "create" },
-            onOpen = { mode = it.id },
-            onDelete = { repo.delete(it.id); books = repo.list() },
-            onToggleFav = { repo.toggleFav(it.id); books = repo.list() },
+    if (creating) {
+        BackHandler { creating = false }
+        CreateSketchbookScreen(
+            onCancel = { creating = false },
+            onCreate = { name, size, bg -> val sb = repo.create(name, size, bg); creating = false; onOpenBook(sb.id) },
         )
-        else -> {
-            val sb = repo.get(mode)
-            if (sb == null) { mode = "list" } else {
-                BackHandler { mode = "list" }
-                SketchbookCanvasScreen(sb, repo) { mode = "list"; books = repo.list() }
-            }
-        }
+    } else {
+        SketchbookListScreen(
+            books = books,
+            onCreate = { creating = true },
+            onOpen = { onOpenBook(it.id) },
+            onDelete = { repo.delete(it.id); refresh++ },
+            onToggleFav = { repo.toggleFav(it.id); refresh++ },
+        )
     }
 }
 
@@ -298,11 +293,13 @@ private fun CreateSketchbookScreen(onCancel: () -> Unit, onCreate: (String, Stri
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SketchbookCanvasScreen(book: Sketchbook, repo: SketchbookRepository, onBack: () -> Unit) {
-    val scope = rememberCoroutineScope()
+fun SketchbookCanvasScreen(bookId: String, onBack: () -> Unit) {
     val context = LocalContext.current
+    val repo = remember { SketchbookRepository(context) }
+    val book = remember(bookId) { repo.get(bookId) }
+    if (book == null) { LaunchedEffect(Unit) { onBack() }; return }
+    val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
@@ -310,43 +307,30 @@ private fun SketchbookCanvasScreen(book: Sketchbook, repo: SketchbookRepository,
     var sizeDp by remember { mutableFloatStateOf(10f) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
-    var zoomLocked by remember { mutableStateOf(false) }
     var page by remember { mutableIntStateOf(0) }
     var pageCount by remember { mutableIntStateOf(book.pageCount) }
+    val cw = book.size.pxW(); val ch = book.size.pxH()
 
-    fun saveCurrent() { view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, page, b) } } }
+    // Capture the page number NOW so an async save always targets the right page (fixes content loss).
+    fun saveCurrent() { val v = view; val pg = page; val b = v?.exportBitmap(); if (b != null) scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } }
     fun goTo(p: Int) { saveCurrent(); page = p; view?.loadContent(repo.loadPage(book.id, p)) }
+    fun addPage() { if (pageCount < MAX_PAGES) { saveCurrent(); pageCount++; repo.setPageCount(book.id, pageCount); page = pageCount - 1; view?.loadContent(null) } }
+    fun deletePage() {
+        if (pageCount <= 1) return
+        for (i in page until pageCount - 1) {
+            val next = repo.loadPage(book.id, i + 1)
+            if (next != null) repo.savePage(book.id, i, next) else repo.pageFile(book.id, i).delete()
+        }
+        repo.pageFile(book.id, pageCount - 1).delete()
+        pageCount--; repo.setPageCount(book.id, pageCount)
+        if (page > pageCount - 1) page = pageCount - 1
+        view?.loadContent(repo.loadPage(book.id, page))
+    }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = { Text(book.name, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
-                navigationIcon = { IconButton(onClick = { saveCurrent(); onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "뒤로") } },
-                actions = {
-                    IconButton(onClick = { if (page > 0) goTo(page - 1) }, enabled = page > 0) { Icon(Icons.Filled.ChevronLeft, "이전") }
-                    Text("${page + 1}/$pageCount", fontSize = 13.sp)
-                    IconButton(onClick = { if (page < pageCount - 1) goTo(page + 1) }, enabled = page < pageCount - 1) { Icon(Icons.Filled.ChevronRight, "다음") }
-                    IconButton(
-                        onClick = { if (pageCount < MAX_PAGES) { pageCount++; repo.setPageCount(book.id, pageCount); goTo(pageCount - 1) } },
-                        enabled = pageCount < MAX_PAGES,
-                    ) { Icon(Icons.Filled.Add, "페이지 추가") }
-                },
-            )
-        },
-        bottomBar = {
-            BrushControls(brush, color, sizeDp, opacity, erasing, zoomLocked,
-                onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
-                onSize = { sizeDp = it }, onOpacity = { opacity = it }, onToggleErase = { erasing = !erasing },
-                onUndo = { view?.undo() }, onRedo = { view?.redo() },
-                onClear = { view?.clearCanvas(); saveCurrent() }, onToggleZoomLock = { zoomLocked = !zoomLocked })
-        },
-    ) { padding ->
-        BoxWithConstraints(
-            Modifier.padding(padding).fillMaxSize().padding(12.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            val ratio = book.size.ratio
+    BackHandler { saveCurrent(); onBack() }
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+            val ratio = cw.toFloat() / ch
             val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
             val h = w / ratio
             Box(Modifier.width(w).height(h)) {
@@ -355,18 +339,30 @@ private fun SketchbookCanvasScreen(book: Sketchbook, repo: SketchbookRepository,
                     factory = { ctx ->
                         BrushView(ctx).also { v ->
                             v.paper = BitmapFactory.decodeResource(ctx.resources, bgDrawable(book.bgKey))
+                            v.initCanvas(cw, ch)
                             v.loadContent(repo.loadPage(book.id, 0))
                             view = v
                         }
                     },
                     update = { v ->
                         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-                        v.erasing = erasing; v.zoomLocked = zoomLocked
-                        v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, page, b) } } }
+                        v.erasing = erasing
+                        v.onStrokeEnd = { val pg = page; v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                     },
                 )
             }
         }
+        BrushControls(
+            brush, color, sizeDp, opacity, erasing,
+            onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
+            onSize = { sizeDp = it }, onOpacity = { opacity = it }, onToggleErase = { erasing = !erasing },
+            onUndo = { view?.undo() }, onRedo = { view?.redo() }, onClear = { view?.clearCanvas(); saveCurrent() },
+            onBack = { saveCurrent(); onBack() }, onRotate = { view?.rotate() },
+            pageLabel = "${page + 1}/$pageCount",
+            onPrevPage = { if (page > 0) goTo(page - 1) },
+            onNextPage = { if (page < pageCount - 1) goTo(page + 1) },
+            onAddPage = { addPage() }, onDeletePage = { deletePage() },
+        )
     }
 }
 

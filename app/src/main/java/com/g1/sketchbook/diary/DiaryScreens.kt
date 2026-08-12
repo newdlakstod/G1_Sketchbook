@@ -86,18 +86,17 @@ fun DiaryScreen() {
     var sizeDp by remember { mutableFloatStateOf(10f) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
-    var zoomLocked by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = { TopAppBar(title = { Text("오늘의 그림일기 · $today", fontSize = 15.sp, fontWeight = FontWeight.Bold) }) },
         bottomBar = {
-            BrushControls(brush, color, sizeDp, opacity, erasing, zoomLocked,
+            BrushControls(brush, color, sizeDp, opacity, erasing,
                 onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
                 onSize = { sizeDp = it }, onOpacity = { opacity = it }, onToggleErase = { erasing = !erasing },
                 onUndo = { view?.undo() }, onRedo = { view?.redo() },
                 onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(today, b) } } },
-                onToggleZoomLock = { zoomLocked = !zoomLocked })
+                onRotate = { view?.rotate() })
         },
     ) { padding ->
         BoxWithConstraints(Modifier.padding(padding).fillMaxSize().padding(12.dp), contentAlignment = Alignment.Center) {
@@ -114,7 +113,7 @@ fun DiaryScreen() {
                     },
                     update = { v ->
                         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-                        v.erasing = erasing; v.zoomLocked = zoomLocked
+                        v.erasing = erasing
                         v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(today, b) } } }
                     },
                 )

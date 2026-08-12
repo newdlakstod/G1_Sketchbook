@@ -84,6 +84,7 @@ fun MainScreen(
     onSignOut: () -> Unit,
     onRename: (String) -> Unit,
     onSetAvatar: (String) -> Unit,
+    onOpenBook: (String) -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -99,7 +100,7 @@ fun MainScreen(
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                0 -> com.g1.sketchbook.sketchbook.SketchbookTab()
+                0 -> com.g1.sketchbook.sketchbook.SketchbookTab(onOpenBook)
                 1 -> com.g1.sketchbook.diary.DiaryScreen()
                 2 -> HomeTab(nickname, avatar) { onTab(0) }
                 3 -> com.g1.sketchbook.diary.DiaryCalendarScreen()

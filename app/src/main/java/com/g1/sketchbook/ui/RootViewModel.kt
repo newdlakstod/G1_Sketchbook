@@ -20,6 +20,7 @@ data class RootState(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val avatar: String = "🦆",
     val tab: Int = 2, // Home is the centre tab
+    val openBookId: String? = null, // when set, a sketchbook canvas is shown full-screen
 )
 
 /** Top-level app state for Phase 1: auth, nickname onboarding, theme, and bottom-tab selection. */
@@ -69,6 +70,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectTab(i: Int) { _state.value = _state.value.copy(tab = i) }
+    fun openBook(id: String) { _state.value = _state.value.copy(openBookId = id) }
+    fun closeBook() { _state.value = _state.value.copy(openBookId = null) }
 
     fun setTheme(mode: ThemeMode) {
         graph.sessionStore.themeMode = mode.name.lowercase()

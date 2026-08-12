@@ -38,6 +38,9 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
             splash -> SplashScreen()
             state.user == null -> LoginScreen(busy = state.busy, error = state.error, onSignIn = vm::signIn)
             state.needsNickname -> NicknameScreen(onSave = vm::saveNickname)
+            state.openBookId != null -> com.g1.sketchbook.sketchbook.SketchbookCanvasScreen(
+                bookId = state.openBookId!!, onBack = vm::closeBook,
+            )
             else -> MainScreen(
                 nickname = state.nickname ?: "친구",
                 avatar = state.avatar,
@@ -48,6 +51,7 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
                 onSignOut = vm::signOut,
                 onRename = vm::saveNickname,
                 onSetAvatar = vm::setAvatar,
+                onOpenBook = vm::openBook,
             )
         }
     }

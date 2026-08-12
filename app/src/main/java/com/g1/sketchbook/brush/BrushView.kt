@@ -3,6 +3,7 @@ package com.g1.sketchbook.brush
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
@@ -14,40 +15,46 @@ import android.view.View
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
 enum class BrushType { PEN, PENCIL, CRAYON, WATER }
 
 /**
- * Two-layer brush engine: a static [paperBmp] base plus a transparent [contentBmp] for strokes.
- * Splitting them enables a real eraser (clears content -> paper shows through) and clean save.
+ * Fixed-resolution canvas: strokes are drawn into bitmaps sized to the sketchbook's own pixel
+ * dimensions (independent of screen). The content is then fit into the view (with an optional 90°
+ * rotation) via a display matrix, and touches are mapped back through its inverse — so every visible
+ * part of the paper is drawable, at any screen size, and saves come out at full resolution.
  *
- * Gestures: one finger draws; two fingers pinch-zoom & pan the view; a two-finger tap = undo and a
- * three-finger tap = redo. Zoom can be locked. Drawing maps touch points back through the view
- * transform, so strokes land correctly at any zoom/pan.
+ * One finger draws. (Pinch-zoom and multi-finger undo/redo were intentionally removed.)
  */
 class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
     var brush = BrushType.PEN
     var color = 0xFF2B4C9B.toInt()
-    var strokeSize = 20f
+    var strokeSize = 20f      // diameter in screen px
     var opacity = 1f
     var drawEnabled = true
     var erasing = false
-    var zoomLocked = false
     var paper: Bitmap? = null
     var onStrokeEnd: (() -> Unit)? = null
 
+    private var cw = 0; private var ch = 0
     private var paperBmp: Bitmap? = null
     private var contentBmp: Bitmap? = null
     private var content: Canvas? = null
     private var strokeBmp: Bitmap? = null
     private var strokeLayer: Canvas? = null
-    private var base: Bitmap? = null            // content snapshot at stroke start
+    private var base: Bitmap? = null
     private var pendingContent: Bitmap? = null
     private val undo = ArrayDeque<Bitmap>()
     private val redo = ArrayDeque<Bitmap>()
+
+    private var rotationQ = 0                 // 0..3 quarter turns
+    private val disp = Matrix()
+    private val inv = Matrix()
+    private var fitScale = 1f                 // screen px per canvas px
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pen = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
@@ -57,39 +64,43 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val path = Path()
     private val rnd = Random(7)
 
-    // view transform
-    private var scale = 1f
-    private var offX = 0f
-    private var offY = 0f
-
-    // gesture state
-    private var gestureMode = false
-    private var gestureActive = false     // true only once fingers move past the dead zone
     private var strokeStarted = false
-    private var maxPointers = 1
-    private var downTime = 0L
-    private var gStartSpan = 0f; private var gStartFx = 0f; private var gStartFy = 0f
-    private var gPrevSpan = 0f; private var gPrevFx = 0f; private var gPrevFy = 0f
-
     private var acc = 0f
     private var lx = 0f; private var ly = 0f; private var lt = 0L
 
+    /** Creates the canvas bitmaps at [w]x[h] px (capped for memory). Call once when opening a page-set. */
+    fun initCanvas(w: Int, h: Int) {
+        val cap = 1600
+        val s = min(1f, cap.toFloat() / max(w, h))
+        val nw = max(1, (w * s).toInt()); val nh = max(1, (h * s).toInt())
+        if (nw == cw && nh == ch && contentBmp != null) return
+        cw = nw; ch = nh
+        paperBmp = Bitmap.createBitmap(cw, ch, Bitmap.Config.RGB_565).also { paintPaper(Canvas(it), cw, ch) }
+        contentBmp = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888)
+        content = Canvas(contentBmp!!)
+        pendingContent?.let { content!!.drawBitmap(it, null, RectF(0f, 0f, cw.toFloat(), ch.toFloat()), null); pendingContent = null }
+        strokeBmp = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888); strokeLayer = Canvas(strokeBmp!!)
+        undo.clear(); redo.clear()
+        computeDisplay(); invalidate()
+    }
+
+    fun rotate() { rotationQ = (rotationQ + 1) % 4; computeDisplay(); invalidate() }
+
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-        if (w <= 0 || h <= 0) return
-        val prev = contentBmp
-        val rect = RectF(0f, 0f, w.toFloat(), h.toFloat())
-        paperBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { paintPaper(Canvas(it), w, h) }
-        val nc = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val c = Canvas(nc)
-        when {
-            pendingContent != null -> { c.drawBitmap(pendingContent!!, null, rect, null); pendingContent = null }
-            prev != null -> c.drawBitmap(prev, null, rect, null) // keep the drawing, rescaled to the new size
-        }
-        contentBmp = nc; content = c
-        strokeBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); strokeLayer = Canvas(strokeBmp!!)
-        undo.clear(); redo.clear()          // old snapshots are a different size
-        scale = 1f; offX = 0f; offY = 0f    // fit fresh after a resize/fold
-        invalidate()
+        if (cw == 0 && w > 0 && h > 0) initCanvas(w, h) else { computeDisplay(); invalidate() }
+    }
+
+    private fun computeDisplay() {
+        if (cw <= 0 || ch <= 0 || width <= 0 || height <= 0) return
+        val rw = if (rotationQ % 2 == 0) cw else ch
+        val rh = if (rotationQ % 2 == 0) ch else cw
+        fitScale = min(width.toFloat() / rw, height.toFloat() / rh)
+        disp.reset()
+        disp.postTranslate(-cw / 2f, -ch / 2f)
+        disp.postRotate(rotationQ * 90f)
+        disp.postScale(fitScale, fitScale)
+        disp.postTranslate(width / 2f, height / 2f)
+        disp.invert(inv)
     }
 
     private fun paintPaper(c: Canvas, w: Int, h: Int) {
@@ -102,157 +113,105 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
 
     override fun onDraw(c: Canvas) {
-        c.save()
-        c.translate(offX, offY); c.scale(scale, scale)
+        val cb = contentBmp ?: return
+        c.save(); c.concat(disp)
         paperBmp?.let { c.drawBitmap(it, 0f, 0f, null) }
-        contentBmp?.let { c.drawBitmap(it, 0f, 0f, null) }
+        c.drawBitmap(cb, 0f, 0f, null)
         c.restore()
     }
 
     fun clearCanvas() { pushUndo(); content?.drawColor(0, PorterDuff.Mode.CLEAR); invalidate() }
-    fun undo() { val b = undo.removeLastOrNull() ?: return; snapshotTo(redo); content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) }; invalidate() }
-    fun redo() { val b = redo.removeLastOrNull() ?: return; snapshotTo(undo); content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) }; invalidate() }
-    fun resetZoom() { scale = 1f; offX = 0f; offY = 0f; invalidate() }
-
+    fun undo() { val b = undo.removeLastOrNull() ?: return; snapshotTo(redo); restore(b); invalidate() }
+    fun redo() { val b = redo.removeLastOrNull() ?: return; snapshotTo(undo); restore(b); invalidate() }
+    private fun restore(b: Bitmap) { content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) } }
     private fun pushUndo() { snapshotTo(undo); redo.clear() }
     private fun snapshotTo(stack: ArrayDeque<Bitmap>) {
         val b = contentBmp ?: return
-        stack.addLast(b.copy(Bitmap.Config.ARGB_8888, false))
-        if (stack.size > 12) stack.removeFirst()
+        stack.addLast(b.copy(Bitmap.Config.ARGB_8888, false)); if (stack.size > 6) stack.removeFirst()
     }
 
     fun loadContent(saved: Bitmap?) {
         undo.clear(); redo.clear()
         val c = content
-        if (c != null && width > 0 && height > 0) {
+        if (c != null && cw > 0) {
             c.drawColor(0, PorterDuff.Mode.CLEAR)
-            saved?.let { c.drawBitmap(it, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), null) }
+            saved?.let { c.drawBitmap(it, null, RectF(0f, 0f, cw.toFloat(), ch.toFloat()), null) }
             invalidate()
         } else pendingContent = saved
     }
 
-    /** Paper + strokes flattened, for saving. */
     fun exportBitmap(): Bitmap? {
         val p = paperBmp ?: return contentBmp?.copy(Bitmap.Config.ARGB_8888, false)
-        val out = p.copy(Bitmap.Config.ARGB_8888, true)
-        contentBmp?.let { Canvas(out).drawBitmap(it, 0f, 0f, null) }
+        val out = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out); c.drawBitmap(p, 0f, 0f, null); contentBmp?.let { c.drawBitmap(it, 0f, 0f, null) }
         return out
     }
 
-    // touch -> content coordinate (inverse of the view transform)
-    private fun cx(x: Float) = (x - offX) / scale
-    private fun cy(y: Float) = (y - offY) / scale
-
+    // ---- touch (single finger only) ----
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!drawEnabled) return false
+        // ignore any secondary pointers entirely (no multi-finger gestures)
         val now = System.currentTimeMillis()
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                gestureMode = false; gestureActive = false; strokeStarted = false; maxPointers = 1; downTime = now
-                acc = 0f; lx = cx(e.x); ly = cy(e.y); lt = now
-                beginStroke(lx, ly)   // draw from the first touch (reliable on all screen sizes)
-            }
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                maxPointers = max(maxPointers, e.pointerCount)
-                if (e.pointerCount >= 2) {
-                    if (strokeStarted) cancelStroke()   // a second finger => this was never a drawing
-                    gestureMode = true; gestureActive = false
-                    gStartSpan = span(e); val f = focus(e); gStartFx = f.first; gStartFy = f.second
-                    gPrevSpan = gStartSpan; gPrevFx = gStartFx; gPrevFy = gStartFy
-                }
+                val p = mapPoint(e.x, e.y); acc = 0f; lx = p[0]; ly = p[1]; lt = now
+                beginStroke(lx, ly)
             }
             MotionEvent.ACTION_MOVE -> {
-                if (gestureMode) {
-                    val s = span(e); val f = focus(e)
-                    if (!gestureActive &&
-                        (kotlin.math.abs(s - gStartSpan) > 24f || hypot(f.first - gStartFx, f.second - gStartFy) > 24f)) {
-                        gestureActive = true // moved past the dead zone -> it's a real pinch/pan, not a tap
-                    }
-                    if (gestureActive && !zoomLocked && e.pointerCount >= 2 && gPrevSpan > 0f) {
-                        val ns = (scale * (s / gPrevSpan)).coerceIn(1f, 5f)
-                        offX = f.first - (f.first - offX) * (ns / scale) + (f.first - gPrevFx)
-                        offY = f.second - (f.second - offY) * (ns / scale) + (f.second - gPrevFy)
-                        scale = ns; clampPan(); invalidate()
-                    }
-                    gPrevSpan = s; gPrevFx = f.first; gPrevFy = f.second
-                } else if (strokeStarted && e.pointerCount == 1) {
-                    val x = cx(e.x); val y = cy(e.y); val dd = hypot(x - lx, y - ly); val v = dd / max(1L, now - lt)
+                if (strokeStarted) {
+                    val p = mapPoint(e.x, e.y); val x = p[0]; val y = p[1]
+                    val dd = hypot(x - lx, y - ly); val v = dd / max(1L, now - lt)
                     strokeMove(lx, ly, x, y, v); lx = x; ly = y; lt = now; invalidate()
                 }
             }
-            MotionEvent.ACTION_POINTER_UP -> { /* stay in gesture until all fingers up */ }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (gestureMode) {
-                    // A tap (never left the dead zone) toggles undo/redo — and never changes the zoom.
-                    if (!gestureActive && maxPointers >= 2) {
-                        if (maxPointers >= 3) redo() else undo()
-                    }
-                } else if (strokeStarted) endStroke()
-                gestureMode = false; gestureActive = false; strokeStarted = false; maxPointers = 1
+                if (strokeStarted) endStroke()
             }
         }
         return true
     }
 
-    private fun span(e: MotionEvent) = if (e.pointerCount < 2) 0f else hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1))
-    private fun focus(e: MotionEvent): Pair<Float, Float> =
-        if (e.pointerCount < 2) e.x to e.y else ((e.getX(0) + e.getX(1)) / 2) to ((e.getY(0) + e.getY(1)) / 2)
+    private val tmp = FloatArray(2)
+    private fun mapPoint(x: Float, y: Float): FloatArray { tmp[0] = x; tmp[1] = y; inv.mapPoints(tmp); return tmp }
 
     private fun beginStroke(x: Float, y: Float) { pushUndo(); strokePrep(); strokeStart(x, y); strokeStarted = true; invalidate() }
-    private fun cancelStroke() { restoreBase(); undo.removeLastOrNull(); strokeStarted = false; invalidate() }
-    private fun endStroke() { base = null; onStrokeEnd?.invoke(); invalidate() }
-
-    private fun clampPan() {
-        val w = width.toFloat(); val h = height.toFloat()
-        offX = offX.coerceIn(-(scale - 1f) * w, 0f)
-        offY = offY.coerceIn(-(scale - 1f) * h, 0f)
-    }
-
-    private fun withAlpha(c: Int, a: Float): Int {
-        val aa = (a.coerceIn(0f, 1f) * 255).toInt(); return (aa shl 24) or (c and 0x00FFFFFF)
-    }
-
-    // ---- stroke lifecycle ----
+    private fun endStroke() { strokeStarted = false; base = null; onStrokeEnd?.invoke(); invalidate() }
     private fun strokePrep() { strokeLayer?.drawColor(0, PorterDuff.Mode.CLEAR); base = contentBmp?.copy(Bitmap.Config.ARGB_8888, false) }
-    private fun restoreBase() { val b = base ?: return; content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) } }
     private fun composite() {
         val c = content ?: return; val b = base ?: return; val sb = strokeBmp ?: return
         c.drawColor(0, PorterDuff.Mode.CLEAR); c.drawBitmap(b, 0f, 0f, null)
         compositeP.alpha = (opacity.coerceIn(0f, 1f) * 255).toInt(); c.drawBitmap(sb, 0f, 0f, compositeP)
     }
 
+    private fun r0() = (strokeSize / 2f) / fitScale   // base radius in canvas px
+
     private fun strokeStart(x: Float, y: Float) {
         when {
-            erasing -> eraseDot(x, y)
+            erasing -> content?.drawCircle(x, y, max(1f, strokeSize / fitScale / 2f), eraseFill)
             brush == BrushType.PEN -> { penDot(x, y); composite() }
-            brush == BrushType.WATER -> { stampWater(x, y, strokeSize); composite() }
-            else -> stampDispatch(x, y, strokeSize / 2f)
+            brush == BrushType.WATER -> { stampWater(x, y, r0() * scaleFor()); composite() }
+            else -> stampDispatch(x, y, r0() * scaleFor())
         }
     }
     private fun strokeMove(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         when {
-            erasing -> eraseSeg(x0, y0, x1, y1)
+            erasing -> { eraseStroke.strokeWidth = max(1f, strokeSize / fitScale); content?.drawLine(x0, y0, x1, y1, eraseStroke) }
             brush == BrushType.PEN -> { penSeg(x0, y0, x1, y1, speed); composite() }
             brush == BrushType.WATER -> { seg(x0, y0, x1, y1, speed); composite() }
             else -> seg(x0, y0, x1, y1, speed)
         }
     }
 
-    private fun eraseDot(x: Float, y: Float) { content?.drawCircle(x, y, max(1f, strokeSize / 2f), eraseFill) }
-    private fun eraseSeg(x0: Float, y0: Float, x1: Float, y1: Float) { eraseStroke.strokeWidth = max(1f, strokeSize); content?.drawLine(x0, y0, x1, y1, eraseStroke) }
-
-    private fun penDot(x: Float, y: Float) { fill.color = color or (0xFF shl 24); strokeLayer?.drawCircle(x, y, max(1f, strokeSize / 2f), fill) }
+    private fun penDot(x: Float, y: Float) { fill.color = color or (0xFF shl 24); strokeLayer?.drawCircle(x, y, max(1f, r0()), fill) }
     private fun penSeg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
-        val r = max(1f, (strokeSize / 2f) * (1 - minOf(0.45f, speed * 0.06f)))
+        val r = max(1f, r0() * (1 - minOf(0.45f, speed * 0.06f)))
         pen.color = color or (0xFF shl 24); pen.strokeWidth = r * 2; strokeLayer?.drawLine(x0, y0, x1, y1, pen)
     }
 
-    private fun scaleFor(): Float = when (brush) {
-        BrushType.PEN -> 1f; BrushType.PENCIL -> 1.5f; BrushType.CRAYON -> 3f; BrushType.WATER -> 6f
-    }
+    private fun scaleFor(): Float = when (brush) { BrushType.PEN -> 1f; BrushType.PENCIL -> 1.5f; BrushType.CRAYON -> 3f; BrushType.WATER -> 6f }
 
     private fun seg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
-        var r = strokeSize / 2f * scaleFor()
+        var r = r0() * scaleFor()
         if (brush == BrushType.PENCIL) r *= (1 - minOf(0.45f, speed * 0.06f))
         r = max(1f, r)
         val spacing = when (brush) { BrushType.WATER -> r * 0.6f; BrushType.CRAYON -> r * 0.30f; else -> r * 0.20f }
@@ -264,23 +223,15 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
 
     private fun stampDispatch(x: Float, y: Float, r: Float) {
-        when (brush) {
-            BrushType.PENCIL -> stampPencil(x, y, r)
-            BrushType.CRAYON -> stampCrayon(x, y, r)
-            BrushType.WATER -> stampWater(x, y, r)
-            else -> {}
-        }
+        when (brush) { BrushType.PENCIL -> stampPencil(x, y, r); BrushType.CRAYON -> stampCrayon(x, y, r); BrushType.WATER -> stampWater(x, y, r); else -> {} }
     }
-
     private fun stampPencil(x: Float, y: Float, r: Float) {
         val c = content ?: return
         val n = max(5f, r * r * 0.7f).toInt()
         for (i in 0 until n) {
-            val a = rnd.nextFloat() * 6.2832f
-            val rr = Math.pow(rnd.nextDouble(), 0.7).toFloat() * r * 1.15f
+            val a = rnd.nextFloat() * 6.2832f; val rr = Math.pow(rnd.nextDouble(), 0.7).toFloat() * r * 1.15f
             val sx = x + cos(a) * rr; val sy = y + sin(a) * rr
-            val al = (0.06f + rnd.nextFloat() * 0.5f) * opacity
-            val ss = if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f
+            val al = (0.06f + rnd.nextFloat() * 0.5f) * opacity; val ss = if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f
             fill.color = withAlpha(color, al); c.drawRect(sx, sy, sx + ss, sy + ss, fill)
         }
     }
@@ -288,8 +239,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         val c = content ?: return
         val m = max(10f, r * r * 0.55f).toInt()
         for (j in 0 until m) {
-            val a = rnd.nextFloat() * 6.2832f
-            val rr = rnd.nextFloat() * r * 1.15f; val edge = rr / (r * 1.15f)
+            val a = rnd.nextFloat() * 6.2832f; val rr = rnd.nextFloat() * r * 1.15f; val edge = rr / (r * 1.15f)
             if (rnd.nextFloat() > (0.15f + 0.85f * edge)) continue
             val cxp = x + cos(a) * rr; val cyp = y + sin(a) * rr
             fill.color = withAlpha(color, (0.18f + rnd.nextFloat() * 0.6f) * opacity)
@@ -298,19 +248,15 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
     private fun stampWater(x: Float, y: Float, r: Float) {
         val c = strokeLayer ?: return
-        val R = r * 1.3f
-        fill.style = Paint.Style.FILL
+        val R = r * 1.3f; fill.style = Paint.Style.FILL
         for (L in 0 until 3) { buildBlob(x, y, R * (1 + L * 0.06f)); fill.color = withAlpha(color, 0.08f); c.drawPath(path, fill) }
-        buildBlob(x, y, R); fill.style = Paint.Style.STROKE; fill.strokeWidth = 1.5f
-        fill.color = withAlpha(color, 0.16f); c.drawPath(path, fill)
+        buildBlob(x, y, R); fill.style = Paint.Style.STROKE; fill.strokeWidth = 1.5f; fill.color = withAlpha(color, 0.16f); c.drawPath(path, fill)
         if (rnd.nextFloat() < 0.25f) {
             val a = rnd.nextFloat() * 6.2832f; val dd = R * (0.6f + rnd.nextFloat() * 0.7f)
-            buildBlob(x + cos(a) * dd, y + sin(a) * dd, R * 0.5f)
-            fill.style = Paint.Style.FILL; fill.color = withAlpha(color, 0.06f); c.drawPath(path, fill)
+            buildBlob(x + cos(a) * dd, y + sin(a) * dd, R * 0.5f); fill.style = Paint.Style.FILL; fill.color = withAlpha(color, 0.06f); c.drawPath(path, fill)
         }
         fill.style = Paint.Style.FILL
     }
-
     private fun buildBlob(cx: Float, cy: Float, r: Float) {
         var pts = ArrayList<FloatArray>(7)
         for (i in 0 until 7) { val a = i.toFloat() / 7 * 6.2832f; val rr = r * (0.8f + rnd.nextFloat() * 0.4f); pts.add(floatArrayOf(cx + cos(a) * rr, cy + sin(a) * rr)) }
@@ -321,4 +267,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         }
         path.reset(); path.moveTo(pts[0][0], pts[0][1]); for (i in 1 until pts.size) path.lineTo(pts[i][0], pts[i][1]); path.close()
     }
+
+    private fun withAlpha(c: Int, a: Float): Int { val aa = (a.coerceIn(0f, 1f) * 255).toInt(); return (aa shl 24) or (c and 0x00FFFFFF) }
 }
