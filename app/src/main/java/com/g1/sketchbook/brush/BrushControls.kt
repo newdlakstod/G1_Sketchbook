@@ -1,5 +1,6 @@
 package com.g1.sketchbook.brush
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.BorderColor
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -38,8 +40,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import com.g1.sketchbook.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -76,11 +81,21 @@ fun BrushControls(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Pill("볼펜", !erasing && brush == BrushType.PEN) { onBrush(BrushType.PEN) }
-            Pill("연필", !erasing && brush == BrushType.PENCIL) { onBrush(BrushType.PENCIL) }
-            Pill("크레파스", !erasing && brush == BrushType.CRAYON) { onBrush(BrushType.CRAYON) }
-            Pill("수채화", !erasing && brush == BrushType.WATER) { onBrush(BrushType.WATER) }
-            Pill("지우개", erasing) { onToggleErase() }
+            BrushBtn(!erasing && brush == BrushType.PEN, { onBrush(BrushType.PEN) }) { t ->
+                Icon(Icons.Filled.BorderColor, "볼펜", tint = t, modifier = Modifier.size(24.dp))
+            }
+            BrushBtn(!erasing && brush == BrushType.PENCIL, { onBrush(BrushType.PENCIL) }) { t ->
+                Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(26.dp))
+            }
+            BrushBtn(!erasing && brush == BrushType.CRAYON, { onBrush(BrushType.CRAYON) }) { t ->
+                Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(26.dp))
+            }
+            BrushBtn(!erasing && brush == BrushType.WATER, { onBrush(BrushType.WATER) }) { t ->
+                Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(26.dp))
+            }
+            BrushBtn(erasing, { onToggleErase() }) { t ->
+                Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(26.dp))
+            }
 
             VDivider()
 
@@ -166,13 +181,10 @@ private class AboveAnchor(private val gapPx: Int) : PopupPositionProvider {
 }
 
 @Composable
-private fun Pill(label: String, on: Boolean, onClick: () -> Unit) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = if (on) Color.White else MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.clickable { onClick() },
-    ) { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)) }
+private fun BrushBtn(selected: Boolean, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
+    val tint = if (selected) MaterialTheme.colorScheme.onSurface
+    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    Box(Modifier.size(42.dp).clickable { onClick() }, contentAlignment = Alignment.Center) { icon(tint) }
 }
 
 @Composable
