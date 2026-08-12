@@ -309,6 +309,8 @@ private fun SketchbookCanvasScreen(book: Sketchbook, repo: SketchbookRepository,
     var color by remember { mutableStateOf(0xFF2B4C9BL) }
     var sizeDp by remember { mutableFloatStateOf(10f) }
     var opacity by remember { mutableFloatStateOf(100f) }
+    var erasing by remember { mutableStateOf(false) }
+    var zoomLocked by remember { mutableStateOf(false) }
     var page by remember { mutableIntStateOf(0) }
     var pageCount by remember { mutableIntStateOf(book.pageCount) }
 
@@ -332,8 +334,13 @@ private fun SketchbookCanvasScreen(book: Sketchbook, repo: SketchbookRepository,
                 },
             )
         },
-        bottomBar = { BrushControls(brush, color, sizeDp, opacity, { brush = it }, { color = it }, { sizeDp = it }, { opacity = it },
-            onUndo = { view?.undo() }, onClear = { view?.clearCanvas(); saveCurrent() }) },
+        bottomBar = {
+            BrushControls(brush, color, sizeDp, opacity, erasing, zoomLocked,
+                onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
+                onSize = { sizeDp = it }, onOpacity = { opacity = it }, onToggleErase = { erasing = !erasing },
+                onUndo = { view?.undo() }, onRedo = { view?.redo() },
+                onClear = { view?.clearCanvas(); saveCurrent() }, onToggleZoomLock = { zoomLocked = !zoomLocked })
+        },
     ) { padding ->
         BoxWithConstraints(
             Modifier.padding(padding).fillMaxSize().padding(12.dp),
@@ -354,6 +361,7 @@ private fun SketchbookCanvasScreen(book: Sketchbook, repo: SketchbookRepository,
                     },
                     update = { v ->
                         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
+                        v.erasing = erasing; v.zoomLocked = zoomLocked
                         v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, page, b) } } }
                     },
                 )

@@ -3,6 +3,7 @@ package com.g1.sketchbook.brush
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,10 +16,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,36 +44,43 @@ val BrushPalette = listOf(
     0xFFE0A53CL, 0xFFE05454L, 0xFFCE7A7AL, 0xFF9775FAL, 0xFFFFFFFFL,
 )
 
-/** Shared brush toolbar (brush type, palette, width, opacity, undo, clear). */
+/** Shared brush toolbar: brushes + eraser, palette, width, opacity, undo/redo/clear, zoom lock. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrushControls(
-    brush: BrushType, color: Long, sizeDp: Float, opacity: Float,
+    brush: BrushType, color: Long, sizeDp: Float, opacity: Float, erasing: Boolean, zoomLocked: Boolean,
     onBrush: (BrushType) -> Unit, onColor: (Long) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
-    onUndo: () -> Unit, onClear: () -> Unit,
+    onToggleErase: () -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onClear: () -> Unit, onToggleZoomLock: () -> Unit,
 ) {
     Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxWidth().padding(10.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                BrushBtn("볼펜", brush == BrushType.PEN) { onBrush(BrushType.PEN) }
-                BrushBtn("연필", brush == BrushType.PENCIL) { onBrush(BrushType.PENCIL) }
-                BrushBtn("크레파스", brush == BrushType.CRAYON) { onBrush(BrushType.CRAYON) }
-                BrushBtn("수채화", brush == BrushType.WATER) { onBrush(BrushType.WATER) }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onUndo) { Icon(Icons.AutoMirrored.Filled.Undo, "되돌리기") }
-                IconButton(onClick = onClear) { Icon(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555)) }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Chip("볼펜", !erasing && brush == BrushType.PEN) { onBrush(BrushType.PEN) }
+                Chip("연필", !erasing && brush == BrushType.PENCIL) { onBrush(BrushType.PENCIL) }
+                Chip("크레파스", !erasing && brush == BrushType.CRAYON) { onBrush(BrushType.CRAYON) }
+                Chip("수채화", !erasing && brush == BrushType.WATER) { onBrush(BrushType.WATER) }
+                Chip("지우개", erasing) { onToggleErase() }
             }
-            Spacer(Modifier.height(6.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(BrushPalette) { c ->
-                    val on = c == color
-                    Box(Modifier.size(28.dp).background(Color(c), CircleShape)
-                        .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-                        .clickable { onColor(c) })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(BrushPalette) { c ->
+                        val on = !erasing && c == color
+                        Box(Modifier.size(28.dp).background(Color(c), CircleShape)
+                            .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
+                            .clickable { onColor(c) })
+                    }
                 }
+                IconButton(onClick = onUndo) { Icon(Icons.AutoMirrored.Filled.Undo, "되돌리기") }
+                IconButton(onClick = onRedo) { Icon(Icons.AutoMirrored.Filled.Redo, "다시 실행") }
+                IconButton(onClick = onClear) { Icon(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555)) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("굵기", fontSize = 12.sp, modifier = Modifier.width(48.dp))
                 Slider(sizeDp, onSize, valueRange = 2f..48f, modifier = Modifier.weight(1f))
+                IconButton(onClick = onToggleZoomLock) {
+                    Icon(if (zoomLocked) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                        "확대 잠금", tint = if (zoomLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("불투명도", fontSize = 12.sp, modifier = Modifier.width(48.dp))
@@ -81,7 +93,7 @@ fun BrushControls(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BrushBtn(label: String, on: Boolean, onClick: () -> Unit) {
+private fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick, shape = MaterialTheme.shapes.small,
         color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
