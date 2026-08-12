@@ -172,14 +172,15 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
     private fun stampCrayon(x: Float, y: Float, r: Float) {
         val c = layer ?: return
-        val m = max(10f, r * r * 1.2f).toInt()
+        // Fewer but larger flecks (~1.5x grain scale) -> coarse, gappy wax vs fine pencil grain.
+        val m = max(6f, r * r * 0.55f).toInt()
         for (j in 0 until m) {
             val a = rnd.nextFloat() * 6.2832f
             val rr = rnd.nextFloat() * r * 1.15f; val edge = rr / (r * 1.15f)
             if (rnd.nextFloat() > (0.15f + 0.85f * edge)) continue // waxy, slightly hollow middle
             val cx = x + cos(a) * rr; val cy = y + sin(a) * rr
             fill.color = withAlpha(color, (0.18f + rnd.nextFloat() * 0.6f) * opacity)
-            val s = 2.5f + rnd.nextFloat() * 4f; c.drawRect(cx, cy, cx + s, cy + s, fill)
+            val s = 1.5f + rnd.nextFloat() * 3f; c.drawRect(cx, cy, cx + s, cy + s, fill)
         }
     }
     // Watercolor draws on the stroke layer, composited once at [opacity].
