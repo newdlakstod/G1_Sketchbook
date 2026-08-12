@@ -76,11 +76,19 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         if (w <= 0 || h <= 0) return
+        val prev = contentBmp
+        val rect = RectF(0f, 0f, w.toFloat(), h.toFloat())
         paperBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { paintPaper(Canvas(it), w, h) }
-        contentBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        content = Canvas(contentBmp!!)
-        pendingContent?.let { content!!.drawBitmap(it, null, RectF(0f, 0f, w.toFloat(), h.toFloat()), null); pendingContent = null }
+        val nc = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(nc)
+        when {
+            pendingContent != null -> { c.drawBitmap(pendingContent!!, null, rect, null); pendingContent = null }
+            prev != null -> c.drawBitmap(prev, null, rect, null) // keep the drawing, rescaled to the new size
+        }
+        contentBmp = nc; content = c
         strokeBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); strokeLayer = Canvas(strokeBmp!!)
+        undo.clear(); redo.clear()          // old snapshots are a different size
+        scale = 1f; offX = 0f; offY = 0f    // fit fresh after a resize/fold
         invalidate()
     }
 
@@ -176,7 +184,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (gestureMode) {
                     // A tap (never left the dead zone) toggles undo/redo — and never changes the zoom.
-                    if (!gestureActive && (now - downTime) < 400 && maxPointers >= 2) {
+                    if (!gestureActive && maxPointers >= 2) {
                         if (maxPointers >= 3) redo() else undo()
                     }
                 } else if (strokeStarted) endStroke()
