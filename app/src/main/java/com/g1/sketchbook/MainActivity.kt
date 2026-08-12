@@ -25,7 +25,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             G1Theme {
-                AppRoot()
+                // Phase 0: brush-engine playground for tuning the core drawing feel.
+                // (The full app flow — AppRoot() — is retained below and restored after Phase 0.)
+                com.g1.sketchbook.brush.BrushPlaygroundScreen()
             }
         }
     }
