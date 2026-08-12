@@ -44,6 +44,7 @@ data class Sketchbook(
     val bgKey: String,
     val createdAt: Long,
     val pageCount: Int,
+    val fav: Boolean = false,
 ) {
     val size get() = Catalog.size(sizeKey)
 }
@@ -65,8 +66,8 @@ class SketchbookRepository(private val context: Context) {
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
                 Sketchbook(o.getString("id"), o.getString("name"), o.getString("size"),
-                    o.getString("bg"), o.optLong("createdAt"), o.optInt("pages", 1))
-            }.sortedByDescending { it.createdAt }
+                    o.getString("bg"), o.optLong("createdAt"), o.optInt("pages", 1), o.optBoolean("fav", false))
+            }.sortedWith(compareByDescending<Sketchbook> { it.fav }.thenByDescending { it.createdAt })
         }.getOrDefault(emptyList())
     }
 
@@ -81,6 +82,10 @@ class SketchbookRepository(private val context: Context) {
 
     fun setPageCount(id: String, count: Int) {
         save(list().map { if (it.id == id) it.copy(pageCount = count.coerceIn(1, MAX_PAGES)) else it })
+    }
+
+    fun toggleFav(id: String) {
+        save(list().map { if (it.id == id) it.copy(fav = !it.fav) else it })
     }
 
     fun delete(id: String) {
@@ -107,7 +112,7 @@ class SketchbookRepository(private val context: Context) {
         books.forEach {
             arr.put(JSONObject()
                 .put("id", it.id).put("name", it.name).put("size", it.sizeKey)
-                .put("bg", it.bgKey).put("createdAt", it.createdAt).put("pages", it.pageCount))
+                .put("bg", it.bgKey).put("createdAt", it.createdAt).put("pages", it.pageCount).put("fav", it.fav))
         }
         prefs.edit().putString(KEY, arr.toString()).apply()
     }

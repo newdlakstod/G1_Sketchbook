@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -74,12 +76,14 @@ private val CoverColors = listOf(
 @Composable
 fun MainScreen(
     nickname: String,
+    avatar: String,
     tab: Int,
     theme: ThemeMode,
     onTab: (Int) -> Unit,
     onTheme: (ThemeMode) -> Unit,
     onSignOut: () -> Unit,
     onRename: (String) -> Unit,
+    onSetAvatar: (String) -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -97,9 +101,9 @@ fun MainScreen(
             when (tab) {
                 0 -> com.g1.sketchbook.sketchbook.SketchbookTab()
                 1 -> com.g1.sketchbook.diary.DiaryScreen()
-                2 -> HomeTab(nickname) { onTab(0) }
+                2 -> HomeTab(nickname, avatar) { onTab(0) }
                 3 -> com.g1.sketchbook.diary.DiaryCalendarScreen()
-                else -> SettingsTab(nickname, theme, onTheme, onSignOut, onRename)
+                else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
             }
         }
     }
@@ -118,7 +122,7 @@ private fun androidx.compose.foundation.layout.RowScope.NavItem(
 }
 
 @Composable
-private fun HomeTab(nickname: String, onGoSketchbooks: () -> Unit) {
+private fun HomeTab(nickname: String, avatar: String, onGoSketchbooks: () -> Unit) {
     val ctx = LocalContext.current
     val repo = remember { SketchbookRepository(ctx) }
     val books = remember { repo.list() }
@@ -134,7 +138,7 @@ private fun HomeTab(nickname: String, onGoSketchbooks: () -> Unit) {
                 Text("안녕하세요,", fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                 Text("$nickname 님", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
             }
-            Avatar(nickname, 48.dp)
+            Avatar(avatar, 48.dp)
         }
         Spacer(Modifier.height(20.dp))
         Card(Modifier.fillMaxWidth().clickable { onGoSketchbooks() }, shape = MaterialTheme.shapes.large,
@@ -183,19 +187,22 @@ private fun MiniCover(book: Sketchbook, cover: Color, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsTab(nickname: String, theme: ThemeMode, onTheme: (ThemeMode) -> Unit, onSignOut: () -> Unit, onRename: (String) -> Unit) {
+private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTheme: (ThemeMode) -> Unit,
+                        onSignOut: () -> Unit, onRename: (String) -> Unit, onSetAvatar: (String) -> Unit) {
     var editing by remember { mutableStateOf(false) }
+    var avatarEditing by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(20.dp))
         Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(nickname, 56.dp)
+                Box(Modifier.clickable { avatarEditing = true }) { Avatar(avatar, 56.dp) }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text("별명", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(nickname, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("아바타를 눌러 변경", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { editing = true }) { Icon(Icons.Filled.Edit, "별명 수정") }
             }
@@ -231,12 +238,29 @@ private fun SettingsTab(nickname: String, theme: ThemeMode, onTheme: (ThemeMode)
             dismissButton = { TextButton(onClick = { editing = false }) { Text("취소") } },
         )
     }
+
+    if (avatarEditing) {
+        AlertDialog(
+            onDismissRequest = { avatarEditing = false },
+            title = { Text("아바타 선택") },
+            text = {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("🦆", "🐱", "🐸", "🐰", "🐻", "🐥", "🐨", "🦊", "🐼", "🐧", "🐤", "🐢").forEach { e ->
+                        Box(Modifier.size(46.dp).clip(CircleShape)
+                            .background(if (e == avatar) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { onSetAvatar(e); avatarEditing = false },
+                            contentAlignment = Alignment.Center) { Text(e, fontSize = 24.sp) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { avatarEditing = false }) { Text("닫기") } },
+        )
+    }
 }
 
 @Composable
-private fun Avatar(name: String, size: androidx.compose.ui.unit.Dp) {
-    Box(Modifier.size(size).background(MaterialTheme.colorScheme.secondary, CircleShape), contentAlignment = Alignment.Center) {
-        Text(name.trim().take(1).ifBlank { "?" }, color = Color.White,
-            fontSize = (size.value * 0.4f).sp, fontWeight = FontWeight.Bold)
+private fun Avatar(emoji: String, size: androidx.compose.ui.unit.Dp) {
+    Box(Modifier.size(size).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+        Text(emoji.ifBlank { "🦆" }, fontSize = (size.value * 0.52f).sp)
     }
 }

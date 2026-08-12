@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -59,6 +60,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -109,7 +111,7 @@ private fun SizeRow(list: List<CanvasSize>, selected: String, onSelect: (String)
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 SizeIcon(s.key, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    Modifier.fillMaxWidth().height(64.dp))
+                    Modifier.size(56.dp)) // fixed square so icons never distort
                 Spacer(Modifier.height(6.dp))
                 Text(s.label, fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
                     color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
@@ -179,6 +181,7 @@ fun SketchbookTab() {
             onCreate = { mode = "create" },
             onOpen = { mode = it.id },
             onDelete = { repo.delete(it.id); books = repo.list() },
+            onToggleFav = { repo.toggleFav(it.id); books = repo.list() },
         )
         else -> {
             val sb = repo.get(mode)
@@ -196,6 +199,7 @@ private fun SketchbookListScreen(
     onCreate: () -> Unit,
     onOpen: (Sketchbook) -> Unit,
     onDelete: (Sketchbook) -> Unit,
+    onToggleFav: (Sketchbook) -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -215,7 +219,7 @@ private fun SketchbookListScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     itemsIndexed(books, key = { _, b -> b.id }) { i, b ->
-                        CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { onDelete(b) })
+                        CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { onDelete(b) }, { onToggleFav(b) })
                     }
                 }
             }
@@ -224,7 +228,7 @@ private fun SketchbookListScreen(
 }
 
 @Composable
-private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDelete: () -> Unit) {
+private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDelete: () -> Unit, onToggleFav: () -> Unit) {
     Box(Modifier.aspectRatio(0.78f)) {
         Box(
             Modifier.fillMaxSize()
@@ -237,6 +241,11 @@ private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDele
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 8.dp, bottom = 12.dp))
         }
+        IconButton(onClick = onToggleFav, modifier = Modifier.align(Alignment.TopStart).size(30.dp)) {
+            Icon(Icons.Filled.Star, "즐겨찾기",
+                tint = if (book.fav) Color(0xFFFFD43B) else Color(0xFFF3ECD9).copy(alpha = 0.55f),
+                modifier = Modifier.size(18.dp))
+        }
         IconButton(onClick = onDelete, modifier = Modifier.align(Alignment.TopEnd).size(30.dp)) {
             Icon(Icons.Filled.Delete, "삭제", tint = Color(0xFFF3ECD9).copy(alpha = 0.75f), modifier = Modifier.size(16.dp))
         }
@@ -248,7 +257,11 @@ private fun CreateSketchbookScreen(onCancel: () -> Unit, onCreate: (String, Stri
     var name by remember { mutableStateOf("") }
     var sizeKey by remember { mutableStateOf("a4") }
     var bgKey by remember { mutableStateOf("watercolor") }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+    Box(Modifier.fillMaxSize()) {
+      // Live preview: chosen paper shows faintly behind the form.
+      Image(painterResource(bgDrawable(bgKey)), null, contentScale = ContentScale.Crop,
+          modifier = Modifier.fillMaxSize().alpha(0.4f))
+      Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("새 스케치북", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(name, { name = it.take(20) }, label = { Text("이름") }, singleLine = true,
@@ -281,6 +294,7 @@ private fun CreateSketchbookScreen(onCancel: () -> Unit, onCreate: (String, Stri
             Button(onClick = { onCreate(name, sizeKey, bgKey) }, modifier = Modifier.weight(2f).height(50.dp),
                 shape = MaterialTheme.shapes.small) { Text("만들기") }
         }
+      }
     }
 }
 

@@ -18,6 +18,7 @@ data class RootState(
     val busy: Boolean = false,
     val error: String? = null,
     val theme: ThemeMode = ThemeMode.SYSTEM,
+    val avatar: String = "🦆",
     val tab: Int = 2, // Home is the centre tab
 )
 
@@ -31,6 +32,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             nickname = graph.sessionStore.nickname,
             needsNickname = graph.authClient.currentUser != null && graph.sessionStore.nickname.isNullOrBlank(),
             theme = graph.sessionStore.themeMode.toThemeMode(),
+            avatar = graph.sessionStore.avatar,
         )
     )
     val state: StateFlow<RootState> = _state.asStateFlow()
@@ -71,6 +73,11 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun setTheme(mode: ThemeMode) {
         graph.sessionStore.themeMode = mode.name.lowercase()
         _state.value = _state.value.copy(theme = mode)
+    }
+
+    fun setAvatar(emoji: String) {
+        graph.sessionStore.avatar = emoji
+        _state.value = _state.value.copy(avatar = emoji)
     }
 
     private fun String.toThemeMode() = when (this) {

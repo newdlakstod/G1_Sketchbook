@@ -40,12 +40,14 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
             state.needsNickname -> NicknameScreen(onSave = vm::saveNickname)
             else -> MainScreen(
                 nickname = state.nickname ?: "친구",
+                avatar = state.avatar,
                 tab = state.tab,
                 theme = state.theme,
                 onTab = vm::selectTab,
                 onTheme = vm::setTheme,
                 onSignOut = vm::signOut,
                 onRename = vm::saveNickname,
+                onSetAvatar = vm::setAvatar,
             )
         }
     }

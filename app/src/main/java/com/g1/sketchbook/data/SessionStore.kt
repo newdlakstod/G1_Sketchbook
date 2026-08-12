@@ -30,6 +30,11 @@ class SessionStore(context: Context) {
         get() = prefs.getString(KEY_THEME, "system") ?: "system"
         set(value) = prefs.edit().putString(KEY_THEME, value).apply()
 
+    /** Emoji avatar. */
+    var avatar: String
+        get() = prefs.getString(KEY_AVATAR, "🦆") ?: "🦆"
+        set(value) = prefs.edit().putString(KEY_AVATAR, value).apply()
+
     /** Sketchbooks the user knows about, most-recently-opened first. */
     fun sketchbooks(): List<SketchbookRef> {
         val raw = prefs.getString(KEY_BOOKS, null) ?: return emptyList()
@@ -64,6 +69,7 @@ class SessionStore(context: Context) {
         private const val KEY_BOOKS = "sketchbooks"
         private const val KEY_NICK = "nickname"
         private const val KEY_THEME = "theme_mode"
+        private const val KEY_AVATAR = "avatar"
         private const val MAX_BOOKS = 30
     }
 }
