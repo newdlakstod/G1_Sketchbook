@@ -3,6 +3,7 @@ package com.g1.sketchbook.share
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,14 +52,20 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
+import com.g1.sketchbook.sketchbook.Catalog
+import com.g1.sketchbook.sketchbook.SketchbookRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
-private const val CANVAS_PX = 1280   // square so both split orientations fit cleanly
+// Shared canvas uses a real catalog size (A4) so a saved copy imports cleanly into 스케치북.
+private val SHARE_SIZE = Catalog.size("a4")
+private const val SHARE_BG = "drawing"
 
 /**
  * "Draw together" split view: my interactive canvas on one half, the partner's live snapshot on the
@@ -72,6 +81,7 @@ fun SharedSessionScreen(
 ) {
     val context = LocalContext.current
     val repo = remember { ShareRepository() }
+    val sbRepo = remember { SketchbookRepository(context) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
 
@@ -98,6 +108,15 @@ fun SharedSessionScreen(
     }
 
     fun leave() { repo.leaveSession(code, myUid, isHost) }
+    fun saveMine() {
+        val bmp = view?.exportBitmap() ?: return
+        scope.launch(Dispatchers.Default) {
+            val name = "함께 그리기 " + SimpleDateFormat("M/d HH:mm", Locale.getDefault()).format(System.currentTimeMillis())
+            val book = sbRepo.create(name, SHARE_SIZE.key, SHARE_BG)
+            sbRepo.savePage(book.id, 0, bmp)
+            withContext(Dispatchers.Main) { Toast.makeText(context, "스케치북에 저장했어요", Toast.LENGTH_SHORT).show() }
+        }
+    }
     BackHandler { leave(); onBack() }
     DisposableEffect(Unit) { onDispose { /* snapshot listener closes via LaunchedEffect scope */ } }
 
@@ -115,56 +134,67 @@ fun SharedSessionScreen(
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Box(Modifier.size(40.dp).clickable { saveMine() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Save, "내 그림 저장", tint = MaterialTheme.colorScheme.primary)
+            }
         }
 
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(8.dp)) {
             val landscape = maxWidth > maxHeight
-            val mine = @Composable { m: Modifier ->
-                PaneFrame(m, "나 · $myName", accent = true) {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { ctx ->
-                            BrushView(ctx).also { v ->
-                                v.paper = BitmapFactory.decodeResource(ctx.resources, R.drawable.paper_drawing)
-                                v.initCanvas(CANVAS_PX, CANVAS_PX)
-                                view = v
-                            }
-                        },
-                        update = { v ->
-                            v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-                            v.erasing = erasing
-                            v.onStrokeEnd = {
-                                val bmp = v.exportBitmap()
-                                if (bmp != null) scope.launch(Dispatchers.Default) {
-                                    repo.pushSnapshot(code, myUid, encodeSnapshot(bmp))
+            // movableContentOf preserves the panes' nodes (esp. the BrushView + its bitmaps) when the
+            // layout swaps between Row and Column on rotation, so the drawing isn't lost.
+            val mine = remember {
+                movableContentOf<Modifier> { m ->
+                    PaneFrame(m, "나 · $myName", accent = true) {
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { ctx ->
+                                BrushView(ctx).also { v ->
+                                    v.paper = BitmapFactory.decodeResource(ctx.resources, R.drawable.paper_drawing)
+                                    v.initCanvas(SHARE_SIZE.pxW(), SHARE_SIZE.pxH())
+                                    view = v
                                 }
-                            }
-                        },
-                    )
+                            },
+                            update = { v ->
+                                v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
+                                v.erasing = erasing
+                                v.onStrokeEnd = {
+                                    val bmp = v.exportBitmap()
+                                    if (bmp != null) scope.launch(Dispatchers.Default) {
+                                        repo.pushSnapshot(code, myUid, encodeSnapshot(bmp))
+                                    }
+                                }
+                            },
+                        )
+                    }
                 }
             }
-            val theirs = @Composable { m: Modifier ->
-                PaneFrame(m, partner?.name?.let { "$it" } ?: "상대", accent = false) {
-                    val bmp = partnerBmp
-                    if (bmp != null) {
-                        Image(bmp.asImageBitmap(), "상대 그림", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                    } else {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(
-                                if (partner == null) "아직 아무도 없어요\n초대코드를 공유해 보세요" else "아직 그리기 전이에요",
-                                fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+            val theirs = remember {
+                movableContentOf<Modifier> { m ->
+                    PaneFrame(m, partner?.name ?: "상대", accent = false) {
+                        val bmp = partnerBmp
+                        if (bmp != null) {
+                            Image(bmp.asImageBitmap(), "상대 그림", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                        } else {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    if (partner == null) "아직 아무도 없어요\n초대코드를 공유해 보세요" else "아직 그리기 전이에요",
+                                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
             }
             if (landscape) {
+                // Partner on the left, me on the right.
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    mine(Modifier.weight(1f).fillMaxSize()); theirs(Modifier.weight(1f).fillMaxSize())
+                    theirs(Modifier.weight(1f).fillMaxSize()); mine(Modifier.weight(1f).fillMaxSize())
                 }
             } else {
+                // Partner on top, me at the bottom.
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    mine(Modifier.weight(1f).fillMaxWidth()); theirs(Modifier.weight(1f).fillMaxWidth())
+                    theirs(Modifier.weight(1f).fillMaxWidth()); mine(Modifier.weight(1f).fillMaxWidth())
                 }
             }
         }

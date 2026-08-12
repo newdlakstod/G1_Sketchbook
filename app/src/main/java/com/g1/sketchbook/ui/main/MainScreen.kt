@@ -1,6 +1,5 @@
 package com.g1.sketchbook.ui.main
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -65,7 +64,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.R
-import com.g1.sketchbook.brush.BrushPlaygroundScreen
 import com.g1.sketchbook.share.ShareRepository
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
@@ -139,13 +137,7 @@ private fun HomeTab(
     val ctx = LocalContext.current
     val repo = remember { SketchbookRepository(ctx) }
     val books = remember { repo.list() }
-    var showPlayground by remember { mutableStateOf(false) }
     var showShare by remember { mutableStateOf(false) }
-    if (showPlayground) {
-        BackHandler { showPlayground = false }
-        BrushPlaygroundScreen()
-        return
-    }
     if (showShare) {
         ShareDialog(
             nickname = nickname, myUid = myUid,
@@ -199,10 +191,6 @@ private fun HomeTab(
                 }
             }
         }
-
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = { showPlayground = true }, modifier = Modifier.fillMaxWidth().height(50.dp),
-            shape = MaterialTheme.shapes.small) { Text("🖌  브러시 놀이터 열기") }
     }
 }
 
