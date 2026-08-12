@@ -41,17 +41,24 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
             state.openBookId != null -> com.g1.sketchbook.sketchbook.SketchbookCanvasScreen(
                 bookId = state.openBookId!!, onBack = vm::closeBook,
             )
+            state.shareCode != null -> com.g1.sketchbook.share.SharedSessionScreen(
+                code = state.shareCode!!, isHost = state.shareIsHost,
+                myUid = state.uid ?: "", myName = state.nickname ?: "나",
+                onBack = vm::closeShare,
+            )
             else -> MainScreen(
                 nickname = state.nickname ?: "친구",
                 avatar = state.avatar,
                 tab = state.tab,
                 theme = state.theme,
+                myUid = state.uid ?: "",
                 onTab = vm::selectTab,
                 onTheme = vm::setTheme,
                 onSignOut = vm::signOut,
                 onRename = vm::saveNickname,
                 onSetAvatar = vm::setAvatar,
                 onOpenBook = vm::openBook,
+                onOpenShare = vm::openShare,
             )
         }
     }

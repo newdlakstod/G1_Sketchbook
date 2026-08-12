@@ -38,6 +38,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -50,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,9 +66,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushPlaygroundScreen
+import com.g1.sketchbook.share.ShareRepository
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.ui.theme.ThemeMode
+import kotlinx.coroutines.launch
 
 private val CoverColors = listOf(
     Color(0xFF2B4C9B), Color(0xFF7E9A52), Color(0xFFDE7F3C),
@@ -79,12 +83,14 @@ fun MainScreen(
     avatar: String,
     tab: Int,
     theme: ThemeMode,
+    myUid: String,
     onTab: (Int) -> Unit,
     onTheme: (ThemeMode) -> Unit,
     onSignOut: () -> Unit,
     onRename: (String) -> Unit,
     onSetAvatar: (String) -> Unit,
     onOpenBook: (String) -> Unit,
+    onOpenShare: (String, Boolean) -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -102,7 +108,7 @@ fun MainScreen(
             when (tab) {
                 0 -> com.g1.sketchbook.sketchbook.SketchbookTab(onOpenBook)
                 1 -> com.g1.sketchbook.diary.DiaryScreen()
-                2 -> HomeTab(nickname, avatar) { onTab(0) }
+                2 -> HomeTab(nickname, avatar, myUid, onOpenShare, onGoSketchbooks = { onTab(0) })
                 3 -> com.g1.sketchbook.diary.DiaryCalendarScreen()
                 else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
             }
@@ -123,15 +129,29 @@ private fun androidx.compose.foundation.layout.RowScope.NavItem(
 }
 
 @Composable
-private fun HomeTab(nickname: String, avatar: String, onGoSketchbooks: () -> Unit) {
+private fun HomeTab(
+    nickname: String,
+    avatar: String,
+    myUid: String,
+    onOpenShare: (String, Boolean) -> Unit,
+    onGoSketchbooks: () -> Unit,
+) {
     val ctx = LocalContext.current
     val repo = remember { SketchbookRepository(ctx) }
     val books = remember { repo.list() }
     var showPlayground by remember { mutableStateOf(false) }
+    var showShare by remember { mutableStateOf(false) }
     if (showPlayground) {
         BackHandler { showPlayground = false }
         BrushPlaygroundScreen()
         return
+    }
+    if (showShare) {
+        ShareDialog(
+            nickname = nickname, myUid = myUid,
+            onDismiss = { showShare = false },
+            onOpenShare = { code, host -> showShare = false; onOpenShare(code, host) },
+        )
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -150,6 +170,19 @@ private fun HomeTab(nickname: String, avatar: String, onGoSketchbooks: () -> Uni
                 Column {
                     Text("함께 쓰는 스케치북", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     Text("탭하여 스케치북 만들기 · 이어 그리기", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Card(Modifier.fillMaxWidth().clickable { showShare = true }, shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("🤝", fontSize = 34.sp)
+                Spacer(Modifier.size(14.dp))
+                Column {
+                    Text("함께 그리기", color = MaterialTheme.colorScheme.onSecondaryContainer, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("초대 코드로 친구와 실시간 나눠 그리기", color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f), fontSize = 13.sp)
                 }
             }
         }
@@ -257,6 +290,77 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
             confirmButton = { TextButton(onClick = { avatarEditing = false }) { Text("닫기") } },
         )
     }
+}
+
+@Composable
+private fun ShareDialog(
+    nickname: String,
+    myUid: String,
+    onDismiss: () -> Unit,
+    onOpenShare: (String, Boolean) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val repo = remember { ShareRepository() }
+    var code by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("함께 그리기") },
+        text = {
+            Column {
+                Text("친구와 화면을 나눠 실시간으로 함께 그려요.", fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(14.dp))
+                Button(
+                    onClick = {
+                        busy = true; error = null
+                        scope.launch {
+                            runCatching { repo.createSession(myUid, nickname) }.fold(
+                                onSuccess = { onOpenShare(it, true) },
+                                onFailure = { busy = false; error = it.message ?: "세션을 만들지 못했어요." },
+                            )
+                        }
+                    },
+                    enabled = !busy, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small,
+                ) { Text("🆕  새 세션 만들기") }
+
+                Spacer(Modifier.height(16.dp))
+                Text("또는 초대 코드로 참여", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(6); error = null },
+                    singleLine = true, enabled = !busy, label = { Text("초대 코드") },
+                    shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        busy = true; error = null
+                        scope.launch {
+                            repo.joinSession(code, myUid, nickname).fold(
+                                onSuccess = { onOpenShare(code.uppercase(), false) },
+                                onFailure = { busy = false; error = it.message ?: "참여하지 못했어요." },
+                            )
+                        }
+                    },
+                    enabled = !busy && code.length >= 4, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small,
+                ) { Text("코드로 참여") }
+
+                if (error != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+                if (busy) {
+                    Spacer(Modifier.height(12.dp))
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("닫기") } },
+    )
 }
 
 @Composable

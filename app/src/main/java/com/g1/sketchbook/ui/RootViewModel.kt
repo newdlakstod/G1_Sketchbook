@@ -21,6 +21,9 @@ data class RootState(
     val avatar: String = "🦆",
     val tab: Int = 2, // Home is the centre tab
     val openBookId: String? = null, // when set, a sketchbook canvas is shown full-screen
+    val uid: String? = null,        // Firebase uid, needed for shared sessions
+    val shareCode: String? = null,  // when set, a shared "draw together" session is shown
+    val shareIsHost: Boolean = false,
 )
 
 /** Top-level app state for Phase 1: auth, nickname onboarding, theme, and bottom-tab selection. */
@@ -34,6 +37,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             needsNickname = graph.authClient.currentUser != null && graph.sessionStore.nickname.isNullOrBlank(),
             theme = graph.sessionStore.themeMode.toThemeMode(),
             avatar = graph.sessionStore.avatar,
+            uid = graph.authClient.currentUser?.uid,
         )
     )
     val state: StateFlow<RootState> = _state.asStateFlow()
@@ -45,7 +49,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                 onSuccess = { user ->
                     val nick = graph.sessionStore.nickname
                     _state.value = _state.value.copy(
-                        user = user, busy = false,
+                        user = user, busy = false, uid = user.uid,
                         needsNickname = nick.isNullOrBlank(), nickname = nick,
                     )
                 },
@@ -72,6 +76,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun selectTab(i: Int) { _state.value = _state.value.copy(tab = i) }
     fun openBook(id: String) { _state.value = _state.value.copy(openBookId = id) }
     fun closeBook() { _state.value = _state.value.copy(openBookId = null) }
+    fun openShare(code: String, isHost: Boolean) { _state.value = _state.value.copy(shareCode = code, shareIsHost = isHost) }
+    fun closeShare() { _state.value = _state.value.copy(shareCode = null) }
 
     fun setTheme(mode: ThemeMode) {
         graph.sessionStore.themeMode = mode.name.lowercase()

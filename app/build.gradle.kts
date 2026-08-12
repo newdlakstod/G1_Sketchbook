@@ -13,8 +13,8 @@ android {
         applicationId = "com.g1.sketchbook"
         minSdk = 24
         targetSdk = 35
-        versionCode = 32
-        versionName = "1.18.0"
+        versionCode = 33
+        versionName = "1.19.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -60,6 +60,7 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.database)
 
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
