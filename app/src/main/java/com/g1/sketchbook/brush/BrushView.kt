@@ -89,7 +89,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             MotionEvent.ACTION_DOWN -> {
                 pushUndo(); acc = 0f; lx = x; ly = y; lt = System.currentTimeMillis()
                 if (layered) strokePrep()
-                if (brush == BrushType.PEN) penDot(x, y) else stampDispatch(x, y, strokeSize / 2f)
+                val r0 = if (brush == BrushType.WATER) strokeSize else strokeSize / 2f // watercolor is 2x
+                if (brush == BrushType.PEN) penDot(x, y) else stampDispatch(x, y, r0)
                 if (layered) composite()
                 invalidate()
             }
@@ -136,6 +137,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun seg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         var r = strokeSize / 2f
         if (brush == BrushType.PENCIL) r *= (1 - minOf(0.45f, speed * 0.06f)) // crayon/water: no speed
+        if (brush == BrushType.WATER) r *= 2f // watercolor brush is twice as wide
         r = max(1f, r)
         val spacing = when (brush) { BrushType.WATER -> r * 0.6f; BrushType.CRAYON -> r * 0.30f; else -> r * 0.20f }
         val dx = x1 - x0; val dy = y1 - y0; val d = hypot(dx, dy); if (d == 0f) return
@@ -177,7 +179,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             if (rnd.nextFloat() > (0.15f + 0.85f * edge)) continue // waxy, slightly hollow middle
             val cx = x + cos(a) * rr; val cy = y + sin(a) * rr
             fill.color = withAlpha(color, (0.18f + rnd.nextFloat() * 0.6f) * opacity)
-            val s = 1f + rnd.nextFloat() * 2f; c.drawRect(cx, cy, cx + s, cy + s, fill)
+            val s = 2.5f + rnd.nextFloat() * 4f; c.drawRect(cx, cy, cx + s, cy + s, fill)
         }
     }
     // Watercolor draws on the stroke layer, composited once at [opacity].
