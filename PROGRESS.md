@@ -34,6 +34,11 @@
   - `SketchbookCanvasScreen`: 종이 비율에 잠긴 `BoxWithConstraints` 제거, AndroidView를 `fillMaxSize`로 → 뷰가 화면 전체를 받아 가로모드 양옆 사각지대 제거(맞춤/레터박스는 BrushView 내부 처리).
   - 원인: 세로 종이가 가로 화면에서 가운데 좁은 띠로 배치돼 양옆이 배경(비드로잉)이었음. 사용자 선택=종이 90° 자동 회전.
 
+- **구식 코드/의존성 정리** (v1.18.0, 2026-08-13):
+  - 삭제: `ui/HomeScreen`, `ui/AppViewModel`, `ui/canvas/*`(CanvasScreen/CanvasViewModel/StrokeRender/Crayon), `ui/gallery/*`, `data/RoomRepository`, `data/ArchiveRepository`, `work/DailyArchive`(+ArchiveScheduler), 미참조 `ui/theme/PaperTexture`.
+  - `Models.kt` → `SketchbookRef`만 남김(Stroke/Member/RoomMeta/ArchiveEntry 제거). `SketchApp` → 룸/아카이브 저장소·스케줄러·RTDB 영속성 제거.
+  - 미사용 의존성 제거: firebase-database, work-runtime.ktx, coil.compose, navigation.compose. (`TaskAwait`는 GoogleAuthClient가 사용 → 유지.) 동작 무변화, 빌드 검증 완료.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
@@ -44,12 +49,11 @@
 - 브러시 = PNG/스탬프 감성 최우선. 연해/중심선/각짐 문제는 "웹 놀이터와 동일 코드(디스크+직접 누적)"로 해결.
 - 백엔드: 지금은 무료(RTDB+Base64), Repository로 감싸 후에 이전(A안).
 - 그림일기: 개인 전용·사용자당 1개.
-- 라이트/다크 지원. (캔버스 90도 회전은 버튼으로 제공, 제스처 회전은 없음.)
-- 줌(확대/축소)은 안정화 후 재도입 예정 — 현재는 제거 상태.
+- 라이트/다크 지원. 캔버스 90도 회전은 버튼으로 제공(+화면 방향에 맞춰 자동 회전). 제스처 회전은 없음.
+- 핀치 줌(1~5배)·이동 재도입 완료(v1.15~1.17). 한 손가락 그리기 / 두 손가락 줌.
 - 버전 매 업로드마다 bump + 새 태그(vX.Y.Z), 덮어쓰기 금지.
 
 ## Open / Blockers
 - **빌드 잠금**: VS Code Java/Kotlin 언어서버가 `app/build/.../R.jar`를 잠가 CLI 빌드가 IOException. 대응: 빌드 전 해당 java 프로세스(kotlinLanguageServer/redhat.java/.vscode\extensions) kill 후 R.jar 삭제(사용자가 권한 허용함). `.vscode/settings.json`에 Java 자동빌드/Gradle import off + build 감시 제외 넣음.
 - 빌드 JDK: standalone 없음 → Android Studio JBR. `JAVA_HOME=C:\Program Files\Android\Android Studio\jbr`.
-- 구식 룸 기반 UI(HomeScreen/CanvasScreen/GalleryScreen/AppViewModel 등)는 현재 미사용(dormant). Phase 2에서 정리/대체 예정. 데이터층(RoomRepository/ArchiveRepository/DailyArchive/WorkManager)은 재활용 검토.
-- Realtime DB 보안 규칙 배포 전 잠글 것.
+- (해결됨 v1.18.0) 구식 룸 기반 UI/데이터층 제거 완료. 실시간 공유가 필요하면 새로 설계할 것(RTDB 의존성도 제거된 상태).
