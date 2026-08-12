@@ -27,7 +27,7 @@ enum class BrushType { PEN, PENCIL, CRAYON, WATER }
  * rotation) via a display matrix, and touches are mapped back through its inverse — so every visible
  * part of the paper is drawable, at any screen size, and saves come out at full resolution.
  *
- * One finger draws. (Pinch-zoom and multi-finger undo/redo were intentionally removed.)
+ * One finger draws; two fingers pinch to zoom and pan. (Multi-finger undo/redo was removed.)
  */
 class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -56,6 +56,12 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val inv = Matrix()
     private var fitScale = 1f                 // screen px per canvas px
 
+    private val userM = Matrix()              // view-space pinch zoom/pan on top of the fit
+    private var userScale = 1f                // total user zoom (1 = fit, capped at 5)
+    private var pinching = false
+    private var prevDist = 0f
+    private var prevMidX = 0f; private var prevMidY = 0f
+
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pen = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val eraseStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
@@ -81,10 +87,12 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         pendingContent?.let { content!!.drawBitmap(it, null, RectF(0f, 0f, cw.toFloat(), ch.toFloat()), null); pendingContent = null }
         strokeBmp = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888); strokeLayer = Canvas(strokeBmp!!)
         undo.clear(); redo.clear()
-        computeDisplay(); invalidate()
+        resetZoom(); computeDisplay(); invalidate()
     }
 
-    fun rotate() { rotationQ = (rotationQ + 1) % 4; computeDisplay(); invalidate() }
+    private fun resetZoom() { userM.reset(); userScale = 1f; pinching = false; prevDist = 0f }
+
+    fun rotate() { rotationQ = (rotationQ + 1) % 4; resetZoom(); computeDisplay(); invalidate() }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         if (cw == 0 && w > 0 && h > 0) initCanvas(w, h) else { computeDisplay(); invalidate() }
@@ -100,7 +108,21 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         disp.postRotate(rotationQ * 90f)
         disp.postScale(fitScale, fitScale)
         disp.postTranslate(width / 2f, height / 2f)
+        disp.postConcat(userM)          // apply pinch zoom/pan last, in view space
         disp.invert(inv)
+    }
+
+    /** Keeps the zoomed content from drifting fully off-screen; recentres when not zoomed. */
+    private fun clampAndRefresh() {
+        computeDisplay()
+        val r = RectF(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(r)
+        var ax = 0f; var ay = 0f
+        if (r.width() >= width) { if (r.left > 0) ax = -r.left else if (r.right < width) ax = width - r.right }
+        else ax = (width - r.width()) / 2f - r.left
+        if (r.height() >= height) { if (r.top > 0) ay = -r.top else if (r.bottom < height) ay = height - r.bottom }
+        else ay = (height - r.height()) / 2f - r.top
+        if (ax != 0f || ay != 0f) { userM.postTranslate(ax, ay); computeDisplay() }
+        invalidate()
     }
 
     private fun paintPaper(c: Canvas, w: Int, h: Int) {
@@ -147,18 +169,35 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         return out
     }
 
-    // ---- touch (single finger only) ----
+    // ---- touch (one finger draws, two fingers pinch-zoom/pan) ----
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!drawEnabled) return false
-        // ignore any secondary pointers entirely (no multi-finger gestures)
         val now = System.currentTimeMillis()
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val p = mapPoint(e.x, e.y); acc = 0f; lx = p[0]; ly = p[1]; lt = now
                 beginStroke(lx, ly)
             }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (e.pointerCount == 2) {
+                    if (strokeStarted) discardStroke()   // don't leave a stray dot when zoom begins
+                    pinching = true
+                    prevDist = spacing(e); prevMidX = midX(e); prevMidY = midY(e)
+                }
+            }
             MotionEvent.ACTION_MOVE -> {
-                if (strokeStarted) {
+                if (pinching && e.pointerCount >= 2) {
+                    val d = spacing(e); val mx = midX(e); val my = midY(e)
+                    if (prevDist > 0f) {
+                        var ds = d / prevDist
+                        val ns = (userScale * ds).coerceIn(1f, 5f); ds = ns / userScale; userScale = ns
+                        userM.postScale(ds, ds, mx, my)
+                        userM.postTranslate(mx - prevMidX, my - prevMidY)
+                        if (userScale <= 1.001f) resetZoom()
+                        clampAndRefresh()
+                    }
+                    prevDist = d; prevMidX = mx; prevMidY = my
+                } else if (strokeStarted && !pinching) {
                     val p = mapPoint(e.x, e.y); val x = p[0]; val y = p[1]
                     val dd = hypot(x - lx, y - ly); val v = dd / max(1L, now - lt)
                     strokeMove(lx, ly, x, y, v); lx = x; ly = y; lt = now; invalidate()
@@ -166,9 +205,21 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (strokeStarted) endStroke()
+                pinching = false; prevDist = 0f
             }
         }
         return true
+    }
+
+    private fun spacing(e: MotionEvent): Float = hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1))
+    private fun midX(e: MotionEvent): Float = (e.getX(0) + e.getX(1)) / 2f
+    private fun midY(e: MotionEvent): Float = (e.getY(0) + e.getY(1)) / 2f
+
+    /** Undo the in-progress stroke without recording it (used when a pinch takes over). */
+    private fun discardStroke() {
+        base?.let { b -> content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) } }
+        undo.removeLastOrNull()
+        strokeStarted = false; base = null; invalidate()
     }
 
     private val tmp = FloatArray(2)

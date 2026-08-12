@@ -23,7 +23,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BorderColor
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
@@ -103,19 +102,19 @@ fun BrushControls(
             if (onBack != null || pageLabel != null || onRotate != null) VDivider()
 
             BrushBtn(!erasing && brush == BrushType.PEN, { onBrush(BrushType.PEN) }) { t ->
-                Icon(Icons.Filled.BorderColor, "볼펜", tint = t, modifier = Modifier.size(24.dp))
+                Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
             BrushBtn(!erasing && brush == BrushType.PENCIL, { onBrush(BrushType.PENCIL) }) { t ->
-                Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(26.dp))
+                Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
             BrushBtn(!erasing && brush == BrushType.CRAYON, { onBrush(BrushType.CRAYON) }) { t ->
-                Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(26.dp))
+                Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
             BrushBtn(!erasing && brush == BrushType.WATER, { onBrush(BrushType.WATER) }) { t ->
-                Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(26.dp))
+                Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
             BrushBtn(erasing, { onToggleErase() }) { t ->
-                Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(26.dp))
+                Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
 
             VDivider()
@@ -194,7 +193,7 @@ private class AboveAnchor(private val gapPx: Int) : PopupPositionProvider {
 private fun BrushBtn(selected: Boolean, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-    Box(Modifier.size(42.dp).clickable { onClick() }, contentAlignment = Alignment.Center) { icon(tint) }
+    Box(Modifier.size(60.dp).clickable { onClick() }, contentAlignment = Alignment.Center) { icon(tint) }
 }
 
 @Composable
