@@ -1,40 +1,33 @@
 # G1 Sketchbook — Progress
 
-실시간 공유 스케치북 (Android + Jetpack Compose + Firebase). 친구·커플이 하나의 방(room)에서
-매일 함께 그리고, 하루치 그림이 갤러리에 영구 보관되는 앱.
+아날로그 감성의 공유 스케치북 앱 (Android + Compose + Firebase). 브러시 감성이 핵심.
+전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
-- **Firebase 실연결**: 프로젝트 `g1-sketchbook`. Google 로그인 동작 (SHA-1 등록, 웹 OAuth 클라이언트 생성,
-  코드가 `default_web_client_id` 자동 생성값 사용). `app/google-services.json`은 실제 값.
-- **매일 자정 자동 아카이빙** (v1.1.0): `work/DailyArchive.kt`
-  - WorkManager 원타임 워커가 자정에 전날 캔버스를 렌더→저장, 다음 자정 재예약 (`ArchiveScheduler`).
-  - 놓친 날 보정: 방 입장 시 `CanvasViewModel.bind`에서 `archiveDayIfNeeded(어제)` 호출.
-- **무료 저장 전환** (v1.1.0): Firebase Storage(유료 Blaze 필요) 제거.
-  스냅샷을 WebP 압축 후 Base64로 **Realtime Database**의 `rooms/{roomId}/archive/{date}`에 저장.
-  `ArchiveEntry.url` → `ArchiveEntry.image(base64)`. 갤러리는 Base64 디코딩해 표시.
-- **UI 리디자인** (v1.1.0): 크림+네이비+동화풍 팔레트 (`ui/theme/Theme.kt`, 라이트 전용).
-  Welcome(네이비)·Home(카드형)·캔버스 떠있는 툴바.
-- **릴리스**: v1.0.0(초기) → v1.0.1(로그인 동작) → v1.1.0(아카이빙+디자인). 각 릴리스에 디버그 APK 첨부.
+- **Phase 0 — 브러시 엔진** (v1.7.x): `brush/BrushView.kt` (bitmap 백엔드 스탬프 엔진), `brush/BrushPlaygroundScreen.kt`.
+  - 볼펜(레이어 합성, 불투명도 균일) · 연필(디스크 그레인, 직접 누적) · 크레파스(큰 입자 1.5×, 성김) · 수채화(Tyler-Hobbs 다각형, multiply 대신 레이어 합성).
+  - 브러시별 폭 배율: 볼펜1× 연필1.5× 크레파스3× 수채화6× (`scaleFor()`).
+  - 거리 누적 스탬프로 속도 무관. 배경 = 실제 수채화 종이(`drawable-nodpi/paper_watercolor.jpg`).
+- **Phase 1 — 골격** (v1.8.0): 스플래시→로그인→별명→메인.
+  - `ui/RootViewModel` (auth·별명·테마·탭), `ui/SplashScreen`, `ui/NicknameScreen`, `ui/main/MainScreen`(5탭).
+  - 5탭: 스케치북·그림일기·홈·일기달력·설정(하이라이트). 홈=대시보드+브러시놀이터. 설정=테마(시스템/라이트/다크)+로그아웃.
+  - 다크모드 추가(`ui/theme/Theme.kt` ThemeMode). SessionStore에 nickname·themeMode 저장.
 
-## Next
-- 시안(참고 이미지)의 미구현 화면 = **신규 기능**:
-  - 여러 스케치북 목록/커버 그리드 + 하단 탭(Home/Sketchbooks) — 현재는 1방 단위 모델.
-  - 용지 크기/비율 선택(New sketchbook), 계정 설정 화면(Edit avatar/Notifications/…).
-  - 커스텀 손그림 마스코트/일러스트(지금은 이모지 플레이스홀더).
-- 갤러리 상세 보기(이미지 탭 시 크게), 아카이브 삭제.
-- `observeArchive`가 archive 노드 전체(base64 포함)를 한 번에 읽음 → 항목 많아지면
-  메타데이터/이미지 경로 분리 고려.
+## Next (Phase 2~4)
+- **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
+  - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
+- **Phase 3 — 그림일기 + 달력**: 개인 전용, 사용자당 1개, 날짜별 1장, 자정 잠금(이미지화). 달력(가로 4:3 / 세로 상단달력+하단일기), 이미지 저장.
+- **Phase 4 — 마감**: 홈 대시보드 실기능(새 스케치북/참여/즐겨찾기), 계정(아바타), 색상휠+팔레트 UI.
 
 ## Decisions
-- **Storage 대신 RTDB+Base64**: 사용자가 무료(Spark) 유지 선택. 카드 등록 불필요.
-  이미지 작게 유지: `MAX_DIMEN=720`, `QUALITY=60`.
-- **자정 아카이빙은 클라이언트(WorkManager)**: Cloud Functions 스케줄러는 Blaze 전용이라 제외.
-  → 정확히 자정 보장 X(Doze/전원off), 그래서 "방 입장 시 보정"으로 신뢰성 확보.
-- **라이트 테마 고정**: 따뜻한 종이 디자인이라 다크스킴 없음.
+- 브러시 = PNG/스탬프 감성 최우선. 연해/중심선/각짐 문제는 "웹 놀이터와 동일 코드(디스크+직접 누적)"로 해결.
+- 백엔드: 지금은 무료(RTDB+Base64), Repository로 감싸 후에 이전(A안).
+- 그림일기: 개인 전용·사용자당 1개.
+- 회전 제스처 없음. 라이트/다크 지원.
+- 버전 매 업로드마다 bump + 새 태그(vX.Y.Z), 덮어쓰기 금지.
 
 ## Open / Blockers
-- **빌드 JDK**: 로컬에 standalone JDK 없음. Android Studio 번들 JBR(21) 사용.
-  사용자 환경변수 `JAVA_HOME = C:\Program Files\Android\Android Studio\jbr` 설정됨.
-  CLI 빌드 시 이 JAVA_HOME 필요.
-- **Realtime Database 보안 규칙**: 테스트 모드일 가능성 높음 → 배포 전 `auth != null` 등으로 잠글 것.
-- **Storage 미사용**: `firebase-storage` 의존성 제거함. 다시 쓰려면 Blaze 업그레이드 필요.
+- **빌드 잠금**: VS Code Java/Kotlin 언어서버가 `app/build/.../R.jar`를 잠가 CLI 빌드가 IOException. 대응: 빌드 전 해당 java 프로세스(kotlinLanguageServer/redhat.java/.vscode\extensions) kill 후 R.jar 삭제(사용자가 권한 허용함). `.vscode/settings.json`에 Java 자동빌드/Gradle import off + build 감시 제외 넣음.
+- 빌드 JDK: standalone 없음 → Android Studio JBR. `JAVA_HOME=C:\Program Files\Android\Android Studio\jbr`.
+- 구식 룸 기반 UI(HomeScreen/CanvasScreen/GalleryScreen/AppViewModel 등)는 현재 미사용(dormant). Phase 2에서 정리/대체 예정. 데이터층(RoomRepository/ArchiveRepository/DailyArchive/WorkManager)은 재활용 검토.
+- Realtime DB 보안 규칙 배포 전 잠글 것.
