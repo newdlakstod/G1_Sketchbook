@@ -64,6 +64,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     // gesture state
     private var gestureMode = false
+    private var gestureActive = false     // true only once fingers move past the dead zone
     private var strokeStarted = false
     private var maxPointers = 1
     private var downTime = 0L
@@ -139,23 +140,34 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         val now = System.currentTimeMillis()
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                gestureMode = false; strokeStarted = false; maxPointers = 1; downTime = now
+                gestureMode = false; gestureActive = false; strokeStarted = false; maxPointers = 1; downTime = now
                 acc = 0f; lx = cx(e.x); ly = cy(e.y); lt = now
+                beginStroke(lx, ly)   // draw from the first touch (reliable on all screen sizes)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 maxPointers = max(maxPointers, e.pointerCount)
                 if (e.pointerCount >= 2) {
                     if (strokeStarted) cancelStroke()   // a second finger => this was never a drawing
-                    gestureMode = true
+                    gestureMode = true; gestureActive = false
                     gStartSpan = span(e); val f = focus(e); gStartFx = f.first; gStartFy = f.second
                     gPrevSpan = gStartSpan; gPrevFx = gStartFx; gPrevFy = gStartFy
                 }
             }
             MotionEvent.ACTION_MOVE -> {
                 if (gestureMode) {
-                    if (!zoomLocked && e.pointerCount >= 2) pinchPan(e)
-                } else if (e.pointerCount == 1) {
-                    if (!strokeStarted) beginStroke(lx, ly)
+                    val s = span(e); val f = focus(e)
+                    if (!gestureActive &&
+                        (kotlin.math.abs(s - gStartSpan) > 24f || hypot(f.first - gStartFx, f.second - gStartFy) > 24f)) {
+                        gestureActive = true // moved past the dead zone -> it's a real pinch/pan, not a tap
+                    }
+                    if (gestureActive && !zoomLocked && e.pointerCount >= 2 && gPrevSpan > 0f) {
+                        val ns = (scale * (s / gPrevSpan)).coerceIn(1f, 5f)
+                        offX = f.first - (f.first - offX) * (ns / scale) + (f.first - gPrevFx)
+                        offY = f.second - (f.second - offY) * (ns / scale) + (f.second - gPrevFy)
+                        scale = ns; clampPan(); invalidate()
+                    }
+                    gPrevSpan = s; gPrevFx = f.first; gPrevFy = f.second
+                } else if (strokeStarted && e.pointerCount == 1) {
                     val x = cx(e.x); val y = cy(e.y); val dd = hypot(x - lx, y - ly); val v = dd / max(1L, now - lt)
                     strokeMove(lx, ly, x, y, v); lx = x; ly = y; lt = now; invalidate()
                 }
@@ -163,15 +175,12 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             MotionEvent.ACTION_POINTER_UP -> { /* stay in gesture until all fingers up */ }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (gestureMode) {
-                    val dt = now - downTime
-                    val spanCh = kotlin.math.abs(gPrevSpan - gStartSpan)
-                    val focusMove = hypot(gPrevFx - gStartFx, gPrevFy - gStartFy)
-                    if (dt < 280 && spanCh < 60f && focusMove < 60f && maxPointers >= 2) {
-                        if (maxPointers >= 3) redo() else undo()   // 2-finger tap = undo, 3-finger = redo
+                    // A tap (never left the dead zone) toggles undo/redo — and never changes the zoom.
+                    if (!gestureActive && (now - downTime) < 400 && maxPointers >= 2) {
+                        if (maxPointers >= 3) redo() else undo()
                     }
                 } else if (strokeStarted) endStroke()
-                else { beginStroke(lx, ly); endStroke() }          // single tap = a dot
-                gestureMode = false; strokeStarted = false; maxPointers = 1
+                gestureMode = false; gestureActive = false; strokeStarted = false; maxPointers = 1
             }
         }
         return true
@@ -180,18 +189,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun span(e: MotionEvent) = if (e.pointerCount < 2) 0f else hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1))
     private fun focus(e: MotionEvent): Pair<Float, Float> =
         if (e.pointerCount < 2) e.x to e.y else ((e.getX(0) + e.getX(1)) / 2) to ((e.getY(0) + e.getY(1)) / 2)
-
-    private fun pinchPan(e: MotionEvent) {
-        val s = span(e); val f = focus(e)
-        if (gPrevSpan > 0f) {
-            val ns = (scale * (s / gPrevSpan)).coerceIn(1f, 5f)
-            offX = f.first - (f.first - offX) * (ns / scale) + (f.first - gPrevFx)
-            offY = f.second - (f.second - offY) * (ns / scale) + (f.second - gPrevFy)
-            scale = ns
-        }
-        gPrevSpan = s; gPrevFx = f.first; gPrevFy = f.second
-        clampPan(); invalidate()
-    }
 
     private fun beginStroke(x: Float, y: Float) { pushUndo(); strokePrep(); strokeStart(x, y); strokeStarted = true; invalidate() }
     private fun cancelStroke() { restoreBase(); undo.removeLastOrNull(); strokeStarted = false; invalidate() }
