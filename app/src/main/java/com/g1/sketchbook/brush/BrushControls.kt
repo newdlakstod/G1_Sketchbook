@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -193,7 +194,8 @@ private class AboveAnchor(private val gapPx: Int) : PopupPositionProvider {
 private fun BrushBtn(selected: Boolean, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-    Box(Modifier.size(60.dp).clickable { onClick() }, contentAlignment = Alignment.Center) { icon(tint) }
+    // Button footprint stays at the original 42dp; the enlarged icon is cropped to fit inside it.
+    Box(Modifier.size(42.dp).clipToBounds().clickable { onClick() }, contentAlignment = Alignment.Center) { icon(tint) }
 }
 
 @Composable

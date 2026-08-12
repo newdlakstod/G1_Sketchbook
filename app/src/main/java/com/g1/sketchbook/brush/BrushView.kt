@@ -95,7 +95,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     fun rotate() { rotationQ = (rotationQ + 1) % 4; resetZoom(); computeDisplay(); invalidate() }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
-        if (cw == 0 && w > 0 && h > 0) initCanvas(w, h) else { computeDisplay(); invalidate() }
+        // A resize (fold/rotate) invalidates the old view-space zoom, so drop back to fit.
+        if (cw == 0 && w > 0 && h > 0) initCanvas(w, h) else { resetZoom(); computeDisplay(); invalidate() }
     }
 
     private fun computeDisplay() {
@@ -175,6 +176,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         val now = System.currentTimeMillis()
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                pinching = false
                 val p = mapPoint(e.x, e.y); acc = 0f; lx = p[0]; ly = p[1]; lt = now
                 beginStroke(lx, ly)
             }
@@ -202,6 +204,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     val dd = hypot(x - lx, y - ly); val v = dd / max(1L, now - lt)
                     strokeMove(lx, ly, x, y, v); lx = x; ly = y; lt = now; invalidate()
                 }
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                // Dropping back to one finger ends the pinch; the leftover finger must not start
+                // a stray stroke, so we just clear pinch state (a fresh DOWN will draw next).
+                if (e.pointerCount <= 2) { pinching = false; prevDist = 0f }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (strokeStarted) endStroke()
