@@ -70,7 +70,7 @@ fun MainScreen(
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                0 -> Placeholder("스케치북", "개인 · 공유 스케치북 목록\n(다음 단계에서 구현)")
+                0 -> com.g1.sketchbook.sketchbook.SketchbookTab()
                 1 -> Placeholder("그림일기", "오늘의 그림일기 캔버스\n(다음 단계에서 구현)")
                 2 -> HomeTab(nickname)
                 3 -> Placeholder("일기달력", "지난 그림일기를 달력으로\n(다음 단계에서 구현)")

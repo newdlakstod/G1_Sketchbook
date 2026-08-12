@@ -41,7 +41,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var strokeBmp: Bitmap? = null
     private var strokeLayer: Canvas? = null
     private var base: Bitmap? = null            // pre-stroke copy, for compositing this stroke
+    private var pendingContent: Bitmap? = null  // saved page to draw once the view is sized
     private val undo = ArrayDeque<Bitmap>()
+
+    /** Callback fired after each finished stroke, for autosave. */
+    var onStrokeEnd: (() -> Unit)? = null
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pen = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -58,10 +62,27 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         if (w <= 0 || h <= 0) return
         val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(b); paintPaper(c, w, h)
+        pendingContent?.let { c.drawBitmap(it, null, RectF(0f, 0f, w.toFloat(), h.toFloat()), null); pendingContent = null }
         bmp = b; layer = c
         strokeBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); strokeLayer = Canvas(strokeBmp!!)
         invalidate()
     }
+
+    /** Loads a saved page image (drawn over the paper). Call before/after sizing — both work. */
+    fun loadContent(saved: Bitmap?) {
+        undo.clear()
+        val c = layer
+        if (c != null && width > 0 && height > 0) {
+            paintPaper(c, width, height)
+            saved?.let { c.drawBitmap(it, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), null) }
+            invalidate()
+        } else {
+            pendingContent = saved
+        }
+    }
+
+    /** Current canvas as a bitmap (paper + strokes), for saving. */
+    fun exportBitmap(): Bitmap? = bmp?.copy(Bitmap.Config.ARGB_8888, false)
 
     private fun paintPaper(c: Canvas, w: Int, h: Int) {
         val p = paper
@@ -101,7 +122,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 if (layered) composite()
                 lx = x; ly = y; lt = now; invalidate()
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> base = null
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { base = null; onStrokeEnd?.invoke() }
         }
         return true
     }
