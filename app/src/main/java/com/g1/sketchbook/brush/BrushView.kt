@@ -89,7 +89,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             MotionEvent.ACTION_DOWN -> {
                 pushUndo(); acc = 0f; lx = x; ly = y; lt = System.currentTimeMillis()
                 if (layered) strokePrep()
-                val r0 = if (brush == BrushType.WATER) strokeSize else strokeSize / 2f // watercolor is 2x
+                val r0 = strokeSize / 2f * scaleFor()
                 if (brush == BrushType.PEN) penDot(x, y) else stampDispatch(x, y, r0)
                 if (layered) composite()
                 invalidate()
@@ -135,9 +135,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     // ---- textured brushes: distance-accumulated stamping (matches the web demo) ----
     private fun seg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
-        var r = strokeSize / 2f
-        if (brush == BrushType.PENCIL) r *= (1 - minOf(0.45f, speed * 0.06f)) // crayon/water: no speed
-        if (brush == BrushType.WATER) r *= 2f // watercolor brush is twice as wide
+        var r = strokeSize / 2f * scaleFor()
+        if (brush == BrushType.PENCIL) r *= (1 - minOf(0.45f, speed * 0.06f)) // speed thinning
         r = max(1f, r)
         val spacing = when (brush) { BrushType.WATER -> r * 0.6f; BrushType.CRAYON -> r * 0.30f; else -> r * 0.20f }
         val dx = x1 - x0; val dy = y1 - y0; val d = hypot(dx, dy); if (d == 0f) return
@@ -145,6 +144,14 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         var dist = spacing - acc; if (dist < 0) dist = 0f
         while (dist <= d) { stampDispatch(x0 + nx * dist, y0 + ny * dist, r); dist += spacing }
         acc = d - (dist - spacing)
+    }
+
+    /** Per-brush width multiplier relative to the slider value. */
+    private fun scaleFor(): Float = when (brush) {
+        BrushType.PEN -> 1f
+        BrushType.PENCIL -> 1.5f
+        BrushType.CRAYON -> 3f
+        BrushType.WATER -> 6f
     }
 
     private fun stampDispatch(x: Float, y: Float, r: Float) {
