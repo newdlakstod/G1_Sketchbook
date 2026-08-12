@@ -1,9 +1,11 @@
 package com.g1.sketchbook.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -47,6 +49,26 @@ private val LightColors = lightColorScheme(
     error = Color(0xFFC0553B),
 )
 
+private val DarkColors = darkColorScheme(
+    primary = Color(0xFF8FB0F0),
+    onPrimary = Color(0xFF10203F),
+    primaryContainer = Color(0xFF2B3D63),
+    onPrimaryContainer = Color(0xFFD7E2FA),
+    secondary = Color(0xFFAFC488),
+    onSecondary = Color(0xFF1A2410),
+    tertiary = Color(0xFFEBA268),
+    onTertiary = Color(0xFF3A2410),
+    background = Color(0xFF15171F),
+    onBackground = Color(0xFFECE6D6),
+    surface = Color(0xFF1E2230),
+    onSurface = Color(0xFFECE6D6),
+    surfaceVariant = Color(0xFF2A2E3C),
+    onSurfaceVariant = Color(0xFFB4AE9C),
+    outline = Color(0xFF3A3F4E),
+    outlineVariant = Color(0xFF2C3140),
+    error = Color(0xFFE0785C),
+)
+
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(10.dp),
     small = RoundedCornerShape(14.dp),
@@ -65,12 +87,20 @@ private val AppTypography = Typography().run {
     )
 }
 
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
 @Composable
 fun G1Theme(
+    mode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit,
 ) {
+    val dark = when (mode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
     MaterialTheme(
-        colorScheme = LightColors,
+        colorScheme = if (dark) DarkColors else LightColors,
         typography = AppTypography,
         shapes = AppShapes,
         content = content,

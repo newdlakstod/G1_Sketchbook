@@ -18,6 +18,18 @@ class SessionStore(context: Context) {
             if (value == null) remove(KEY_ROOM) else putString(KEY_ROOM, value)
         }.apply()
 
+    /** User's chosen nickname (null until they set it after first sign-in). */
+    var nickname: String?
+        get() = prefs.getString(KEY_NICK, null)
+        set(value) = prefs.edit().apply {
+            if (value.isNullOrBlank()) remove(KEY_NICK) else putString(KEY_NICK, value)
+        }.apply()
+
+    /** Theme preference: "system" | "light" | "dark". */
+    var themeMode: String
+        get() = prefs.getString(KEY_THEME, "system") ?: "system"
+        set(value) = prefs.edit().putString(KEY_THEME, value).apply()
+
     /** Sketchbooks the user knows about, most-recently-opened first. */
     fun sketchbooks(): List<SketchbookRef> {
         val raw = prefs.getString(KEY_BOOKS, null) ?: return emptyList()
@@ -50,6 +62,8 @@ class SessionStore(context: Context) {
     companion object {
         private const val KEY_ROOM = "current_room"
         private const val KEY_BOOKS = "sketchbooks"
+        private const val KEY_NICK = "nickname"
+        private const val KEY_THEME = "theme_mode"
         private const val MAX_BOOKS = 30
     }
 }
