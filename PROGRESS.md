@@ -102,6 +102,10 @@
 
 - **컬러 조정 + 버튼 바운스** (v1.35.0): 주조색=밝은 베이지(bg `#F4F0E7`, surface `#FFFDF8`, surfaceVariant `#EBE5D7`), 세이지=보조(secondary)로 강등. `Ivory #F6F1E6`=onPrimary/미색. 온보딩 Splash/Login 배경=토프 `#CEC0BB`. 네비 선택 원=primary(navy), 아이콘=onPrimary(ivory). `ui/Interactions.kt`의 `Modifier.bounceClick`(스케일 스프링, 리플 없음) → 탭슬롯/홈카드/MiniCover/CoverCard/BrushBtn/IconBtn/색스와치에 적용. (Material Button은 기본 리플 유지 — 필요시 확장.)
 
+- **달력 6×7 + 상세 정렬 + 마법사 아이콘화** (v1.36.0):
+  - `CalendarTable` 6주×7열 그리드 + 요일 헤더를 테두리 밖(위)으로. `DiaryDetailView`: 헤더(64dp, 중앙 제목+뒤로/액션 아이콘) → 요일/일(그림 좌우 끝 정렬) → 이미지가 `weight(1f).fillMaxWidth()`로 달력표 footprint 채움(Fit). 여백 horizontal 20/vertical 14.
+  - 생성 마법사 `WizardChoice(icon,...)` 아이콘화: 개인=Book, 공유생성=Groups, 참여=Login(원형 secondaryContainer).
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
