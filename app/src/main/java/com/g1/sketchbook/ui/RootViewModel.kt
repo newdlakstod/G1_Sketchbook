@@ -19,7 +19,7 @@ data class RootState(
     val error: String? = null,
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val avatar: String = "🦆",
-    val tab: Int = 2, // Home is the centre tab
+    val tab: Int = 0, // Home is the first tab
     val openBookId: String? = null, // when set, a sketchbook canvas is shown full-screen
     val openDiaryDate: String? = null, // when set, the diary editor for this date is full-screen
     val uid: String? = null,        // Firebase uid, needed for shared sketchbooks

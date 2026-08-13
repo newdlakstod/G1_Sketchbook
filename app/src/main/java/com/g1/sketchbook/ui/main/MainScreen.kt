@@ -10,9 +10,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,11 +40,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -87,36 +89,55 @@ fun MainScreen(
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                NavItem(tab, 0, Icons.Filled.Book, "스케치북", onTab)
-                NavItem(tab, 1, Icons.Filled.CalendarMonth, "일기", onTab)
-                NavItem(tab, 2, Icons.Filled.Home, "홈", onTab)
-                NavItem(tab, 3, Icons.Filled.Settings, "설정", onTab)
-            }
-        },
+        bottomBar = { FloatingNavBar(tab, onTab) },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                0 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook)
-                1 -> com.g1.sketchbook.diary.DiaryCalendarScreen(onOpenDiary)
-                2 -> HomeTab(nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(0) })
+                0 -> HomeTab(nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(1) })
+                1 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook)
+                2 -> com.g1.sketchbook.diary.DiaryCalendarScreen(onOpenDiary)
                 else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
             }
         }
     }
 }
 
+/** Floating pill nav bar; the selected item rises into a white circle (icons only, no labels). */
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.NavItem(
-    current: Int, index: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onTab: (Int) -> Unit,
-) {
-    NavigationBarItem(
-        selected = current == index,
-        onClick = { onTab(index) },
-        icon = { Icon(icon, contentDescription = label) },
-        label = { Text(label, fontSize = 11.sp) },
-    )
+private fun FloatingNavBar(tab: Int, onTab: (Int) -> Unit) {
+    val icons = listOf(Icons.Filled.Home, Icons.Filled.Book, Icons.Filled.CalendarMonth, Icons.Filled.Settings)
+    val descs = listOf("홈", "스케치북", "일기", "설정")
+    Box(
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 10.dp).height(86.dp),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(34.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp,
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(62.dp),
+        ) {}
+        Row(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(62.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icons.forEachIndexed { i, icon ->
+                val selected = i == tab
+                Box(Modifier.weight(1f).fillMaxHeight().clickable { onTab(i) }, contentAlignment = Alignment.Center) {
+                    if (selected) {
+                        Surface(
+                            shape = CircleShape, color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp,
+                            modifier = Modifier.size(58.dp).offset(y = (-18).dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(icon, descs[i], tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                            }
+                        }
+                    } else {
+                        Icon(icon, descs[i], tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(26.dp))
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
