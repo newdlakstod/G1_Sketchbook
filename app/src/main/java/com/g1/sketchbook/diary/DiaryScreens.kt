@@ -158,11 +158,12 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
     var marked by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(year, month) { marked = withContext(Dispatchers.IO) { datesWithDiary(repo, year, month) } }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
+        Spacer(Modifier.height(200.dp))
         Box(Modifier.fillMaxWidth()) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$year", fontFamily = Cavorting, fontSize = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 84.sp, color = MaterialTheme.colorScheme.onSurface)
+                Text("$year", fontFamily = Cavorting, fontSize = 60.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 110.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             }
             IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd)) {
                 Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary)
@@ -174,8 +175,7 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
                 Icon(Icons.Filled.ChevronRight, "다음 달")
             }
         }
-        // Push the grid toward the bottom with breathing room above it.
-        Spacer(Modifier.weight(0.28f))
+        Spacer(Modifier.height(24.dp))
         AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth())
     }
 }
@@ -213,7 +213,7 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
         Row(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
             WeekHeaders.forEach { wd ->
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text(wd, fontFamily = Cavorting, fontSize = 19.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(wd, fontFamily = Cavorting, fontSize = 25.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -226,7 +226,7 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
                                     if (date == today) Box(Modifier.size(38.dp).shadow(4.dp, CircleShape).background(TodayPink))
-                                    Text("$day", fontFamily = Cavorting, fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("$day", fontFamily = Cavorting, fontSize = 21.sp, color = MaterialTheme.colorScheme.onSurface)
                                 }
                                 Box(Modifier.padding(top = 3.dp).size(6.dp).clip(CircleShape)
                                     .background(if (date in marked) DiaryDot else Color.Transparent))
@@ -252,16 +252,17 @@ fun CleanCalendarScreen(year: Int, month: Int, onBack: () -> Unit) {
     BackHandler { if (detailDate != null) detailDate = null else onBack() }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()
-        .padding(horizontal = 44.dp, vertical = 20.dp)) {
+        .padding(start = 44.dp, end = 44.dp, top = 30.dp, bottom = 30.dp)) {
+        // Shared title — identical for slide 3 and slide 4.
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$year", fontFamily = Cavorting, fontSize = 30.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(MonthNames[month], fontFamily = Cavorting, fontSize = 70.sp, maxLines = 1)
+        }
+        Spacer(Modifier.height(14.dp))
         if (detailDate == null) {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$year", fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 32.sp)
-            }
-            Spacer(Modifier.height(14.dp))
             CleanGrid(year, month, thumbs, Modifier.weight(1f).fillMaxWidth()) { detailDate = it }
         } else {
-            CleanDetail(repo, detailDate!!, Modifier.fillMaxSize())
+            CleanDetailBody(repo, detailDate!!, Modifier.weight(1f).fillMaxWidth())
         }
     }
 }
@@ -303,18 +304,14 @@ private fun CleanGrid(year: Int, month: Int, thumbs: Map<String, ImageBitmap>, m
 }
 
 @Composable
-private fun CleanDetail(repo: DiaryRepository, date: String, modifier: Modifier) {
+private fun CleanDetailBody(repo: DiaryRepository, date: String, modifier: Modifier) {
     val bmp = remember(date) { repo.load(date) }
     val parts = date.split("-")
-    val y = parts[0].toInt(); val m = parts[1].toInt(); val d = parts[2].toInt()
-    val cal = remember(date) { Calendar.getInstance().apply { set(y, m - 1, d) } }
+    val d = parts[2].toInt()
+    val cal = remember(date) { Calendar.getInstance().apply { set(parts[0].toInt(), parts[1].toInt() - 1, d) } }
     val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
     Column(modifier) {
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$y", fontFamily = Cavorting, fontSize = 26.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(MonthNames[m - 1], fontFamily = Cavorting, fontSize = 56.sp)
-        }
-        Spacer(Modifier.height(8.dp))
+        // Weekday / day aligned to the frame's left / right edges (title comes from the shared header).
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(weekday, fontFamily = Cavorting, fontSize = 40.sp, modifier = Modifier.weight(1f))
             Text("$d${ordinal(d)}", fontFamily = Cavorting, fontSize = 40.sp)
