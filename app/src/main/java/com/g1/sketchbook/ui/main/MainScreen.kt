@@ -89,13 +89,14 @@ fun MainScreen(
     onSetAvatar: (String) -> Unit,
     onOpenBook: (String) -> Unit,
     onOpenDiary: (String) -> Unit,
+    onOpenCalendar: (Int, Int) -> Unit,
 ) {
     val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val content: @Composable () -> Unit = {
         when (tab) {
             0 -> HomeTab(nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(1) })
             1 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook)
-            2 -> com.g1.sketchbook.diary.DiaryCalendarScreen(onOpenDiary)
+            2 -> com.g1.sketchbook.diary.DiaryCalendarScreen(onOpenDiary, onOpenCalendar)
             else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
         }
     }

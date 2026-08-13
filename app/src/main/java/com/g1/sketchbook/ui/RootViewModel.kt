@@ -22,6 +22,7 @@ data class RootState(
     val tab: Int = 0, // Home is the first tab
     val openBookId: String? = null, // when set, a sketchbook canvas is shown full-screen
     val openDiaryDate: String? = null, // when set, the diary editor for this date is full-screen
+    val cleanCalendar: Pair<Int, Int>? = null, // (year, month) → full-screen clean calendar (slides 3/4)
     val uid: String? = null,        // Firebase uid, needed for shared sketchbooks
 )
 
@@ -77,6 +78,8 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun closeBook() { _state.value = _state.value.copy(openBookId = null) }
     fun openDiary(date: String) { _state.value = _state.value.copy(openDiaryDate = date) }
     fun closeDiary() { _state.value = _state.value.copy(openDiaryDate = null) }
+    fun openCleanCalendar(year: Int, month: Int) { _state.value = _state.value.copy(cleanCalendar = year to month) }
+    fun closeCleanCalendar() { _state.value = _state.value.copy(cleanCalendar = null) }
 
     fun setTheme(mode: ThemeMode) {
         graph.sessionStore.themeMode = mode.name.lowercase()

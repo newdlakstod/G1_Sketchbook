@@ -45,6 +45,9 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
             state.openDiaryDate != null -> com.g1.sketchbook.diary.DiaryEditorScreen(
                 date = state.openDiaryDate!!, onBack = vm::closeDiary,
             )
+            state.cleanCalendar != null -> com.g1.sketchbook.diary.CleanCalendarScreen(
+                year = state.cleanCalendar!!.first, month = state.cleanCalendar!!.second, onBack = vm::closeCleanCalendar,
+            )
             else -> MainScreen(
                 nickname = state.nickname ?: "친구",
                 avatar = state.avatar,
@@ -58,6 +61,7 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
                 onSetAvatar = vm::setAvatar,
                 onOpenBook = vm::openBook,
                 onOpenDiary = vm::openDiary,
+                onOpenCalendar = vm::openCleanCalendar,
             )
         }
     }

@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -54,23 +55,34 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.random.Random
 import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.sketchbook.Catalog
+import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Cavorting
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -132,53 +144,37 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
 
 // ---------------- 일기달력 (browse past diaries) ----------------
 
+/** Slide 2 — calendar tab: huge month title, edit/prev/next, and an airy (borderless) month grid.
+ *  Tapping the grid opens the clean full-screen calendar (slides 3/4). */
 @Composable
-fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit) {
+fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int) -> Unit) {
     val ctx = LocalContext.current
     val repo = remember { DiaryRepository(ctx) }
     val today = remember { repo.today() }
     val now = remember { Calendar.getInstance() }
     var year by remember { mutableIntStateOf(now.get(Calendar.YEAR)) }
     var month by remember { mutableIntStateOf(now.get(Calendar.MONTH)) } // 0-based
-    var selected by remember { mutableStateOf(today) }
-    var detailDate by remember { mutableStateOf<String?>(null) } // portrait: a day's diary is shown
-    var thumbs by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
-    LaunchedEffect(year, month) { thumbs = withContext(Dispatchers.IO) { buildThumbs(repo, year, month) } }
+    var marked by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(year, month) { marked = withContext(Dispatchers.IO) { datesWithDiary(repo, year, month) } }
 
-    val portrait = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
-
-    // Portrait detail: tap a day → show its diary with a dated header (back returns to the calendar).
-    if (portrait && detailDate != null) {
-        BackHandler { detailDate = null }
-        DiaryDetailView(repo, detailDate!!, today, onBack = { detailDate = null }, onOpenDiary = onOpenDiary,
-            modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 50.dp, vertical = 14.dp))
-        return
-    }
-
-    Column(Modifier.fillMaxSize().padding(horizontal = 50.dp, vertical = 14.dp)) {
-        Box(Modifier.fillMaxWidth().height(64.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
+        Box(Modifier.fillMaxWidth()) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$year", fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 30.sp)
+                Text("$year", fontFamily = Cavorting, fontSize = 30.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 56.sp, color = MaterialTheme.colorScheme.onSurface)
             }
-            IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Filled.Edit, "오늘 일기 그리기")
+            IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd)) {
+                Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary)
             }
-            Row(Modifier.align(Alignment.CenterEnd)) {
-                IconButton(onClick = { if (month == 0) { month = 11; year-- } else month-- }) { Icon(Icons.Filled.ChevronLeft, "이전 달") }
-                IconButton(onClick = { if (month == 11) { month = 0; year++ } else month++ }) { Icon(Icons.Filled.ChevronRight, "다음 달") }
+            IconButton(onClick = { if (month == 0) { month = 11; year-- } else month-- }, modifier = Modifier.align(Alignment.CenterStart)) {
+                Icon(Icons.Filled.ChevronLeft, "이전 달")
             }
-        }
-        Spacer(Modifier.height(12.dp))
-        if (portrait) {
-            CalendarTable(year, month, thumbs, selected = null, today, onDayClick = { detailDate = it }, Modifier.fillMaxSize())
-        } else {
-            Row(Modifier.fillMaxSize()) {
-                CalendarTable(year, month, thumbs, selected, today, onDayClick = { selected = it }, Modifier.weight(1.35f).fillMaxHeight())
-                Spacer(Modifier.width(16.dp))
-                DiarySidePanel(repo, selected, today, onOpenDiary, Modifier.weight(1f).fillMaxHeight())
+            IconButton(onClick = { if (month == 11) { month = 0; year++ } else month++ }, modifier = Modifier.align(Alignment.CenterEnd)) {
+                Icon(Icons.Filled.ChevronRight, "다음 달")
             }
         }
+        Spacer(Modifier.height(24.dp))
+        AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth())
     }
 }
 
@@ -187,6 +183,8 @@ private val FullWeekdays = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "T
 private val MonthNames = listOf("January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December")
 private const val A4_RATIO = 210f / 297f   // portrait A4 (w/h), matches the diary canvas
+private val TodayPink = Color(0xFFE3B7B7)
+private val DiaryDot = Color(0xFF8FA07E)
 
 private fun ordinal(d: Int): String = when {
     d in 11..13 -> "th"
@@ -194,28 +192,87 @@ private fun ordinal(d: Int): String = when {
     else -> "th"
 }
 
-/** 6×7 grid (6 week rows) with the weekday header pulled above the border; every month fits.
- *  Day number sits top-right; thumbnails crop into their cell. */
-@Composable
-private fun CalendarTable(
-    year: Int, month: Int, thumbs: Map<String, ImageBitmap>, selected: String?, today: String,
-    onDayClick: (String) -> Unit, modifier: Modifier = Modifier,
-) {
-    val cal = remember(year, month) { Calendar.getInstance().apply { set(year, month, 1) } }
-    val firstDow = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0=Sun
+private fun monthCells(year: Int, month: Int): List<Int> {
+    val cal = Calendar.getInstance().apply { set(year, month, 1) }
+    val firstDow = cal.get(Calendar.DAY_OF_WEEK) - 1
     val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
-    val cells = buildList {
+    return buildList {
         repeat(firstDow) { add(0) }
         for (d in 1..days) add(d)
         while (size < 42) add(0)   // 6 week rows × 7 columns
     }
+}
+
+/** Airy borderless month: today wears a pink disc, days with a diary get a dot below the number. */
+@Composable
+private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: String, onTap: () -> Unit, modifier: Modifier = Modifier) {
+    val cells = remember(year, month) { monthCells(year, month) }
+    Column(modifier.bounceClick { onTap() }) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+            WeekHeaders.forEach { wd ->
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(wd, fontFamily = Cavorting, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        cells.chunked(7).forEach { week ->
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                week.forEach { day ->
+                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        if (day > 0) {
+                            val date = "%04d-%02d-%02d".format(year, month + 1, day)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                                    if (date == today) Box(Modifier.size(34.dp).clip(CircleShape).background(TodayPink))
+                                    Text("$day", fontFamily = Cavorting, fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface)
+                                }
+                                Box(Modifier.padding(top = 3.dp).size(6.dp).clip(CircleShape)
+                                    .background(if (date in marked) DiaryDot else Color.Transparent))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Slides 3 & 4 — clean, bar-less full-screen: a bordered 6×7 month (day thumbnails); tapping a day
+ *  swaps the grid for that day's sketch inside a hand-drawn frame. Kept UI-free so it can be captured. */
+@Composable
+fun CleanCalendarScreen(year: Int, month: Int, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    val repo = remember { DiaryRepository(ctx) }
+    var thumbs by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
+    LaunchedEffect(year, month) { thumbs = withContext(Dispatchers.IO) { buildThumbs(repo, year, month) } }
+    var detailDate by remember { mutableStateOf<String?>(null) }
+
+    BackHandler { if (detailDate != null) detailDate = null else onBack() }
+
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()
+        .padding(horizontal = 24.dp, vertical = 18.dp)) {
+        if (detailDate == null) {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("$year", fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 32.sp)
+            }
+            Spacer(Modifier.height(14.dp))
+            CleanGrid(year, month, thumbs, Modifier.weight(1f).fillMaxWidth()) { detailDate = it }
+        } else {
+            CleanDetail(repo, detailDate!!, Modifier.fillMaxSize())
+        }
+    }
+}
+
+@Composable
+private fun CleanGrid(year: Int, month: Int, thumbs: Map<String, ImageBitmap>, modifier: Modifier, onDay: (String) -> Unit) {
+    val cells = remember(year, month) { monthCells(year, month) }
     val line = MaterialTheme.colorScheme.outlineVariant
     Column(modifier) {
-        // Weekday header, outside (above) the bordered grid.
         Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
             WeekHeaders.forEach { wd ->
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text(wd, fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
+                    Text(wd, fontFamily = Cavorting, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -226,16 +283,13 @@ private fun CalendarTable(
                         Box(Modifier.weight(1f).fillMaxHeight().border(0.5.dp, line)) {
                             if (day > 0) {
                                 val date = "%04d-%02d-%02d".format(year, month + 1, day)
-                                val isToday = date == today
-                                Box(Modifier.fillMaxSize().clickable { onDayClick(date) }) {
+                                Box(Modifier.fillMaxSize().clickable { onDay(date) }) {
                                     thumbs[date]?.let {
                                         Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                     }
                                     Text("$day", fontFamily = Cavorting, fontSize = 14.sp,
                                         color = if (thumbs[date] != null) Color.White else MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.align(Alignment.TopEnd).padding(end = 5.dp, top = 3.dp))
-                                    if (isToday) Box(Modifier.fillMaxSize().border(2.dp, MaterialTheme.colorScheme.primary))
-                                    else if (date == selected) Box(Modifier.fillMaxSize().border(2.dp, MaterialTheme.colorScheme.tertiary))
                                 }
                             }
                         }
@@ -246,55 +300,30 @@ private fun CalendarTable(
     }
 }
 
-/** Full-width dated view of one day's diary (portrait), styled after the sample: month/year on top,
- *  weekday + ordinal day, then the framed image. */
 @Composable
-private fun DiaryDetailView(repo: DiaryRepository, date: String, today: String, onBack: () -> Unit,
-                            onOpenDiary: (String) -> Unit, modifier: Modifier = Modifier) {
-    val ctx = LocalContext.current
+private fun CleanDetail(repo: DiaryRepository, date: String, modifier: Modifier) {
     val bmp = remember(date) { repo.load(date) }
     val parts = date.split("-")
     val y = parts[0].toInt(); val m = parts[1].toInt(); val d = parts[2].toInt()
     val cal = remember(date) { Calendar.getInstance().apply { set(y, m - 1, d) } }
     val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
-
     Column(modifier) {
-        // Header mirrors the calendar header (same height) so the image below lands in the table's spot.
-        Box(Modifier.fillMaxWidth().height(64.dp)) {
-            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$y", fontFamily = Cavorting, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MonthNames[m - 1], fontFamily = Cavorting, fontSize = 32.sp)
-            }
-            IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "달력으로")
-            }
-            if (date == today) {
-                IconButton(onClick = { onOpenDiary(date) }, modifier = Modifier.align(Alignment.CenterEnd)) {
-                    Icon(Icons.Filled.Edit, "그리기")
-                }
-            } else if (bmp != null) {
-                IconButton(onClick = { Toast.makeText(ctx, saveToGallery(ctx, bmp, "diary_$date"), Toast.LENGTH_SHORT).show() },
-                    modifier = Modifier.align(Alignment.CenterEnd)) {
-                    Icon(Icons.Filled.Save, "이미지 저장")
-                }
-            }
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$y", fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(MonthNames[m - 1], fontFamily = Cavorting, fontSize = 32.sp)
         }
-        // Weekday / day aligned to the image's left / right edges.
-        Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(weekday, fontFamily = Cavorting, fontSize = 24.sp, modifier = Modifier.weight(1f))
             Text("$d${ordinal(d)}", fontFamily = Cavorting, fontSize = 24.sp)
         }
-        Spacer(Modifier.height(8.dp))
-        // Image occupies the same footprint the calendar table did.
-        Box(
-            Modifier.weight(1f).fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .border(2.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
+        Spacer(Modifier.height(10.dp))
+        // Hand-drawn frame; the sketch is cropped to fill it.
+        Box(Modifier.weight(1f).fillMaxWidth().padding(4.dp).sketchBorder(MaterialTheme.colorScheme.onSurface),
+            contentAlignment = Alignment.Center) {
             if (bmp != null) {
-                Image(bmp.asImageBitmap(), date, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                Image(bmp.asImageBitmap(), date, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().padding(7.dp).clip(RoundedCornerShape(4.dp)))
             } else {
                 Text("이 날의 일기가 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
@@ -302,31 +331,42 @@ private fun DiaryDetailView(repo: DiaryRepository, date: String, today: String, 
     }
 }
 
-@Composable
-private fun DiarySidePanel(repo: DiaryRepository, date: String, today: String, onOpenDiary: (String) -> Unit, modifier: Modifier = Modifier) {
-    val ctx = LocalContext.current
-    val bmp = remember(date) { repo.load(date) }
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(date, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Spacer(Modifier.height(8.dp))
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Box(Modifier.fillMaxHeight().aspectRatio(A4_RATIO).clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
-                if (bmp != null) {
-                    Image(bmp.asImageBitmap(), date, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
-                } else {
-                    Text("이 날의 일기가 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                }
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        if (date == today) {
-            Button(onClick = { onOpenDiary(date) }, shape = MaterialTheme.shapes.small) { Text("오늘 일기 그리기") }
-        } else {
-            Button(onClick = { bmp?.let { Toast.makeText(ctx, saveToGallery(ctx, it, "diary_$date"), Toast.LENGTH_SHORT).show() } },
-                enabled = bmp != null, shape = MaterialTheme.shapes.small) { Text("이미지 저장") }
+/** A wobbly, hand-drawn rectangle stroke drawn behind the content. */
+private fun Modifier.sketchBorder(color: Color, stroke: Dp = 3.dp): Modifier = this.drawBehind {
+    val sw = stroke.toPx()
+    val rnd = Random(7)
+    val step = 26f
+    val pts = ArrayList<Offset>()
+    fun edge(fromX: Float, fromY: Float, toX: Float, toY: Float) {
+        val dx = toX - fromX; val dy = toY - fromY
+        val len = hypot(dx, dy); if (len == 0f) return
+        val nx = -dy / len; val ny = dx / len
+        val n = max(2, (len / step).toInt())
+        for (i in 0..n) {
+            val t = i.toFloat() / n
+            val j = (rnd.nextFloat() - 0.5f) * sw * 1.6f
+            pts.add(Offset(fromX + dx * t + nx * j, fromY + dy * t + ny * j))
         }
     }
+    val l = sw; val t = sw; val r = size.width - sw; val b = size.height - sw
+    edge(l, t, r, t); edge(r, t, r, b); edge(r, b, l, b); edge(l, b, l, t)
+    val path = Path().apply {
+        moveTo(pts[0].x, pts[0].y)
+        for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
+        close()
+    }
+    drawPath(path, color, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
+}
+
+private fun datesWithDiary(repo: DiaryRepository, year: Int, month: Int): Set<String> {
+    val cal = Calendar.getInstance().apply { set(year, month, 1) }
+    val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val set = HashSet<String>()
+    for (d in 1..days) {
+        val date = "%04d-%02d-%02d".format(year, month + 1, d)
+        if (repo.hasEntry(date)) set.add(date)
+    }
+    return set
 }
 
 private fun buildThumbs(repo: DiaryRepository, year: Int, month: Int): Map<String, ImageBitmap> {
