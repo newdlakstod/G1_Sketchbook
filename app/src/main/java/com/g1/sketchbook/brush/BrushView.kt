@@ -41,7 +41,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var onStrokeEnd: (() -> Unit)? = null
 
     private var cw = 0; private var ch = 0
-    private var paperBmp: Bitmap? = null
     private var contentBmp: Bitmap? = null
     private var content: Canvas? = null
     private var strokeBmp: Bitmap? = null
@@ -67,6 +66,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val eraseStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
     private val eraseFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
     private val compositeP = Paint()
+    private val paperPaint = Paint(Paint.FILTER_BITMAP_FLAG)   // smooth, full-quality paper scaling
     private val path = Path()
     private val rnd = Random(7)
 
@@ -76,12 +76,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     /** Creates the canvas bitmaps at [w]x[h] px (capped for memory). Call once when opening a page-set. */
     fun initCanvas(w: Int, h: Int) {
-        val cap = 1600
+        val cap = 3308   // full 200-dpi A3 (2339×3307) fits; smaller sizes stay at their native px
         val s = min(1f, cap.toFloat() / max(w, h))
         val nw = max(1, (w * s).toInt()); val nh = max(1, (h * s).toInt())
         if (nw == cw && nh == ch && contentBmp != null) return
         cw = nw; ch = nh
-        paperBmp = Bitmap.createBitmap(cw, ch, Bitmap.Config.RGB_565).also { paintPaper(Canvas(it), cw, ch) }
         contentBmp = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888)
         content = Canvas(contentBmp!!)
         pendingContent?.let { content!!.drawBitmap(it, null, RectF(0f, 0f, cw.toFloat(), ch.toFloat()), null); pendingContent = null }
@@ -130,19 +129,20 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         invalidate()
     }
 
-    private fun paintPaper(c: Canvas, w: Int, h: Int) {
+    /** Draws the original paper bitmap (cover-fit, filtered for quality) across the canvas rect. */
+    private fun drawPaper(c: Canvas) {
         val p = paper
         if (p != null) {
-            val s = max(w.toFloat() / p.width, h.toFloat() / p.height)
+            val s = max(cw.toFloat() / p.width, ch.toFloat() / p.height)
             val dw = p.width * s; val dh = p.height * s
-            c.drawBitmap(p, null, RectF((w - dw) / 2, (h - dh) / 2, (w - dw) / 2 + dw, (h - dh) / 2 + dh), null)
+            c.drawBitmap(p, null, RectF((cw - dw) / 2, (ch - dh) / 2, (cw - dw) / 2 + dw, (ch - dh) / 2 + dh), paperPaint)
         } else c.drawColor(0xFFFBF6EA.toInt())
     }
 
     override fun onDraw(c: Canvas) {
         val cb = contentBmp ?: return
         c.save(); c.concat(disp)
-        paperBmp?.let { c.drawBitmap(it, 0f, 0f, null) }
+        drawPaper(c)
         c.drawBitmap(cb, 0f, 0f, null)
         c.restore()
     }
@@ -154,7 +154,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun pushUndo() { snapshotTo(undo); redo.clear() }
     private fun snapshotTo(stack: ArrayDeque<Bitmap>) {
         val b = contentBmp ?: return
-        stack.addLast(b.copy(Bitmap.Config.ARGB_8888, false)); if (stack.size > 6) stack.removeFirst()
+        stack.addLast(b.copy(Bitmap.Config.ARGB_8888, false)); if (stack.size > 4) stack.removeFirst()
     }
 
     fun loadContent(saved: Bitmap?) {
@@ -168,9 +168,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
 
     fun exportBitmap(): Bitmap? {
-        val p = paperBmp ?: return contentBmp?.copy(Bitmap.Config.ARGB_8888, false)
+        if (contentBmp == null || cw <= 0) return null
         val out = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888)
-        val c = Canvas(out); c.drawBitmap(p, 0f, 0f, null); contentBmp?.let { c.drawBitmap(it, 0f, 0f, null) }
+        val c = Canvas(out); drawPaper(c); contentBmp?.let { c.drawBitmap(it, 0f, 0f, null) }
         return out
     }
 
