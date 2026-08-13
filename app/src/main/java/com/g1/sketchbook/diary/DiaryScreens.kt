@@ -30,8 +30,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -137,28 +139,40 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit) {
     var year by remember { mutableIntStateOf(now.get(Calendar.YEAR)) }
     var month by remember { mutableIntStateOf(now.get(Calendar.MONTH)) } // 0-based
     var selected by remember { mutableStateOf(today) }
+    var detailDate by remember { mutableStateOf<String?>(null) } // portrait: a day's diary is shown
     var thumbs by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
     LaunchedEffect(year, month) { thumbs = withContext(Dispatchers.IO) { buildThumbs(repo, year, month) } }
 
     val portrait = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
 
+    // Portrait detail: tap a day → show its diary with a dated header (back returns to the calendar).
+    if (portrait && detailDate != null) {
+        BackHandler { detailDate = null }
+        DiaryDetailView(repo, detailDate!!, today, onBack = { detailDate = null }, onOpenDiary = onOpenDiary,
+            modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp))
+        return
+    }
+
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("$year", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(Modifier.fillMaxWidth().height(56.dp)) {
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("$year", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(MonthNames[month], fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
             }
-            IconButton(onClick = { if (month == 0) { month = 11; year-- } else month-- }) { Icon(Icons.Filled.ChevronLeft, "이전 달") }
-            IconButton(onClick = { if (month == 11) { month = 0; year++ } else month++ }) { Icon(Icons.Filled.ChevronRight, "다음 달") }
-            Spacer(Modifier.width(4.dp))
-            Button(onClick = { onOpenDiary(today) }, shape = MaterialTheme.shapes.small) { Text("오늘 일기 ✏️") }
+            IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.CenterStart)) {
+                Icon(Icons.Filled.Edit, "오늘 일기 그리기")
+            }
+            Row(Modifier.align(Alignment.CenterEnd)) {
+                IconButton(onClick = { if (month == 0) { month = 11; year-- } else month-- }) { Icon(Icons.Filled.ChevronLeft, "이전 달") }
+                IconButton(onClick = { if (month == 11) { month = 0; year++ } else month++ }) { Icon(Icons.Filled.ChevronRight, "다음 달") }
+            }
         }
         Spacer(Modifier.height(12.dp))
         if (portrait) {
-            CalendarTable(year, month, thumbs, selected, today, { onOpenDiary(it) }, { selected = it }, Modifier.fillMaxSize())
+            CalendarTable(year, month, thumbs, selected = null, today, onDayClick = { detailDate = it }, Modifier.fillMaxSize())
         } else {
             Row(Modifier.fillMaxSize()) {
-                CalendarTable(year, month, thumbs, selected, today, { onOpenDiary(it) }, { selected = it }, Modifier.weight(1.35f).fillMaxHeight())
+                CalendarTable(year, month, thumbs, selected, today, onDayClick = { selected = it }, Modifier.weight(1.35f).fillMaxHeight())
                 Spacer(Modifier.width(16.dp))
                 DiarySidePanel(repo, selected, today, onOpenDiary, Modifier.weight(1f).fillMaxHeight())
             }
@@ -167,16 +181,23 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit) {
 }
 
 private val WeekHeaders = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+private val FullWeekdays = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 private val MonthNames = listOf("January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December")
 private const val A4_RATIO = 210f / 297f   // portrait A4 (w/h), matches the diary canvas
 
+private fun ordinal(d: Int): String = when {
+    d in 11..13 -> "th"
+    d % 10 == 1 -> "st"; d % 10 == 2 -> "nd"; d % 10 == 3 -> "rd"
+    else -> "th"
+}
+
 /** 7×7 linear table (weekday header row + 6 week rows) so every month fits; day thumbnails are
- *  cropped into their cell. Tapping today opens its editor; other days just select. */
+ *  cropped into their cell. Day number sits top-right (matches the sample). */
 @Composable
 private fun CalendarTable(
-    year: Int, month: Int, thumbs: Map<String, ImageBitmap>, selected: String, today: String,
-    onOpen: (String) -> Unit, onSelect: (String) -> Unit, modifier: Modifier = Modifier,
+    year: Int, month: Int, thumbs: Map<String, ImageBitmap>, selected: String?, today: String,
+    onDayClick: (String) -> Unit, modifier: Modifier = Modifier,
 ) {
     val cal = remember(year, month) { Calendar.getInstance().apply { set(year, month, 1) } }
     val firstDow = cal.get(Calendar.DAY_OF_WEEK) - 1 // 0=Sun
@@ -189,13 +210,9 @@ private fun CalendarTable(
     val line = MaterialTheme.colorScheme.outlineVariant
     Column(modifier.border(1.dp, MaterialTheme.colorScheme.outline)) {
         Row(Modifier.weight(1f).fillMaxWidth()) {
-            WeekHeaders.forEachIndexed { i, wd ->
+            WeekHeaders.forEach { wd ->
                 Box(Modifier.weight(1f).fillMaxHeight().border(0.5.dp, line), contentAlignment = Alignment.Center) {
-                    Text(wd, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                        color = when (i) {
-                            0 -> Color(0xFFD05B5B); 6 -> Color(0xFF4A73B0)
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        })
+                    Text(wd, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -205,21 +222,72 @@ private fun CalendarTable(
                     Box(Modifier.weight(1f).fillMaxHeight().border(0.5.dp, line)) {
                         if (day > 0) {
                             val date = "%04d-%02d-%02d".format(year, month + 1, day)
-                            val sel = date == selected
                             val isToday = date == today
-                            Box(Modifier.fillMaxSize().clickable { if (isToday) onOpen(date) else onSelect(date) }) {
+                            Box(Modifier.fillMaxSize().clickable { onDayClick(date) }) {
                                 thumbs[date]?.let {
                                     Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                 }
                                 Text("$day", fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                     color = if (thumbs[date] != null) Color.White else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(start = 4.dp, top = 2.dp))
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp, top = 2.dp))
                                 if (isToday) Box(Modifier.fillMaxSize().border(2.dp, MaterialTheme.colorScheme.primary))
-                                else if (sel) Box(Modifier.fillMaxSize().border(2.dp, MaterialTheme.colorScheme.tertiary))
+                                else if (date == selected) Box(Modifier.fillMaxSize().border(2.dp, MaterialTheme.colorScheme.tertiary))
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Full-width dated view of one day's diary (portrait), styled after the sample: month/year on top,
+ *  weekday + ordinal day, then the framed image. */
+@Composable
+private fun DiaryDetailView(repo: DiaryRepository, date: String, today: String, onBack: () -> Unit,
+                            onOpenDiary: (String) -> Unit, modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    val bmp = remember(date) { repo.load(date) }
+    val parts = date.split("-")
+    val y = parts[0].toInt(); val m = parts[1].toInt(); val d = parts[2].toInt()
+    val cal = remember(date) { Calendar.getInstance().apply { set(y, m - 1, d) } }
+    val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
+
+    Column(modifier) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$y", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(MonthNames[m - 1], fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(weekday, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("$d${ordinal(d)}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(12.dp))
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.fillMaxHeight().aspectRatio(A4_RATIO)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(2.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (bmp != null) {
+                    Image(bmp.asImageBitmap(), date, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                } else {
+                    Text("이 날의 일기가 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "달력으로") }
+            Spacer(Modifier.weight(1f))
+            if (date == today) {
+                Button(onClick = { onOpenDiary(date) }, shape = MaterialTheme.shapes.small) { Text("그리기") }
+            } else {
+                Button(onClick = { bmp?.let { Toast.makeText(ctx, saveToGallery(ctx, it, "diary_$date"), Toast.LENGTH_SHORT).show() } },
+                    enabled = bmp != null, shape = MaterialTheme.shapes.small) { Text("이미지 저장") }
             }
         }
     }
