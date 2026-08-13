@@ -323,6 +323,7 @@ private fun SketchbookListScreen(
     onDelete: (Sketchbook) -> Unit,
     onToggleFav: (Sketchbook) -> Unit,
 ) {
+    var pendingDelete by remember { mutableStateOf<Sketchbook?>(null) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = { FloatingActionButton(onClick = onCreate) { Icon(Icons.Filled.Add, "새 스케치북") } },
@@ -345,18 +346,32 @@ private fun SketchbookListScreen(
                     if (personal.isNotEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("내 스케치북") }
                         itemsIndexed(personal, key = { _, b -> b.id }) { i, b ->
-                            CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { onDelete(b) }, { onToggleFav(b) })
+                            CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { pendingDelete = b }, { onToggleFav(b) })
                         }
                     }
                     if (shared.isNotEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("함께 그린 스케치북") }
                         itemsIndexed(shared, key = { _, b -> b.id }) { i, b ->
-                            CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { onDelete(b) }, { onToggleFav(b) })
+                            CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { pendingDelete = b }, { onToggleFav(b) })
                         }
                     }
                 }
             }
         }
+    }
+
+    pendingDelete?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("스케치북 삭제") },
+            text = { Text("'${target.name}' 을(를) 삭제할까요?\n안에 그린 그림도 함께 사라지고 되돌릴 수 없어요.") },
+            confirmButton = {
+                TextButton(onClick = { onDelete(target); pendingDelete = null }) {
+                    Text("삭제", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("취소") } },
+        )
     }
 }
 
@@ -376,9 +391,13 @@ private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDele
         ) {
             Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(0.66f).align(Alignment.Center).padding(start = 12.dp))
-            Text(book.name, color = Color(0xFFF3ECD9), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
-                maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 8.dp, bottom = 12.dp))
+            Column(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 8.dp, bottom = 12.dp)) {
+                Text(book.name, color = Color(0xFFF3ECD9), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val meta = if (book.shared && book.code != null) "🤝 ${book.code} · ${book.pageCount}쪽" else "${book.pageCount}쪽"
+                Text(meta, color = Color(0xFFF3ECD9).copy(alpha = 0.8f), fontSize = 10.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
+            }
         }
         IconButton(onClick = onToggleFav, modifier = Modifier.align(Alignment.TopStart).size(30.dp)) {
             Icon(Icons.Filled.Star, "즐겨찾기",
