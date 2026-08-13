@@ -111,7 +111,7 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
     BackHandler { onBack() }
     // Full-bleed canvas at A4 portrait ratio (opens full-screen, like a sketchbook).
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
             val ratio = cw.toFloat() / ch
             val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
             val h = w / ratio
@@ -168,13 +168,13 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
             IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd)) {
                 Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary)
             }
-            Box(Modifier.align(Alignment.CenterStart).size(72.dp)
+            Box(Modifier.align(Alignment.CenterStart).size(48.dp)
                 .bounceClick { if (month == 0) { month = 11; year-- } else month-- }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.size(64.dp))
+                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.size(35.dp))
             }
-            Box(Modifier.align(Alignment.CenterEnd).size(72.dp)
+            Box(Modifier.align(Alignment.CenterEnd).size(48.dp)
                 .bounceClick { if (month == 11) { month = 0; year++ } else month++ }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.size(64.dp))
+                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.size(35.dp))
             }
         }
         Spacer(Modifier.height(24.dp))

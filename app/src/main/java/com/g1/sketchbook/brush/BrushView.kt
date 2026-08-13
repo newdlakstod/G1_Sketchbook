@@ -174,6 +174,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         return out
     }
 
+    /** Just the strokes (no paper) — the right thing to persist for a page you'll reload into the editor. */
+    fun exportContent(): Bitmap? = contentBmp?.copy(Bitmap.Config.ARGB_8888, false)
+
     // ---- touch (one finger draws, two fingers pinch-zoom/pan) ----
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!drawEnabled) return false

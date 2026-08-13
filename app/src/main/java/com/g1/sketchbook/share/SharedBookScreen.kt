@@ -120,9 +120,10 @@ fun SharedBookScreen(
         val b = view?.exportBitmap() ?: return
         scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) }
     }
+    // Sync save of the current page (strokes only) before any page load — avoids the switch race.
     fun saveLocal() {
-        val v = view; val pg = page; val b = v?.exportBitmap()
-        if (b != null) scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, b) }
+        val v = view ?: return; val pg = page; val b = v.exportContent() ?: return
+        sbRepo.savePage(book.id, pg, b)
     }
     fun goTo(p: Int) { saveLocal(); page = p; view?.loadContent(sbRepo.loadPage(book.id, p)); pushMine() }
     fun addPage() {
@@ -154,11 +155,8 @@ fun SharedBookScreen(
         v.erasing = erasing
         v.onStrokeEnd = {
             val pg = page
-            val b = v.exportBitmap()
-            if (b != null) {
-                scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, b) }
-                scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) }
-            }
+            v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
+            v.exportBitmap()?.let { b -> scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) } } // partner: with paper
         }
     }
     BackHandler { saveLocal(); onBack() }
@@ -192,7 +190,7 @@ fun SharedBookScreen(
             }
         }
 
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(8.dp)) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
             val landscape = maxWidth > maxHeight
             val mw = maxWidth; val mh = maxHeight   // capture out of the layout-scope marker
             val mine = remember {

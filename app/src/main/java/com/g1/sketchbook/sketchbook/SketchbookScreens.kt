@@ -441,8 +441,9 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var pageCount by remember { mutableIntStateOf(book.pageCount) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
-    // Capture the page number NOW so an async save always targets the right page (fixes content loss).
-    fun saveCurrent() { val v = view; val pg = page; val b = v?.exportBitmap(); if (b != null) scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } }
+    // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
+    // switch can't read the file before an async write finishes (that race dropped recent strokes).
+    fun saveCurrent() { val v = view ?: return; val pg = page; val b = v.exportContent() ?: return; repo.savePage(book.id, pg, b) }
     fun goTo(p: Int) { saveCurrent(); page = p; view?.loadContent(repo.loadPage(book.id, p)) }
     fun addPage() { if (pageCount < MAX_PAGES) { saveCurrent(); pageCount++; repo.setPageCount(book.id, pageCount); page = pageCount - 1; view?.loadContent(null) } }
     fun deletePage() {
@@ -459,7 +460,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
 
     BackHandler { saveCurrent(); onBack() }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
-        Box(Modifier.weight(1f).fillMaxWidth().padding(8.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth().padding(24.dp)) {
             // BrushView fills the whole area and fits/auto-rotates the fixed-size page inside it.
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
@@ -474,7 +475,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 update = { v ->
                     v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
                     v.erasing = erasing
-                    v.onStrokeEnd = { val pg = page; v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
+                    v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
         }
