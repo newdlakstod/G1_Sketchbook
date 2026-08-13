@@ -31,16 +31,19 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -92,8 +95,23 @@ fun BrushControls(
     onAddPage: (() -> Unit)? = null,
     onDeletePage: (() -> Unit)? = null,
 ) {
-    var panel by remember { mutableIntStateOf(0) } // 0 none, 1 width, 2 opacity
+    var panel by remember { mutableIntStateOf(0) } // 0 none, 1 width, 2 opacity, 3 color
+    var confirmClear by remember { mutableStateOf(false) }
     val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("전체 지우기") },
+            text = { Text("이 페이지의 그림을 모두 지울까요? 되돌리기로 복구할 수 있어요.") },
+            confirmButton = {
+                TextButton(onClick = { confirmClear = false; onClear() }) {
+                    Text("전체 지우기", color = Color(0xFFE85555))
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("취소") } },
+        )
+    }
 
     Surface(
         shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
@@ -175,7 +193,7 @@ fun BrushControls(
 
             IconBtn(Icons.AutoMirrored.Filled.Undo, "되돌리기", onClick = onUndo)
             IconBtn(Icons.AutoMirrored.Filled.Redo, "다시 실행", onClick = onRedo)
-            IconBtn(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555), onClick = onClear)
+            IconBtn(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555), onClick = { confirmClear = true })
         }
     }
 }

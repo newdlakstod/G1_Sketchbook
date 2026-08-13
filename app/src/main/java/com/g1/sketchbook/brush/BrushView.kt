@@ -287,25 +287,31 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun stampDispatch(x: Float, y: Float, r: Float) {
         when (brush) { BrushType.PENCIL -> stampPencil(x, y, r); BrushType.CRAYON -> stampCrayon(x, y, r); BrushType.WATER -> stampWater(x, y, r); else -> {} }
     }
+    /** Canvas px per screen px — grains scale by this so they stay visible when the canvas (e.g. A4)
+     *  is much larger than the view it's shown in (like a small split pane). */
+    private fun grainPx() = (1f / fitScale).coerceIn(1f, 5f)
+
     private fun stampPencil(x: Float, y: Float, r: Float) {
         val c = content ?: return
-        val n = max(5f, r * r * 0.7f).toInt()
+        val g = grainPx()
+        val n = min(900, max(5f, r * r * 0.7f).toInt())
         for (i in 0 until n) {
             val a = rnd.nextFloat() * 6.2832f; val rr = Math.pow(rnd.nextDouble(), 0.7).toFloat() * r * 1.15f
             val sx = x + cos(a) * rr; val sy = y + sin(a) * rr
-            val al = (0.06f + rnd.nextFloat() * 0.5f) * opacity; val ss = if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f
+            val al = (0.06f + rnd.nextFloat() * 0.5f) * opacity; val ss = (if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f) * g
             fill.color = withAlpha(color, al); c.drawRect(sx, sy, sx + ss, sy + ss, fill)
         }
     }
     private fun stampCrayon(x: Float, y: Float, r: Float) {
         val c = content ?: return
-        val m = max(10f, r * r * 0.55f).toInt()
+        val g = grainPx()
+        val m = min(800, max(10f, r * r * 0.55f).toInt())
         for (j in 0 until m) {
             val a = rnd.nextFloat() * 6.2832f; val rr = rnd.nextFloat() * r * 1.15f; val edge = rr / (r * 1.15f)
             if (rnd.nextFloat() > (0.15f + 0.85f * edge)) continue
             val cxp = x + cos(a) * rr; val cyp = y + sin(a) * rr
             fill.color = withAlpha(color, (0.18f + rnd.nextFloat() * 0.6f) * opacity)
-            val s = 1.5f + rnd.nextFloat() * 3f; c.drawRect(cxp, cyp, cxp + s, cyp + s, fill)
+            val s = (1.5f + rnd.nextFloat() * 3f) * g; c.drawRect(cxp, cyp, cxp + s, cyp + s, fill)
         }
     }
     private fun stampWater(x: Float, y: Float, r: Float) {

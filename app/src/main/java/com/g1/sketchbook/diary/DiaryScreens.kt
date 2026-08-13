@@ -64,6 +64,7 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
+import com.g1.sketchbook.sketchbook.Catalog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
@@ -72,7 +73,6 @@ import java.util.Calendar
 
 // ---------------- 그림일기 (today's editable canvas) ----------------
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiaryScreen() {
     val ctx = LocalContext.current
@@ -86,27 +86,22 @@ fun DiaryScreen() {
     var sizeDp by remember { mutableFloatStateOf(10f) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
+    val size = remember { Catalog.size("a4") }
+    val cw = size.pxW(); val ch = size.pxH()
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = { TopAppBar(title = { Text("오늘의 그림일기 · $today", fontSize = 15.sp, fontWeight = FontWeight.Bold) }) },
-        bottomBar = {
-            BrushControls(brush, color, sizeDp, opacity, erasing,
-                onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
-                onSize = { sizeDp = it }, onOpacity = { opacity = it }, onToggleErase = { erasing = !erasing },
-                onUndo = { view?.undo() }, onRedo = { view?.redo() },
-                onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(today, b) } } },
-                onRotate = { view?.rotate() })
-        },
-    ) { padding ->
-        BoxWithConstraints(Modifier.padding(padding).fillMaxSize().padding(12.dp), contentAlignment = Alignment.Center) {
-            val side = if (maxWidth <= maxHeight) maxWidth else maxHeight
-            Box(Modifier.size(side)) {
+    // Full-bleed canvas (no title bar) at A4 portrait ratio.
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
+            val ratio = cw.toFloat() / ch
+            val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
+            val h = w / ratio
+            Box(Modifier.width(w).height(h)) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { c ->
                         BrushView(c).also { v ->
                             v.paper = BitmapFactory.decodeResource(c.resources, R.drawable.paper_watercolor)
+                            v.initCanvas(cw, ch)
                             v.loadContent(repo.load(today))
                             view = v
                         }
@@ -119,6 +114,12 @@ fun DiaryScreen() {
                 )
             }
         }
+        BrushControls(brush, color, sizeDp, opacity, erasing,
+            onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
+            onSize = { sizeDp = it }, onOpacity = { opacity = it }, onToggleErase = { erasing = !erasing },
+            onUndo = { view?.undo() }, onRedo = { view?.redo() },
+            onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(today, b) } } },
+            onRotate = { view?.rotate() })
     }
 }
 
@@ -145,9 +146,8 @@ fun DiaryCalendarScreen() {
         }
         Spacer(Modifier.height(10.dp))
         if (portrait) {
+            // Portrait: calendar only (no per-date image panel).
             CalendarGrid(year, month, thumbs, selected, { selected = it }, Modifier.fillMaxWidth())
-            Spacer(Modifier.height(16.dp))
-            DiaryPanel(repo, selected, Modifier.weight(1f))
         } else {
             Row(Modifier.fillMaxSize()) {
                 CalendarGrid(year, month, thumbs, selected, { selected = it }, Modifier.weight(1f))
@@ -159,6 +159,7 @@ fun DiaryCalendarScreen() {
 }
 
 private val WeekHeaders = listOf("일", "월", "화", "수", "목", "금", "토")
+private const val A4_RATIO = 210f / 297f   // portrait A4 (w/h), matches the diary canvas
 
 @Composable
 private fun CalendarGrid(
@@ -182,7 +183,7 @@ private fun CalendarGrid(
         cells.chunked(7).forEach { week ->
             Row(Modifier.fillMaxWidth()) {
                 week.forEach { day ->
-                    Box(Modifier.weight(1f).aspectRatio(1f).padding(2.dp)) {
+                    Box(Modifier.weight(1f).aspectRatio(A4_RATIO).padding(2.dp)) {
                         if (day > 0) {
                             val date = "%04d-%02d-%02d".format(year, month + 1, day)
                             val sel = date == selected
@@ -214,7 +215,7 @@ private fun DiaryPanel(repo: DiaryRepository, date: String, modifier: Modifier =
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(date, fontWeight = FontWeight.Bold, fontSize = 15.sp)
         Spacer(Modifier.height(8.dp))
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp))
+        Box(Modifier.fillMaxWidth().aspectRatio(A4_RATIO).clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
             if (bmp != null) {
                 Image(bmp.asImageBitmap(), date, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
