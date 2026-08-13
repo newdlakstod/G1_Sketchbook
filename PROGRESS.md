@@ -67,6 +67,9 @@
   - (2/N, v1.24.0) 스케치북 목록: 삭제 확인 AlertDialog(`pendingDelete`), 커버에 페이지 수 + 공유책 🤝·코드 표시.
   - 다음: 설정 → 그림일기/달력.
 
+- **공유 스케치북 보기 모드** (v1.26.0, 2026-08-13):
+  - `SharedBookScreen`에 보기 모드 선택: EQUAL(균등분할)/LARGE(한쪽 크게+반대쪽 상단·측면 축소)/SOLO(하나만). `나/상대` focus 토글(LARGE·SOLO에서). 상단 세그먼트 컨트롤(SegGroup/SegChip). SOLO+상대일 때 내 BrushView는 1dp로 살려 상태 유지. `maxWidth/maxHeight`는 layout-scope 밖으로 캡처(mw/mh).
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
