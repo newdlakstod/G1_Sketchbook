@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -157,11 +158,11 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
     var marked by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(year, month) { marked = withContext(Dispatchers.IO) { datesWithDiary(repo, year, month) } }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp)) {
         Box(Modifier.fillMaxWidth()) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$year", fontFamily = Cavorting, fontSize = 30.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 56.sp, color = MaterialTheme.colorScheme.onSurface)
+                Text("$year", fontFamily = Cavorting, fontSize = 40.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 84.sp, color = MaterialTheme.colorScheme.onSurface)
             }
             IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd)) {
                 Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary)
@@ -173,7 +174,8 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
                 Icon(Icons.Filled.ChevronRight, "다음 달")
             }
         }
-        Spacer(Modifier.height(24.dp))
+        // Push the grid toward the bottom with breathing room above it.
+        Spacer(Modifier.weight(0.28f))
         AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth())
     }
 }
@@ -208,10 +210,10 @@ private fun monthCells(year: Int, month: Int): List<Int> {
 private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: String, onTap: () -> Unit, modifier: Modifier = Modifier) {
     val cells = remember(year, month) { monthCells(year, month) }
     Column(modifier.bounceClick { onTap() }) {
-        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
             WeekHeaders.forEach { wd ->
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text(wd, fontFamily = Cavorting, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(wd, fontFamily = Cavorting, fontSize = 19.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -222,9 +224,9 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
                         if (day > 0) {
                             val date = "%04d-%02d-%02d".format(year, month + 1, day)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-                                    if (date == today) Box(Modifier.size(34.dp).clip(CircleShape).background(TodayPink))
-                                    Text("$day", fontFamily = Cavorting, fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface)
+                                Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+                                    if (date == today) Box(Modifier.size(38.dp).shadow(4.dp, CircleShape).background(TodayPink))
+                                    Text("$day", fontFamily = Cavorting, fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurface)
                                 }
                                 Box(Modifier.padding(top = 3.dp).size(6.dp).clip(CircleShape)
                                     .background(if (date in marked) DiaryDot else Color.Transparent))
@@ -250,7 +252,7 @@ fun CleanCalendarScreen(year: Int, month: Int, onBack: () -> Unit) {
     BackHandler { if (detailDate != null) detailDate = null else onBack() }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()
-        .padding(horizontal = 24.dp, vertical = 18.dp)) {
+        .padding(horizontal = 44.dp, vertical = 20.dp)) {
         if (detailDate == null) {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("$year", fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -309,15 +311,15 @@ private fun CleanDetail(repo: DiaryRepository, date: String, modifier: Modifier)
     val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
     Column(modifier) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$y", fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(MonthNames[m - 1], fontFamily = Cavorting, fontSize = 32.sp)
+            Text("$y", fontFamily = Cavorting, fontSize = 26.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(MonthNames[m - 1], fontFamily = Cavorting, fontSize = 56.sp)
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(weekday, fontFamily = Cavorting, fontSize = 24.sp, modifier = Modifier.weight(1f))
-            Text("$d${ordinal(d)}", fontFamily = Cavorting, fontSize = 24.sp)
+            Text(weekday, fontFamily = Cavorting, fontSize = 40.sp, modifier = Modifier.weight(1f))
+            Text("$d${ordinal(d)}", fontFamily = Cavorting, fontSize = 40.sp)
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         // Hand-drawn frame; the sketch is cropped to fill it.
         Box(Modifier.weight(1f).fillMaxWidth().padding(4.dp).sketchBorder(MaterialTheme.colorScheme.onSurface),
             contentAlignment = Alignment.Center) {
@@ -332,10 +334,10 @@ private fun CleanDetail(repo: DiaryRepository, date: String, modifier: Modifier)
 }
 
 /** A wobbly, hand-drawn rectangle stroke drawn behind the content. */
-private fun Modifier.sketchBorder(color: Color, stroke: Dp = 3.dp): Modifier = this.drawBehind {
+private fun Modifier.sketchBorder(color: Color, stroke: Dp = 2.5.dp): Modifier = this.drawBehind {
     val sw = stroke.toPx()
     val rnd = Random(7)
-    val step = 26f
+    val step = 46f          // longer segments = gentler wobble
     val pts = ArrayList<Offset>()
     fun edge(fromX: Float, fromY: Float, toX: Float, toY: Float) {
         val dx = toX - fromX; val dy = toY - fromY
@@ -344,7 +346,7 @@ private fun Modifier.sketchBorder(color: Color, stroke: Dp = 3.dp): Modifier = t
         val n = max(2, (len / step).toInt())
         for (i in 0..n) {
             val t = i.toFloat() / n
-            val j = (rnd.nextFloat() - 0.5f) * sw * 1.6f
+            val j = (rnd.nextFloat() - 0.5f) * sw * 0.7f   // smaller amplitude
             pts.add(Offset(fromX + dx * t + nx * j, fromY + dy * t + ny * j))
         }
     }
