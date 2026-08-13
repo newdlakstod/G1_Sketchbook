@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.R
+import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.ui.theme.ThemeMode
@@ -120,14 +121,14 @@ private fun FloatingNavBar(tab: Int, onTab: (Int) -> Unit) {
         ) {
             icons.forEachIndexed { i, icon ->
                 val selected = i == tab
-                Box(Modifier.weight(1f).fillMaxHeight().clickable { onTab(i) }, contentAlignment = Alignment.Center) {
+                Box(Modifier.weight(1f).fillMaxHeight().bounceClick { onTab(i) }, contentAlignment = Alignment.Center) {
                     if (selected) {
                         Surface(
-                            shape = CircleShape, color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp,
+                            shape = CircleShape, color = MaterialTheme.colorScheme.primary, shadowElevation = 8.dp,
                             modifier = Modifier.size(58.dp).offset(y = (-18).dp),
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(icon, descs[i], tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                                Icon(icon, descs[i], tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(28.dp))
                             }
                         }
                     } else {
@@ -159,7 +160,7 @@ private fun HomeTab(
             Avatar(avatar, 48.dp)
         }
         Spacer(Modifier.height(20.dp))
-        Card(Modifier.fillMaxWidth().clickable { onGoSketchbooks() }, shape = MaterialTheme.shapes.large,
+        Card(Modifier.fillMaxWidth().bounceClick { onGoSketchbooks() }, shape = MaterialTheme.shapes.large,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
             Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("🦆", fontSize = 40.sp)
@@ -199,7 +200,7 @@ private fun HomeTab(
 
 @Composable
 private fun MiniCover(book: Sketchbook, cover: Color, onClick: () -> Unit) {
-    Column(Modifier.width(96.dp).clickable { onClick() }) {
+    Column(Modifier.width(96.dp).bounceClick { onClick() }) {
         Box(Modifier.width(96.dp).aspectRatio(0.78f)
             .background(cover, RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp, topStart = 3.dp, bottomStart = 3.dp))) {
             Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,

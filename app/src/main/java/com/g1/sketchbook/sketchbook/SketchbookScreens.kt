@@ -87,6 +87,7 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
+import com.g1.sketchbook.ui.bounceClick
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -387,7 +388,7 @@ private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDele
         Box(
             Modifier.fillMaxSize()
                 .clip(RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp))
-                .background(cover).clickable(onClick = onOpen),
+                .background(cover).bounceClick(onClick = onOpen),
         ) {
             Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(0.66f).align(Alignment.Center).padding(start = 12.dp))

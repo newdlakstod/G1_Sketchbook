@@ -21,13 +21,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
 import com.g1.sketchbook.R
 
-private val SageBg = Color(0xFFACBDAA)
+private val OnboardBg = Color(0xFFCEC0BB)
 private val Ink = Color(0xFF1E2D4C)
 
 @Composable
 fun SplashScreen() {
     Column(
-        modifier = Modifier.fillMaxSize().background(SageBg),
+        modifier = Modifier.fillMaxSize().background(OnboardBg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

@@ -70,6 +70,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.g1.sketchbook.R
+import com.g1.sketchbook.ui.bounceClick
 
 val BrushPalette = listOf(
     0xFF1E2D4CL, 0xFF2B4C9BL, 0xFF4DABF7L, 0xFF4ECDC4L, 0xFF6E9646L,
@@ -156,7 +157,7 @@ fun BrushControls(
                 val on = !erasing && c == color
                 Box(Modifier.size(26.dp).background(Color(c), CircleShape)
                     .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-                    .clickable { onColor(c) })
+                    .bounceClick { onColor(c) })
             }
             // Color wheel: opens a hue/saturation/value picker for any custom colour.
             Box {
@@ -303,12 +304,12 @@ private fun BrushBtn(selected: Boolean, onClick: () -> Unit, icon: @Composable (
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     // Button footprint stays at the original 42dp; the enlarged icon is cropped to fit inside it.
-    Box(Modifier.size(42.dp).clipToBounds().clickable { onClick() }, contentAlignment = Alignment.Center) { icon(tint) }
+    Box(Modifier.size(42.dp).clipToBounds().bounceClick { onClick() }, contentAlignment = Alignment.Center) { icon(tint) }
 }
 
 @Composable
 private fun IconBtn(icon: ImageVector, desc: String, tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
-    Box(Modifier.size(40.dp).clickable { onClick() }, contentAlignment = Alignment.Center) { Icon(icon, desc, tint = tint) }
+    Box(Modifier.size(40.dp).bounceClick { onClick() }, contentAlignment = Alignment.Center) { Icon(icon, desc, tint = tint) }
 }
 
 @Composable

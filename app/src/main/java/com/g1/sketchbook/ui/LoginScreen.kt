@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.R
 
-private val SageBg = Color(0xFFACBDAA)
+private val OnboardBg = Color(0xFFCEC0BB)
 private val Ink = Color(0xFF1E2D4C)
 
 @Composable
@@ -40,7 +40,7 @@ fun LoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(SageBg)
+            .background(OnboardBg)
             .padding(horizontal = 36.dp, vertical = 40.dp),
     ) {
         Spacer(Modifier.height(24.dp))
