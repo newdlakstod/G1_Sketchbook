@@ -98,6 +98,8 @@
 
 - **플로팅 탭바 + 탭 순서** (v1.33.0): `MainScreen.FloatingNavBar` — 떠 있는 알약형(Surface RoundedCornerShape) + 선택 항목이 흰 원(CircleShape, shadowElevation, `offset(y=-18)`)으로 위로 돌출, 아이콘 primary 틴트. 라벨 제거. Material `NavigationBar`/`NavItem` 제거. 탭 순서 홈(0)/스케치북(1)/일기(2)/설정(3), 기본탭 0. `HomeTab.onGoSketchbooks`→onTab(1).
 
+- **앱 컬러톤 통일** (v1.34.0): 팔레트 = 세이지 `#ACBDAA`/네이비 `#1E2D4C`/그레이 `#858585`/토프 `#CEC0BB`. `theme/Theme.kt` 라이트·다크 스킴 전면 교체(navy=primary/ink, grey=onSurfaceVariant, sage=secondary, taupe=tertiary). 온보딩 Splash/Login 로열블루→세이지 배경+네이비. CoverColors(MainScreen·SketchbookScreens), 기본 그리기 색·BrushView 기본색·BrushPalette 첫 색 = 네이비.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
