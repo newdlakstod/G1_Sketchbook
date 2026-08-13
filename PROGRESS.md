@@ -84,6 +84,10 @@
   - 수정: 브러시 설정+onStrokeEnd를 `update` 대신 최상위 `LaunchedEffect(view,brush,color,sizeDp,opacity,erasing)`로 적용 → 패널 이동과 무관하게 항상 재동기화. (v1.27.1의 추정성 cap 1280은 원복.)
   - 남은 요청: 그림일기 탭을 달력에 통합해 스케치북처럼 전체화면으로 열기(미착수). 제스처(#2) 보류(사용자 재검토).
 
+- **고화질 종이 + 풀 200dpi 캔버스** (v1.29.0, 2026-08-13):
+  - 종이 배경을 원본 PNG(1672×941, `image/background/*`)로 교체(기존 1200×675 JPG 제거). BrushView가 `paperBmp`(RGB_565 사전렌더) 대신 원본을 매 렌더 `drawPaper`로 필터링(`FILTER_BITMAP`) → 화질 보존.
+  - `initCanvas` cap 1600→3308: 종이 실제 200dpi 픽셀 사용(A3 2339×3307/A4 1654×2339/A5 1165×1654). 메모리: paperBmp 제거, undo 6→4, 매니페스트 `largeHeap=true`.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
