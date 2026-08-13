@@ -100,6 +100,8 @@
 
 - **앱 컬러톤 통일** (v1.34.0): 팔레트 = 세이지 `#ACBDAA`/네이비 `#1E2D4C`/그레이 `#858585`/토프 `#CEC0BB`. `theme/Theme.kt` 라이트·다크 스킴 전면 교체(navy=primary/ink, grey=onSurfaceVariant, sage=secondary, taupe=tertiary). 온보딩 Splash/Login 로열블루→세이지 배경+네이비. CoverColors(MainScreen·SketchbookScreens), 기본 그리기 색·BrushView 기본색·BrushPalette 첫 색 = 네이비.
 
+- **컬러 조정 + 버튼 바운스** (v1.35.0): 주조색=밝은 베이지(bg `#F4F0E7`, surface `#FFFDF8`, surfaceVariant `#EBE5D7`), 세이지=보조(secondary)로 강등. `Ivory #F6F1E6`=onPrimary/미색. 온보딩 Splash/Login 배경=토프 `#CEC0BB`. 네비 선택 원=primary(navy), 아이콘=onPrimary(ivory). `ui/Interactions.kt`의 `Modifier.bounceClick`(스케일 스프링, 리플 없음) → 탭슬롯/홈카드/MiniCover/CoverCard/BrushBtn/IconBtn/색스와치에 적용. (Material Button은 기본 리플 유지 — 필요시 확장.)
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
