@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -162,9 +164,9 @@ private fun SizeIcon(key: String, color: Color, modifier: Modifier) {
         }
     }
 }
-/** 스케치북 tab: cover list + create. Opening a book is handled at the app root (full-screen canvas). */
+/** 스케치북 tab: cover list (personal + shared groups) + step-by-step create wizard. */
 @Composable
-fun SketchbookTab(onOpenBook: (String) -> Unit) {
+fun SketchbookTab(nickname: String, myUid: String, onOpenBook: (String) -> Unit) {
     val context = LocalContext.current
     val repo = remember { SketchbookRepository(context) }
     var refresh by remember { mutableIntStateOf(0) }
@@ -172,19 +174,144 @@ fun SketchbookTab(onOpenBook: (String) -> Unit) {
     var creating by remember { mutableStateOf(false) }
 
     if (creating) {
-        BackHandler { creating = false }
-        CreateSketchbookScreen(
-            onCancel = { creating = false },
-            onCreate = { name, size, bg -> val sb = repo.create(name, size, bg); creating = false; onOpenBook(sb.id) },
+        CreateWizard(
+            nickname = nickname, myUid = myUid, repo = repo,
+            onDismiss = { creating = false },
+            onCreated = { book -> creating = false; refresh++; onOpenBook(book.id) },
         )
-    } else {
-        SketchbookListScreen(
-            books = books,
-            onCreate = { creating = true },
-            onOpen = { onOpenBook(it.id) },
-            onDelete = { repo.delete(it.id); refresh++ },
-            onToggleFav = { repo.toggleFav(it.id); refresh++ },
-        )
+    }
+    SketchbookListScreen(
+        books = books,
+        onCreate = { creating = true },
+        onOpen = { onOpenBook(it.id) },
+        onDelete = { repo.delete(it.id); refresh++ },
+        onToggleFav = { repo.toggleFav(it.id); refresh++ },
+    )
+}
+
+private enum class WStep { TYPE, NAME, SIZE, BG, CODE }
+private enum class WType { PERSONAL, SHARED_NEW, SHARED_JOIN }
+
+/** Step-by-step popup: pick type → (name → size → bg) for creation, or (code) for joining a shared book. */
+@Composable
+private fun CreateWizard(
+    nickname: String,
+    myUid: String,
+    repo: SketchbookRepository,
+    onDismiss: () -> Unit,
+    onCreated: (Sketchbook) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val share = remember { com.g1.sketchbook.share.ShareRepository() }
+    var step by remember { mutableStateOf(WStep.TYPE) }
+    var type by remember { mutableStateOf(WType.PERSONAL) }
+    var name by remember { mutableStateOf("") }
+    var sizeKey by remember { mutableStateOf("a4") }
+    var bgKey by remember { mutableStateOf("watercolor") }
+    var code by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun finishPersonal() { onCreated(repo.create(name, sizeKey, bgKey)) }
+    fun finishSharedNew() {
+        busy = true; error = null
+        scope.launch {
+            runCatching { share.createSession(myUid, nickname) }.fold(
+                onSuccess = { c -> onCreated(repo.create(name, "a4", "watercolor", shared = true, code = c)) },
+                onFailure = { busy = false; error = it.message ?: "공유 세션을 만들지 못했어요." },
+            )
+        }
+    }
+    fun finishJoin() {
+        busy = true; error = null
+        scope.launch {
+            share.joinSession(code, myUid, nickname).fold(
+                onSuccess = { onCreated(repo.create(name.ifBlank { "공유 스케치북" }, "a4", "watercolor", shared = true, code = code.uppercase())) },
+                onFailure = { busy = false; error = it.message ?: "참여하지 못했어요." },
+            )
+        }
+    }
+
+    val title = when (step) {
+        WStep.TYPE -> "무엇을 만들까요?"
+        WStep.NAME -> "이름을 정해요"
+        WStep.SIZE -> "캔버스 크기"
+        WStep.BG -> "캔버스 배경"
+        WStep.CODE -> "초대 코드 입력"
+    }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(title) },
+        text = {
+            Column {
+                when (step) {
+                    WStep.TYPE -> {
+                        WizardChoice("📓  개인 스케치북", "나만의 스케치북 만들기") { type = WType.PERSONAL; step = WStep.NAME }
+                        Spacer(Modifier.height(8.dp))
+                        WizardChoice("🤝  공유 스케치북 만들기", "친구와 함께 그릴 스케치북 (A4·수채화)") { type = WType.SHARED_NEW; step = WStep.NAME }
+                        Spacer(Modifier.height(8.dp))
+                        WizardChoice("🔑  공유 스케치북 참여", "받은 초대 코드로 참여하기") { type = WType.SHARED_JOIN; code = ""; step = WStep.CODE }
+                    }
+                    WStep.NAME -> {
+                        OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
+                            label = { Text("스케치북 이름") }, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
+                    }
+                    WStep.SIZE -> {
+                        Text("종이", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
+                        SizeRow(Catalog.sizes.filter { it.key in PAPER_KEYS }, sizeKey) { sizeKey = it }
+                        Spacer(Modifier.height(12.dp))
+                        Text("디스플레이", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
+                        SizeRow(Catalog.sizes.filter { it.key in DISPLAY_KEYS }, sizeKey) { sizeKey = it }
+                    }
+                    WStep.BG -> {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(Catalog.backgrounds) { bg ->
+                                val on = bg.key == bgKey
+                                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.clickable { bgKey = bg.key }.padding(2.dp)) {
+                                    Image(painterResource(bgDrawable(bg.key)), bg.label, contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(10.dp))
+                                            .border(if (on) 3.dp else 1.dp,
+                                                if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                                RoundedCornerShape(10.dp)))
+                                    Text(bg.label, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                    WStep.CODE -> {
+                        OutlinedTextField(code, { code = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(6); error = null },
+                            singleLine = true, enabled = !busy, label = { Text("초대 코드") },
+                            shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+                if (error != null) { Spacer(Modifier.height(10.dp)); Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                if (busy) { Spacer(Modifier.height(12.dp)); androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            }
+        },
+        confirmButton = {
+            when (step) {
+                WStep.TYPE -> {}
+                WStep.NAME -> TextButton(enabled = !busy, onClick = {
+                    if (type == WType.PERSONAL) step = WStep.SIZE else finishSharedNew()
+                }) { Text(if (type == WType.PERSONAL) "다음" else "만들기") }
+                WStep.SIZE -> TextButton(onClick = { step = WStep.BG }) { Text("다음") }
+                WStep.BG -> TextButton(onClick = { finishPersonal() }) { Text("만들기") }
+                WStep.CODE -> TextButton(enabled = !busy && code.length >= 4, onClick = { finishJoin() }) { Text("참여") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("취소") } },
+    )
+}
+
+@Composable
+private fun WizardChoice(title: String, subtitle: String, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp)) {
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -207,19 +334,36 @@ private fun SketchbookListScreen(
                 Text("아직 스케치북이 없어요. + 로 만들어보세요.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
             } else {
+                val personal = books.filter { !it.shared }
+                val shared = books.filter { it.shared }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(150.dp),
                     modifier = Modifier.fillMaxSize(),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    itemsIndexed(books, key = { _, b -> b.id }) { i, b ->
-                        CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { onDelete(b) }, { onToggleFav(b) })
+                    if (personal.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("내 스케치북") }
+                        itemsIndexed(personal, key = { _, b -> b.id }) { i, b ->
+                            CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { onDelete(b) }, { onToggleFav(b) })
+                        }
+                    }
+                    if (shared.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("함께 그린 스케치북") }
+                        itemsIndexed(shared, key = { _, b -> b.id }) { i, b ->
+                            CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { onDelete(b) }, { onToggleFav(b) })
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    Text(text, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 2.dp))
 }
 
 @Composable
@@ -248,57 +392,15 @@ private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDele
 }
 
 @Composable
-private fun CreateSketchbookScreen(onCancel: () -> Unit, onCreate: (String, String, String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var sizeKey by remember { mutableStateOf("a4") }
-    var bgKey by remember { mutableStateOf("watercolor") }
-    Box(Modifier.fillMaxSize()) {
-      // Live preview: chosen paper shows faintly behind the form.
-      Image(painterResource(bgDrawable(bgKey)), null, contentScale = ContentScale.Crop,
-          modifier = Modifier.fillMaxSize().alpha(0.4f))
-      Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Text("새 스케치북", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-        Spacer(Modifier.height(16.dp))
-        OutlinedTextField(name, { name = it.take(20) }, label = { Text("이름") }, singleLine = true,
-            shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
-
-        Spacer(Modifier.height(20.dp)); Text("캔버스 크기 · 종이", fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp))
-        SizeRow(Catalog.sizes.filter { it.key in PAPER_KEYS }, sizeKey) { sizeKey = it }
-        Spacer(Modifier.height(16.dp)); Text("캔버스 크기 · 디스플레이", fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp))
-        SizeRow(Catalog.sizes.filter { it.key in DISPLAY_KEYS }, sizeKey) { sizeKey = it }
-
-        Spacer(Modifier.height(20.dp)); Text("배경", fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(Catalog.backgrounds) { bg ->
-                val on = bg.key == bgKey
-                Column(horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable { bgKey = bg.key }.padding(2.dp)) {
-                    Image(painterResource(bgDrawable(bg.key)), bg.label, contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(70.dp).clip(RoundedCornerShape(10.dp))
-                            .border(if (on) 3.dp else 1.dp,
-                                if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                RoundedCornerShape(10.dp)))
-                    Text(bg.label, fontSize = 11.sp)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(28.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("취소") }
-            Button(onClick = { onCreate(name, sizeKey, bgKey) }, modifier = Modifier.weight(2f).height(50.dp),
-                shape = MaterialTheme.shapes.small) { Text("만들기") }
-        }
-      }
-    }
-}
-
-@Composable
-fun SketchbookCanvasScreen(bookId: String, onBack: () -> Unit) {
+fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val repo = remember { SketchbookRepository(context) }
     val book = remember(bookId) { repo.get(bookId) }
     if (book == null) { LaunchedEffect(Unit) { onBack() }; return }
+    if (book.shared && book.code != null) {
+        com.g1.sketchbook.share.SharedBookScreen(bookId, book.code, myUid, myName, onBack)
+        return
+    }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     var view by remember { mutableStateOf<BrushView?>(null) }

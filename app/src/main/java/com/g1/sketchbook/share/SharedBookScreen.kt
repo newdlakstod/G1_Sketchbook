@@ -3,7 +3,6 @@ package com.g1.sketchbook.share
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -14,24 +13,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,41 +44,39 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.foundation.layout.systemBarsPadding
 import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
-import com.g1.sketchbook.sketchbook.Catalog
+import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.SketchbookRepository
+import com.g1.sketchbook.sketchbook.bgDrawable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
-import java.text.SimpleDateFormat
-import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
-// Shared canvas uses a real catalog size (A4) so a saved copy imports cleanly into 스케치북.
-private val SHARE_SIZE = Catalog.size("a4")
-private const val SHARE_BG = "drawing"
-
 /**
- * "Draw together" split view: my interactive canvas on one half, the partner's live snapshot on the
- * other. Portrait stacks top/bottom, landscape sits left/right. Each stroke pushes a small snapshot.
+ * A shared sketchbook: same 15-page book as a personal one, but shown as a split view — my
+ * interactive canvas on one half (right in landscape / bottom in portrait), the partner's live
+ * snapshot on the other. Pages are saved locally; each stroke also pushes a small snapshot so the
+ * partner sees my current page. Fixed to A4 + watercolor paper.
  */
 @Composable
-fun SharedSessionScreen(
+fun SharedBookScreen(
+    bookId: String,
     code: String,
-    isHost: Boolean,
     myUid: String,
     myName: String,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
-    val repo = remember { ShareRepository() }
     val sbRepo = remember { SketchbookRepository(context) }
+    val share = remember { ShareRepository() }
+    val book = remember(bookId) { sbRepo.get(bookId) }
+    if (book == null) { LaunchedEffect(Unit) { onBack() }; return }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
 
@@ -91,58 +86,68 @@ fun SharedSessionScreen(
     var sizeDp by remember { mutableFloatStateOf(10f) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
+    var page by remember { mutableIntStateOf(0) }
+    var pageCount by remember { mutableIntStateOf(book.pageCount) }
+    val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var partner by remember { mutableStateOf<ShareRepository.Slot?>(null) }
     var partnerBmp by remember { mutableStateOf<Bitmap?>(null) }
 
-    // Listen for the partner's slot updates.
     LaunchedEffect(code) {
-        repo.observeSession(code).collect { st ->
-            partner = st.slots.firstOrNull { it.uid != myUid }
-        }
+        share.observeSession(code).collect { st -> partner = st.slots.firstOrNull { it.uid != myUid } }
     }
-    // Decode the partner's latest snapshot off the main thread.
     LaunchedEffect(partner?.updatedAt, partner?.snapshot) {
         val s = partner?.snapshot
         partnerBmp = if (s == null) null else withContext(Dispatchers.Default) { decodeSnapshot(s) }
     }
 
-    fun leave() { repo.leaveSession(code, myUid, isHost) }
-    fun saveMine() {
-        val bmp = view?.exportBitmap() ?: return
-        scope.launch(Dispatchers.Default) {
-            val name = "함께 그리기 " + SimpleDateFormat("M/d HH:mm", Locale.getDefault()).format(System.currentTimeMillis())
-            val book = sbRepo.create(name, SHARE_SIZE.key, SHARE_BG)
-            sbRepo.savePage(book.id, 0, bmp)
-            withContext(Dispatchers.Main) { Toast.makeText(context, "스케치북에 저장했어요", Toast.LENGTH_SHORT).show() }
+    fun pushMine() {
+        val b = view?.exportBitmap() ?: return
+        scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) }
+    }
+    fun saveLocal() {
+        val v = view; val pg = page; val b = v?.exportBitmap()
+        if (b != null) scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, b) }
+    }
+    fun goTo(p: Int) { saveLocal(); page = p; view?.loadContent(sbRepo.loadPage(book.id, p)); pushMine() }
+    fun addPage() {
+        if (pageCount < MAX_PAGES) {
+            saveLocal(); pageCount++; sbRepo.setPageCount(book.id, pageCount); page = pageCount - 1
+            view?.loadContent(null); pushMine()
         }
     }
-    BackHandler { leave(); onBack() }
-    DisposableEffect(Unit) { onDispose { /* snapshot listener closes via LaunchedEffect scope */ } }
+    fun deletePage() {
+        if (pageCount <= 1) return
+        for (i in page until pageCount - 1) {
+            val next = sbRepo.loadPage(book.id, i + 1)
+            if (next != null) sbRepo.savePage(book.id, i, next) else sbRepo.pageFile(book.id, i).delete()
+        }
+        sbRepo.pageFile(book.id, pageCount - 1).delete()
+        pageCount--; sbRepo.setPageCount(book.id, pageCount)
+        if (page > pageCount - 1) page = pageCount - 1
+        view?.loadContent(sbRepo.loadPage(book.id, page)); pushMine()
+    }
+
+    // Share my current page as soon as the canvas is ready.
+    LaunchedEffect(view) { if (view != null) pushMine() }
+    BackHandler { saveLocal(); onBack() }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
-        // Top strip: back + invite code + partner status.
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clickable { leave(); onBack() }, contentAlignment = Alignment.Center) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clickable { saveLocal(); onBack() }, contentAlignment = Alignment.Center) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "나가기")
             }
             Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                Text("초대코드  $code", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+                Text("${book.name}  ·  코드 $code", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    if (partner == null) "상대를 기다리는 중…" else "${partner!!.name} 님과 함께 그리는 중",
+                    if (partner == null) "상대를 기다리는 중…" else "${partner!!.name} 님과 함께",
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            Box(Modifier.size(40.dp).clickable { saveMine() }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Save, "내 그림 저장", tint = MaterialTheme.colorScheme.primary)
             }
         }
 
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(8.dp)) {
             val landscape = maxWidth > maxHeight
-            // movableContentOf preserves the panes' nodes (esp. the BrushView + its bitmaps) when the
-            // layout swaps between Row and Column on rotation, so the drawing isn't lost.
             val mine = remember {
                 movableContentOf<Modifier> { m ->
                     PaneFrame(m, "나 · $myName", accent = true) {
@@ -150,8 +155,9 @@ fun SharedSessionScreen(
                             modifier = Modifier.fillMaxSize(),
                             factory = { ctx ->
                                 BrushView(ctx).also { v ->
-                                    v.paper = BitmapFactory.decodeResource(ctx.resources, R.drawable.paper_drawing)
-                                    v.initCanvas(SHARE_SIZE.pxW(), SHARE_SIZE.pxH())
+                                    v.paper = BitmapFactory.decodeResource(ctx.resources, bgDrawable(book.bgKey))
+                                    v.initCanvas(cw, ch)
+                                    v.loadContent(sbRepo.loadPage(book.id, 0))
                                     view = v
                                 }
                             },
@@ -159,9 +165,11 @@ fun SharedSessionScreen(
                                 v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
                                 v.erasing = erasing
                                 v.onStrokeEnd = {
-                                    val bmp = v.exportBitmap()
-                                    if (bmp != null) scope.launch(Dispatchers.Default) {
-                                        repo.pushSnapshot(code, myUid, encodeSnapshot(bmp))
+                                    val pg = page
+                                    val b = v.exportBitmap()
+                                    if (b != null) {
+                                        scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, b) }
+                                        scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) }
                                     }
                                 }
                             },
@@ -178,7 +186,7 @@ fun SharedSessionScreen(
                         } else {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text(
-                                    if (partner == null) "아직 아무도 없어요\n초대코드를 공유해 보세요" else "아직 그리기 전이에요",
+                                    if (partner == null) "아직 아무도 없어요\n코드 $code 를 공유해 보세요" else "아직 그리기 전이에요",
                                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -187,12 +195,10 @@ fun SharedSessionScreen(
                 }
             }
             if (landscape) {
-                // Partner on the left, me on the right.
                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     theirs(Modifier.weight(1f).fillMaxSize()); mine(Modifier.weight(1f).fillMaxSize())
                 }
             } else {
-                // Partner on top, me at the bottom.
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     theirs(Modifier.weight(1f).fillMaxWidth()); mine(Modifier.weight(1f).fillMaxWidth())
                 }
@@ -204,11 +210,12 @@ fun SharedSessionScreen(
             onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
             onSize = { sizeDp = it }, onOpacity = { opacity = it }, onToggleErase = { erasing = !erasing },
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
-            onClear = {
-                view?.clearCanvas()
-                view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.Default) { repo.pushSnapshot(code, myUid, encodeSnapshot(b)) } }
-            },
-            onRotate = { view?.rotate() },
+            onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
+            onBack = { saveLocal(); onBack() }, onRotate = { view?.rotate() },
+            pageLabel = "${page + 1}/$pageCount",
+            onPrevPage = { if (page > 0) goTo(page - 1) },
+            onNextPage = { if (page < pageCount - 1) goTo(page + 1) },
+            onAddPage = { addPage() }, onDeletePage = { deletePage() },
         )
     }
 }

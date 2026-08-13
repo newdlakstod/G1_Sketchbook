@@ -49,6 +49,8 @@ data class Sketchbook(
     val createdAt: Long,
     val pageCount: Int,
     val fav: Boolean = false,
+    val shared: Boolean = false,   // a "draw together" book, grouped separately
+    val code: String? = null,      // invite/session code for shared books
 ) {
     val size get() = Catalog.size(sizeKey)
 }
@@ -70,15 +72,18 @@ class SketchbookRepository(private val context: Context) {
             (0 until arr.length()).map { i ->
                 val o = arr.getJSONObject(i)
                 Sketchbook(o.getString("id"), o.getString("name"), o.getString("size"),
-                    o.getString("bg"), o.optLong("createdAt"), o.optInt("pages", 1), o.optBoolean("fav", false))
+                    o.getString("bg"), o.optLong("createdAt"), o.optInt("pages", 1), o.optBoolean("fav", false),
+                    o.optBoolean("shared", false), o.optString("code", "").ifBlank { null })
             }.sortedWith(compareByDescending<Sketchbook> { it.fav }.thenByDescending { it.createdAt })
         }.getOrDefault(emptyList())
     }
 
     fun get(id: String) = list().firstOrNull { it.id == id }
 
-    fun create(name: String, sizeKey: String, bgKey: String): Sketchbook {
-        val sb = Sketchbook(newId(), name.ifBlank { "우리 스케치북" }, sizeKey, bgKey, System.currentTimeMillis(), 1)
+    fun create(name: String, sizeKey: String, bgKey: String, shared: Boolean = false, code: String? = null): Sketchbook {
+        val fallback = if (shared) "공유 스케치북" else "우리 스케치북"
+        val sb = Sketchbook(newId(), name.ifBlank { fallback }, sizeKey, bgKey, System.currentTimeMillis(), 1,
+            fav = false, shared = shared, code = code)
         save(list() + sb)
         File(root, sb.id).mkdirs()
         return sb
@@ -116,7 +121,8 @@ class SketchbookRepository(private val context: Context) {
         books.forEach {
             arr.put(JSONObject()
                 .put("id", it.id).put("name", it.name).put("size", it.sizeKey)
-                .put("bg", it.bgKey).put("createdAt", it.createdAt).put("pages", it.pageCount).put("fav", it.fav))
+                .put("bg", it.bgKey).put("createdAt", it.createdAt).put("pages", it.pageCount).put("fav", it.fav)
+                .put("shared", it.shared).put("code", it.code ?: ""))
         }
         prefs.edit().putString(KEY, arr.toString()).apply()
     }

@@ -39,12 +39,8 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
             state.user == null -> LoginScreen(busy = state.busy, error = state.error, onSignIn = vm::signIn)
             state.needsNickname -> NicknameScreen(onSave = vm::saveNickname)
             state.openBookId != null -> com.g1.sketchbook.sketchbook.SketchbookCanvasScreen(
-                bookId = state.openBookId!!, onBack = vm::closeBook,
-            )
-            state.shareCode != null -> com.g1.sketchbook.share.SharedSessionScreen(
-                code = state.shareCode!!, isHost = state.shareIsHost,
-                myUid = state.uid ?: "", myName = state.nickname ?: "나",
-                onBack = vm::closeShare,
+                bookId = state.openBookId!!, myUid = state.uid ?: "", myName = state.nickname ?: "나",
+                onBack = vm::closeBook,
             )
             else -> MainScreen(
                 nickname = state.nickname ?: "친구",
@@ -58,7 +54,6 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
                 onRename = vm::saveNickname,
                 onSetAvatar = vm::setAvatar,
                 onOpenBook = vm::openBook,
-                onOpenShare = vm::openShare,
             )
         }
     }
