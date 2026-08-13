@@ -70,6 +70,7 @@ import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.sketchbook.Catalog
+import com.g1.sketchbook.ui.theme.Cavorting
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
@@ -156,8 +157,8 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Box(Modifier.fillMaxWidth().height(56.dp)) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$year", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MonthNames[month], fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+                Text("$year", fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 30.sp)
             }
             IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.CenterStart)) {
                 Icon(Icons.Filled.Edit, "오늘 일기 그리기")
@@ -212,7 +213,7 @@ private fun CalendarTable(
         Row(Modifier.weight(1f).fillMaxWidth()) {
             WeekHeaders.forEach { wd ->
                 Box(Modifier.weight(1f).fillMaxHeight().border(0.5.dp, line), contentAlignment = Alignment.Center) {
-                    Text(wd, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(wd, fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -227,9 +228,9 @@ private fun CalendarTable(
                                 thumbs[date]?.let {
                                     Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                                 }
-                                Text("$day", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                Text("$day", fontFamily = Cavorting, fontSize = 14.sp,
                                     color = if (thumbs[date] != null) Color.White else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp, top = 2.dp))
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(end = 5.dp, top = 3.dp))
                                 if (isToday) Box(Modifier.fillMaxSize().border(2.dp, MaterialTheme.colorScheme.primary))
                                 else if (date == selected) Box(Modifier.fillMaxSize().border(2.dp, MaterialTheme.colorScheme.tertiary))
                             }
@@ -255,13 +256,13 @@ private fun DiaryDetailView(repo: DiaryRepository, date: String, today: String, 
 
     Column(modifier) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$y", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(MonthNames[m - 1], fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+            Text("$y", fontFamily = Cavorting, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(MonthNames[m - 1], fontFamily = Cavorting, fontSize = 32.sp)
         }
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(weekday, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text("$d${ordinal(d)}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(weekday, fontFamily = Cavorting, fontSize = 24.sp, modifier = Modifier.weight(1f))
+            Text("$d${ordinal(d)}", fontFamily = Cavorting, fontSize = 24.sp)
         }
         Spacer(Modifier.height(12.dp))
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
