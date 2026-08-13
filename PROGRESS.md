@@ -106,6 +106,9 @@
   - `CalendarTable` 6주×7열 그리드 + 요일 헤더를 테두리 밖(위)으로. `DiaryDetailView`: 헤더(64dp, 중앙 제목+뒤로/액션 아이콘) → 요일/일(그림 좌우 끝 정렬) → 이미지가 `weight(1f).fillMaxWidth()`로 달력표 footprint 채움(Fit). 여백 horizontal 20/vertical 14.
   - 생성 마법사 `WizardChoice(icon,...)` 아이콘화: 개인=Book, 공유생성=Groups, 참여=Login(원형 secondaryContainer).
 
+- **어댑티브 내비게이션** (v1.38.0): `MainScreen`에서 `LocalConfiguration.orientation`으로 분기. 세로=하단 `FloatingNavBar`(Scaffold bottomBar), 가로=좌측 `SideNavRail`(세로 pill, 선택 원이 `offset(x=18)`로 우측 돌출, primary/onPrimary) + 콘텐츠 `Box(weight1).systemBarsPadding()`. `content` 람다로 탭 분기 공유.
+- (진행중) 감성 리디자인 협업: 손그림 테두리/종이질감/손글씨 폰트/여백. 사용자가 화면별 A안 제공 예정.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
