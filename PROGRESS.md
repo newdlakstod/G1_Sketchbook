@@ -94,7 +94,7 @@
 
 - **세로 달력 상세 보기** (v1.31.0, 2026-08-13):
   - 세로모드: 달력 표 먼저 → 날짜 탭 시 `DiaryDetailView`(월/연도 중앙 + 요일 + 날짜 서수, 액자 프레임 이미지). `detailDate` 상태 + `BackHandler`. 달력 제목 중앙정렬, 날짜 숫자 우상단(`TopEnd`), 헤더에 오늘편집 아이콘+월 화살표. `CalendarTable(selected: String?, onDayClick)`로 단순화. `ordinal()`, `FullWeekdays` 추가.
-  - 대기: **Cavorting 폰트** 적용 요청됨 — 폰트 파일(.ttf/.otf)이 프로젝트에 없어 사용자 제공 필요. 받으면 `app/src/main/res/font/cavorting.ttf`로 넣고 `FontFamily`로 달력·일기 헤더에 적용 예정.
+- **Cavorting 폰트** (v1.32.0): `support/font/Cavorting/Cavorting.ttf` → `app/src/main/res/font/cavorting.ttf`. `ui/theme/Fonts.kt`의 `Cavorting` FontFamily를 달력 제목/요일/날짜숫자 + 일기 상세 헤더에 적용. (라이선스는 desktop용 — 배포 시 앱 임베딩 라이선스 확인 필요.)
 
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
