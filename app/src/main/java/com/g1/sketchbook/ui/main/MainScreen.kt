@@ -203,6 +203,7 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(20.dp))
+        SettingLabel("프로필")
         Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -216,7 +217,8 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
                 IconButton(onClick = { editing = true }) { Icon(Icons.Filled.Edit, "별명 수정") }
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
+        SettingLabel("화면")
         Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(Modifier.padding(18.dp)) {
@@ -227,6 +229,21 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
                     FilterChip(theme == ThemeMode.LIGHT, { onTheme(ThemeMode.LIGHT) }, label = { Text("라이트") })
                     FilterChip(theme == ThemeMode.DARK, { onTheme(ThemeMode.DARK) }, label = { Text("다크") })
                 }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        SettingLabel("정보")
+        Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("🦆", fontSize = 28.sp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("G1 Sketchbook", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text("아날로그 감성 스케치북", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text("v${com.g1.sketchbook.BuildConfig.VERSION_NAME}", fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -265,6 +282,13 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
             confirmButton = { TextButton(onClick = { avatarEditing = false }) { Text("닫기") } },
         )
     }
+}
+
+@Composable
+private fun SettingLabel(text: String) {
+    Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
 }
 
 @Composable
