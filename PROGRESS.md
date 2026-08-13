@@ -132,6 +132,10 @@
   - **캔버스 팬 여백**(`BrushView.clampAndRefresh`): 화면 절반까지 여백 허용 → 줌 상태에서 캔버스 귀퉁이를 화면 중앙까지 끌어와 가장자리 드로잉 가능. 캔버스 픽셀 크기는 불변.
   - **임시 스펙 주석**(`dev/DevAnno.kt`): `DevAnno.SHOW`(현재 true) 하나로 일괄 on/off. `Modifier.devBounds(key)`로 요소 위치 수집 → `DevAnnoOverlay`가 Pretendard 라벨 + 지시선을 그림. 일기달력 탭(slide 2)에 연도60sp·월100sp·화살표35dp·요일25sp·일21sp·오늘원38dp·좌우여백24dp·오늘일기 아이콘 표시. 배포 전 `DevAnno.SHOW=false`(또는 파일+호출부 삭제)로 제거.
 
+- **가로 팬 여백 + 사각형 샘플 가로배치** (v1.46.0, 2026-08-14):
+  - `BrushView.clampAndRefresh`를 축 구분 없이 통일 — 캔버스가 화면을 채우든 레터박스든 좌/우도 상/하와 동일하게 화면 절반까지 여백 허용. (레터박스 축을 중앙으로 스냅하던 `else` 제거; fit 리센터는 scale≤1의 `resetZoom`이 담당.)
+  - `DevPreviewScreen` 정사각형 10~200dp 샘플을 세로 목록 → 가로 스크롤 Row로 변경(각 사각형 아래 dp 라벨).
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

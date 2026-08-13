@@ -408,15 +408,18 @@ private fun DevPreviewScreen(onBack: () -> Unit) {
         Text("정사각형 (10–200dp)", fontFamily = Pretendard, fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(8.dp))
-        for (d in 10..200 step 10) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${d}dp", fontFamily = Pretendard, fontSize = 12.sp, modifier = Modifier.width(48.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Box(Modifier.size(d.dp).clip(RoundedCornerShape(6.dp))
-                    .background(MaterialTheme.colorScheme.secondary)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp)))
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            for (d in 10..200 step 10) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.size(d.dp).clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.secondary)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp)))
+                    Spacer(Modifier.height(6.dp))
+                    Text("${d}dp", fontFamily = Pretendard, fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            Spacer(Modifier.height(10.dp))
         }
         Spacer(Modifier.height(40.dp))
     }

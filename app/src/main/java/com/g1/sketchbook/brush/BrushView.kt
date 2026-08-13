@@ -125,13 +125,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun clampAndRefresh() {
         computeDisplay()
         val r = RectF(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(r)
-        val mx = width / 2f   // let the canvas edge travel to the screen centre
+        val mx = width / 2f   // let any canvas edge travel to the screen centre — both axes alike
         val my = height / 2f
         var ax = 0f; var ay = 0f
-        if (r.width() >= width) { if (r.left > mx) ax = mx - r.left else if (r.right < width - mx) ax = (width - mx) - r.right }
-        else ax = (width - r.width()) / 2f - r.left
-        if (r.height() >= height) { if (r.top > my) ay = my - r.top else if (r.bottom < height - my) ay = (height - my) - r.bottom }
-        else ay = (height - r.height()) / 2f - r.top
+        // Applied on both axes regardless of whether the canvas fills or is letterboxed, so the
+        // side margins match the top/bottom ones. (Fit recentres via resetZoom when scale hits 1.)
+        if (r.left > mx) ax = mx - r.left else if (r.right < mx) ax = mx - r.right
+        if (r.top > my) ay = my - r.top else if (r.bottom < my) ay = my - r.bottom
         if (ax != 0f || ay != 0f) { userM.postTranslate(ax, ay); computeDisplay() }
         invalidate()
     }
