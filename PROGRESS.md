@@ -109,6 +109,12 @@
 - **어댑티브 내비게이션** (v1.38.0): `MainScreen`에서 `LocalConfiguration.orientation`으로 분기. 세로=하단 `FloatingNavBar`(Scaffold bottomBar), 가로=좌측 `SideNavRail`(세로 pill, 선택 원이 `offset(x=18)`로 우측 돌출, primary/onPrimary) + 콘텐츠 `Box(weight1).systemBarsPadding()`. `content` 람다로 탭 분기 공유.
 - (진행중) 감성 리디자인 협업: 손그림 테두리/종이질감/손글씨 폰트/여백. 사용자가 화면별 A안 제공 예정.
 
+- **A안 디자인 반영** (v1.39.0, 2026-08-14):
+  - 온보딩: `duck_walk.png`(image/UI design/ONBOARDING.png, 투명 라인아트). Splash/Login = 세이지(#ACBDAA) 배경 + "G1 SKETCH"(Cavorting 64sp) + 오리 + 검정 "continue" 알약(bounceClick, Login만).
+  - 슬라이드2 `DiaryCalendarScreen(onOpenDiary,onOpenCalendar)`: 월 타이틀 대형(56sp), 펜=오늘편집, 좌우 화살표. `AiryCalendar`(테두리없음, 오늘=핑크원 `TodayPink`, 일기날=아래 점 `DiaryDot`, `datesWithDiary`). 그리드 탭→`onOpenCalendar(y,m)`.
+  - 슬라이드3·4 `CleanCalendarScreen(year,month,onBack)`(앱루트, 바 없음): `CleanGrid`(테두리 6×7, 썸네일 Crop)→일자 탭→`CleanDetail`(손그림 테두리 `Modifier.sketchBorder` drawBehind 지터 Path + 스케치 Crop). BackHandler로 4→3→탭. `RootViewModel.cleanCalendar`/`openCleanCalendar`/`closeCleanCalendar`, MainActivity 분기, MainScreen `onOpenCalendar`.
+  - 구 `CalendarTable`/`DiaryDetailView`/`DiarySidePanel` 제거.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
