@@ -251,11 +251,11 @@ private fun CreateWizard(
             Column {
                 when (step) {
                     WStep.TYPE -> {
-                        WizardChoice(Icons.Filled.Book, "개인 스케치북", "나만의 스케치북 만들기") { type = WType.PERSONAL; step = WStep.NAME }
-                        Spacer(Modifier.height(8.dp))
-                        WizardChoice(Icons.Filled.Groups, "공유 스케치북 만들기", "친구와 함께 그릴 스케치북 (A4·수채화)") { type = WType.SHARED_NEW; step = WStep.NAME }
-                        Spacer(Modifier.height(8.dp))
-                        WizardChoice(Icons.AutoMirrored.Filled.Login, "공유 스케치북 참여", "받은 초대 코드로 참여하기") { type = WType.SHARED_JOIN; code = ""; step = WStep.CODE }
+                        WizardChoice(Icons.Filled.Book, "개인 스케치북") { type = WType.PERSONAL; step = WStep.NAME }
+                        Spacer(Modifier.height(10.dp))
+                        WizardChoice(Icons.Filled.Groups, "공유 스케치북 만들기") { type = WType.SHARED_NEW; step = WStep.NAME }
+                        Spacer(Modifier.height(10.dp))
+                        WizardChoice(Icons.AutoMirrored.Filled.Login, "공유 스케치북 참여") { type = WType.SHARED_JOIN; code = ""; step = WStep.CODE }
                     }
                     WStep.NAME -> {
                         OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
@@ -310,19 +310,16 @@ private fun CreateWizard(
 }
 
 @Composable
-private fun WizardChoice(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun WizardChoice(icon: ImageVector, title: String, onClick: () -> Unit) {
     Surface(onClick = onClick, shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp,
         color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer),
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(46.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer),
                 contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(24.dp))
+                Icon(icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(26.dp))
             }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            Spacer(Modifier.width(14.dp))
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

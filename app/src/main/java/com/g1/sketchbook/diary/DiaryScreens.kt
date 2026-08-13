@@ -151,11 +151,11 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit) {
     if (portrait && detailDate != null) {
         BackHandler { detailDate = null }
         DiaryDetailView(repo, detailDate!!, today, onBack = { detailDate = null }, onOpenDiary = onOpenDiary,
-            modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 20.dp, vertical = 14.dp))
+            modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 50.dp, vertical = 14.dp))
         return
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 50.dp, vertical = 14.dp)) {
         Box(Modifier.fillMaxWidth().height(64.dp)) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("$year", fontFamily = Cavorting, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
