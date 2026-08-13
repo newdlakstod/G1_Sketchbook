@@ -96,6 +96,8 @@
   - 세로모드: 달력 표 먼저 → 날짜 탭 시 `DiaryDetailView`(월/연도 중앙 + 요일 + 날짜 서수, 액자 프레임 이미지). `detailDate` 상태 + `BackHandler`. 달력 제목 중앙정렬, 날짜 숫자 우상단(`TopEnd`), 헤더에 오늘편집 아이콘+월 화살표. `CalendarTable(selected: String?, onDayClick)`로 단순화. `ordinal()`, `FullWeekdays` 추가.
 - **Cavorting 폰트** (v1.32.0): `support/font/Cavorting/Cavorting.ttf` → `app/src/main/res/font/cavorting.ttf`. `ui/theme/Fonts.kt`의 `Cavorting` FontFamily를 달력 제목/요일/날짜숫자 + 일기 상세 헤더에 적용. (라이선스는 desktop용 — 배포 시 앱 임베딩 라이선스 확인 필요.)
 
+- **플로팅 탭바 + 탭 순서** (v1.33.0): `MainScreen.FloatingNavBar` — 떠 있는 알약형(Surface RoundedCornerShape) + 선택 항목이 흰 원(CircleShape, shadowElevation, `offset(y=-18)`)으로 위로 돌출, 아이콘 primary 틴트. 라벨 제거. Material `NavigationBar`/`NavItem` 제거. 탭 순서 홈(0)/스케치북(1)/일기(2)/설정(3), 기본탭 0. `HomeTab.onGoSketchbooks`→onTab(1).
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
