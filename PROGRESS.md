@@ -88,6 +88,10 @@
   - 종이 배경을 원본 PNG(1672×941, `image/background/*`)로 교체(기존 1200×675 JPG 제거). BrushView가 `paperBmp`(RGB_565 사전렌더) 대신 원본을 매 렌더 `drawPaper`로 필터링(`FILTER_BITMAP`) → 화질 보존.
   - `initCanvas` cap 1600→3308: 종이 실제 200dpi 픽셀 사용(A3 2339×3307/A4 1654×2339/A5 1165×1654). 메모리: paperBmp 제거, undo 6→4, 매니페스트 `largeHeap=true`.
 
+- **그림일기 달력 통합 + 전체화면 편집** (v1.30.0, 2026-08-13):
+  - `그림일기` 탭 제거 → 하단 탭 4개(스케치북/일기/홈/설정). 일기는 앱루트 전체화면 `DiaryEditorScreen(date,onBack)`(A4, 뒤로 버튼)로 열림(`RootViewModel.openDiaryDate`/`openDiary`/`closeDiary`, MainActivity 분기, MainScreen `onOpenDiary`).
+  - 달력 `CalendarTable` 7×7(요일 헤더 + 6주, 모든 달 수용). 일칸 썸네일 `ContentScale.Crop`. 오늘 칸/‘오늘 일기’ 버튼→편집 열기, 다른 날→선택. 세로=표만, 가로=표+선택일 A4 미리보기(`DiarySidePanel`). 영어 월 이름.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
