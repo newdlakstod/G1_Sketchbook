@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -56,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -88,16 +90,65 @@ fun MainScreen(
     onOpenBook: (String) -> Unit,
     onOpenDiary: (String) -> Unit,
 ) {
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { FloatingNavBar(tab, onTab) },
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            when (tab) {
-                0 -> HomeTab(nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(1) })
-                1 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook)
-                2 -> com.g1.sketchbook.diary.DiaryCalendarScreen(onOpenDiary)
-                else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
+    val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val content: @Composable () -> Unit = {
+        when (tab) {
+            0 -> HomeTab(nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(1) })
+            1 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook)
+            2 -> com.g1.sketchbook.diary.DiaryCalendarScreen(onOpenDiary)
+            else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
+        }
+    }
+    if (landscape) {
+        // Landscape: navigation rail on the left, content fills the rest.
+        Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            SideNavRail(tab, onTab)
+            Box(Modifier.weight(1f).fillMaxHeight().systemBarsPadding().padding(end = 4.dp)) { content() }
+        }
+    } else {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = { FloatingNavBar(tab, onTab) },
+        ) { padding ->
+            Box(Modifier.padding(padding).fillMaxSize()) { content() }
+        }
+    }
+}
+
+/** Landscape side rail; mirrors the floating bottom bar — selected item pops out to the right. */
+@Composable
+private fun SideNavRail(tab: Int, onTab: (Int) -> Unit) {
+    val icons = listOf(Icons.Filled.Home, Icons.Filled.Book, Icons.Filled.CalendarMonth, Icons.Filled.Settings)
+    val descs = listOf("홈", "스케치북", "일기", "설정")
+    Box(Modifier.fillMaxHeight().systemBarsPadding().padding(start = 12.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.height(288.dp).width(86.dp)) {
+            Surface(
+                shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp,
+                modifier = Modifier.align(Alignment.CenterStart).fillMaxHeight().width(60.dp),
+            ) {}
+            Column(
+                Modifier.align(Alignment.CenterStart).fillMaxHeight().width(60.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                icons.forEachIndexed { i, icon ->
+                    val selected = i == tab
+                    Box(Modifier.weight(1f).fillMaxWidth().bounceClick { onTab(i) }, contentAlignment = Alignment.Center) {
+                        if (selected) {
+                            Surface(
+                                shape = CircleShape, color = MaterialTheme.colorScheme.primary, shadowElevation = 8.dp,
+                                modifier = Modifier.size(56.dp).offset(x = 18.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(icon, descs[i], tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(27.dp))
+                                }
+                            }
+                        } else {
+                            Icon(icon, descs[i], tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.size(26.dp))
+                        }
+                    }
+                }
             }
         }
     }
