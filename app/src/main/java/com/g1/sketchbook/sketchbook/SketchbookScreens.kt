@@ -34,8 +34,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
@@ -73,6 +76,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -247,11 +251,11 @@ private fun CreateWizard(
             Column {
                 when (step) {
                     WStep.TYPE -> {
-                        WizardChoice("📓  개인 스케치북", "나만의 스케치북 만들기") { type = WType.PERSONAL; step = WStep.NAME }
+                        WizardChoice(Icons.Filled.Book, "개인 스케치북", "나만의 스케치북 만들기") { type = WType.PERSONAL; step = WStep.NAME }
                         Spacer(Modifier.height(8.dp))
-                        WizardChoice("🤝  공유 스케치북 만들기", "친구와 함께 그릴 스케치북 (A4·수채화)") { type = WType.SHARED_NEW; step = WStep.NAME }
+                        WizardChoice(Icons.Filled.Groups, "공유 스케치북 만들기", "친구와 함께 그릴 스케치북 (A4·수채화)") { type = WType.SHARED_NEW; step = WStep.NAME }
                         Spacer(Modifier.height(8.dp))
-                        WizardChoice("🔑  공유 스케치북 참여", "받은 초대 코드로 참여하기") { type = WType.SHARED_JOIN; code = ""; step = WStep.CODE }
+                        WizardChoice(Icons.AutoMirrored.Filled.Login, "공유 스케치북 참여", "받은 초대 코드로 참여하기") { type = WType.SHARED_JOIN; code = ""; step = WStep.CODE }
                     }
                     WStep.NAME -> {
                         OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
@@ -306,12 +310,19 @@ private fun CreateWizard(
 }
 
 @Composable
-private fun WizardChoice(title: String, subtitle: String, onClick: () -> Unit) {
+private fun WizardChoice(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     Surface(onClick = onClick, shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp,
         color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp)) {
-            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer),
+                contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(24.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
