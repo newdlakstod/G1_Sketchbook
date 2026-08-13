@@ -83,25 +83,24 @@ fun MainScreen(
     onRename: (String) -> Unit,
     onSetAvatar: (String) -> Unit,
     onOpenBook: (String) -> Unit,
+    onOpenDiary: (String) -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 NavItem(tab, 0, Icons.Filled.Book, "스케치북", onTab)
-                NavItem(tab, 1, Icons.Filled.Create, "그림일기", onTab)
+                NavItem(tab, 1, Icons.Filled.CalendarMonth, "일기", onTab)
                 NavItem(tab, 2, Icons.Filled.Home, "홈", onTab)
-                NavItem(tab, 3, Icons.Filled.CalendarMonth, "일기달력", onTab)
-                NavItem(tab, 4, Icons.Filled.Settings, "설정", onTab)
+                NavItem(tab, 3, Icons.Filled.Settings, "설정", onTab)
             }
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
                 0 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook)
-                1 -> com.g1.sketchbook.diary.DiaryScreen()
+                1 -> com.g1.sketchbook.diary.DiaryCalendarScreen(onOpenDiary)
                 2 -> HomeTab(nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(0) })
-                3 -> com.g1.sketchbook.diary.DiaryCalendarScreen()
                 else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
             }
         }
