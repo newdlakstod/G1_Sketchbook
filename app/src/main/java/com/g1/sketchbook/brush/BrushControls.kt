@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -83,6 +84,7 @@ private val HueWheel = listOf(
 )
 
 /** Single-row floating dock. Optional leading controls (back / page nav / rotate) show when provided. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun BrushControls(
     brush: BrushType, color: Long, sizeDp: Float, opacity: Float, erasing: Boolean,
@@ -95,6 +97,8 @@ fun BrushControls(
     onNextPage: (() -> Unit)? = null,
     onAddPage: (() -> Unit)? = null,
     onDeletePage: (() -> Unit)? = null,
+    favorites: List<Long> = BrushPalette.take(5),
+    onEditFavorite: (Int) -> Unit = {},
 ) {
     var panel by remember { mutableIntStateOf(0) } // 0 none, 1 width, 2 opacity, 3 color
     var confirmClear by remember { mutableStateOf(false) }
@@ -153,11 +157,12 @@ fun BrushControls(
 
             VDivider()
 
-            BrushPalette.forEach { c ->
+            // 5 favourites: tap to pick, long-press to overwrite with the current colour.
+            favorites.forEachIndexed { i, c ->
                 val on = !erasing && c == color
-                Box(Modifier.size(26.dp).background(Color(c), CircleShape)
+                Box(Modifier.size(28.dp).clip(CircleShape).background(Color(c))
                     .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-                    .bounceClick { onColor(c) })
+                    .combinedClickable(onClick = { onColor(c) }, onLongClick = { onEditFavorite(i) }))
             }
             // Color wheel: opens a hue/saturation/value picker for any custom colour.
             Box {

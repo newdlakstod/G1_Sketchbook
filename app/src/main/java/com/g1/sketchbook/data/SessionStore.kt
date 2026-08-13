@@ -35,6 +35,15 @@ class SessionStore(context: Context) {
         get() = prefs.getString(KEY_AVATAR, "🦆") ?: "🦆"
         set(value) = prefs.edit().putString(KEY_AVATAR, value).apply()
 
+    /** Five editable colour favourites (ARGB longs) for the brush toolbar. */
+    var favoriteColors: List<Long>
+        get() {
+            val raw = prefs.getString(KEY_FAVS, null) ?: return DefaultFavorites
+            return runCatching { raw.split(",").map { it.toLong() } }
+                .getOrNull()?.takeIf { it.size == 5 } ?: DefaultFavorites
+        }
+        set(value) = prefs.edit().putString(KEY_FAVS, value.joinToString(",")).apply()
+
     /** Sketchbooks the user knows about, most-recently-opened first. */
     fun sketchbooks(): List<SketchbookRef> {
         val raw = prefs.getString(KEY_BOOKS, null) ?: return emptyList()
@@ -70,6 +79,8 @@ class SessionStore(context: Context) {
         private const val KEY_NICK = "nickname"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_AVATAR = "avatar"
+        private const val KEY_FAVS = "fav_colors"
         private const val MAX_BOOKS = 30
+        val DefaultFavorites = listOf(0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L)
     }
 }

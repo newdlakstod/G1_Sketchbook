@@ -115,6 +115,17 @@
   - 슬라이드3·4 `CleanCalendarScreen(year,month,onBack)`(앱루트, 바 없음): `CleanGrid`(테두리 6×7, 썸네일 Crop)→일자 탭→`CleanDetail`(손그림 테두리 `Modifier.sketchBorder` drawBehind 지터 Path + 스케치 Crop). BackHandler로 4→3→탭. `RootViewModel.cleanCalendar`/`openCleanCalendar`/`closeCleanCalendar`, MainActivity 분기, MainScreen `onOpenCalendar`.
   - 구 `CalendarTable`/`DiaryDetailView`/`DiarySidePanel` 제거.
 
+- **A안 타이포·여백 정밀 반영** (v1.40.0~1.42.0, 2026-08-14): 사용자 비교 이미지 기반. 폰트/여백 2배 확대, 손그림 테두리 강도 완화(`sketchBorder` step 46f, jitter ×0.7). 슬라이드2 탭 = 월 100sp·연도 60sp·일 21sp·요일 25sp·상단 여백 110dp·화살표 35dp. 슬라이드3·4 완전 동일 = 월(August) 70sp, 상/하 여백 30dp, 좌우 44dp. 오늘 핑크원 아래 그림자(`shadow(4dp,CircleShape)`).
+
+- **캔버스 여백 + 페이지 유실 수정 + 화살표 35dp** (v1.43.0, 2026-08-14):
+  - 월 이동 화살표 35dp로 축소.
+  - 캔버스 바깥 여백 확대(Sketchbook/Diary padding 8→24, Shared 8→16) — 귀퉁이 드로잉 곤란 해소.
+  - **페이지 유실 버그(#3) 수정**: 페이지 전환 시 async `saveCurrent`가 `loadPage` 읽기와 경쟁 → 동기 저장-후-로드로 변경. 저장 단위를 획 전용(`BrushView.exportContent()`, 종이 미포함)으로 바꿔 이중 종이 누적도 함께 해결. `goTo()`가 저장 완료 후 `loadContent`. onStrokeEnd도 exportContent 사용.
+
+- **펜별 굵기·투명도 + 색상 즐겨찾기 5개 편집** (v1.44.0, 2026-08-14):
+  - 브러시 종류별(볼펜/연필/크레파스/수채화) 굵기·투명도를 독립 저장(`mutableStateMapOf<BrushType,Float>` + 지우개 전용 `eraserSize`). 활성 sizeDp/opacity는 `erasing`이면 지우개값, 아니면 현재 브러시값. `onSize`/`onOpacity`가 활성 대상만 갱신. Sketchbook·Shared·Diary 3개 화면 모두 적용.
+  - 색상 즐겨찾기 10개→5개로 축소, 개인 편집 가능. `SessionStore.favoriteColors`(SharedPrefs `fav_colors`, 5개 검증, `DefaultFavorites`=네이비/세이지/레드/앰버/그린)에 영속. `BrushControls`에 `favorites`/`onEditFavorite` 파라미터 + `combinedClickable`(탭=선택, 롱프레스=현재색으로 덮어쓰기).
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

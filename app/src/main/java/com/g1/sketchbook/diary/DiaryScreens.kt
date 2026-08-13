@@ -49,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -102,9 +103,14 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
     var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
     var color by remember { mutableStateOf(0xFF1E2D4CL) }
-    var sizeDp by remember { mutableFloatStateOf(10f) }
-    var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
+    val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to 10f, BrushType.PENCIL to 12f, BrushType.CRAYON to 16f, BrushType.WATER to 20f) }
+    val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
+    var eraserSize by remember { mutableFloatStateOf(24f) }
+    val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
+    val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
+    val session = remember { com.g1.sketchbook.data.SessionStore(ctx) }
+    var favorites by remember { mutableStateOf(session.favoriteColors) }
     val size = remember { Catalog.size("a4") }
     val cw = size.pxW(); val ch = size.pxH()
 
@@ -136,10 +142,13 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
         }
         BrushControls(brush, color, sizeDp, opacity, erasing,
             onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
-            onSize = { sizeDp = it }, onOpacity = { opacity = it }, onToggleErase = { erasing = !erasing },
+            onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
+            onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
             onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(date, b) } } },
-            onBack = onBack, onRotate = { view?.rotate() })
+            onBack = onBack, onRotate = { view?.rotate() },
+            favorites = favorites,
+            onEditFavorite = { i -> val nf = favorites.toMutableList(); nf[i] = color; favorites = nf; session.favoriteColors = nf })
     }
 }
 
