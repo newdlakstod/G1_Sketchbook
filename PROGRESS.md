@@ -62,6 +62,11 @@
 - **색상 휠** (v1.22.0, 2026-08-13):
   - `BrushControls`에 색상 휠 버튼(sweepGradient 원) + 팝업 `ColorPickerCard`: SV 사각형(pointerInput awaitPointerEvent) + 색조 바 + 현재색/HEX. android.graphics.Color HSV 변환. 기존 10색 팔레트는 인라인 유지. → Phase 4 "색상휠+팔레트 UI" 완료.
 
+- **화면 디테일 다듬기 (진행 중)**:
+  - (1/N, v1.23.0) 홈: 최근 스케치북 커버 → 해당 책 바로 열기(`onOpenBook`), 공유책 🤝 배지, 시작 카드 문구/화살표, "전체 보기", 빈 상태 카드.
+  - (2/N, v1.24.0) 스케치북 목록: 삭제 확인 AlertDialog(`pendingDelete`), 커버에 페이지 수 + 공유책 🤝·코드 표시.
+  - 다음: 설정 → 그림일기/달력.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
