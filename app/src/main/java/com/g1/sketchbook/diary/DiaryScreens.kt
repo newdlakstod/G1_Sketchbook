@@ -159,20 +159,22 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
     LaunchedEffect(year, month) { marked = withContext(Dispatchers.IO) { datesWithDiary(repo, year, month) } }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-        Spacer(Modifier.height(200.dp))
+        Spacer(Modifier.height(110.dp))
         Box(Modifier.fillMaxWidth()) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("$year", fontFamily = Cavorting, fontSize = 60.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 110.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 100.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             }
             IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd)) {
                 Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary)
             }
-            IconButton(onClick = { if (month == 0) { month = 11; year-- } else month-- }, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Filled.ChevronLeft, "이전 달")
+            Box(Modifier.align(Alignment.CenterStart).size(72.dp)
+                .bounceClick { if (month == 0) { month = 11; year-- } else month-- }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.size(64.dp))
             }
-            IconButton(onClick = { if (month == 11) { month = 0; year++ } else month++ }, modifier = Modifier.align(Alignment.CenterEnd)) {
-                Icon(Icons.Filled.ChevronRight, "다음 달")
+            Box(Modifier.align(Alignment.CenterEnd).size(72.dp)
+                .bounceClick { if (month == 11) { month = 0; year++ } else month++ }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.size(64.dp))
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -272,14 +274,16 @@ private fun CleanGrid(year: Int, month: Int, thumbs: Map<String, ImageBitmap>, m
     val cells = remember(year, month) { monthCells(year, month) }
     val line = MaterialTheme.colorScheme.outlineVariant
     Column(modifier) {
-        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+        // Same header height as slide 4's weekday/day row so the table below matches the sketch frame.
+        Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
             WeekHeaders.forEach { wd ->
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text(wd, fontFamily = Cavorting, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
+                    Text(wd, fontFamily = Cavorting, fontSize = 21.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
-        Column(Modifier.weight(1f).fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline)) {
+        Spacer(Modifier.height(12.dp))
+        Column(Modifier.weight(1f).fillMaxWidth().padding(4.dp).border(1.dp, MaterialTheme.colorScheme.outline)) {
             cells.chunked(7).forEach { week ->
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     week.forEach { day ->
@@ -312,7 +316,7 @@ private fun CleanDetailBody(repo: DiaryRepository, date: String, modifier: Modif
     val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
     Column(modifier) {
         // Weekday / day aligned to the frame's left / right edges (title comes from the shared header).
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(weekday, fontFamily = Cavorting, fontSize = 40.sp, modifier = Modifier.weight(1f))
             Text("$d${ordinal(d)}", fontFamily = Cavorting, fontSize = 40.sp)
         }
