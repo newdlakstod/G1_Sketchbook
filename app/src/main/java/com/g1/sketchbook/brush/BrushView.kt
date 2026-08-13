@@ -76,7 +76,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     /** Creates the canvas bitmaps at [w]x[h] px (capped for memory). Call once when opening a page-set. */
     fun initCanvas(w: Int, h: Int) {
-        val cap = 1280
+        val cap = 1600
         val s = min(1f, cap.toFloat() / max(w, h))
         val nw = max(1, (w * s).toInt()); val nh = max(1, (h * s).toInt())
         if (nw == cw && nh == ch && contentBmp != null) return

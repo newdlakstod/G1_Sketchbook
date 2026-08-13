@@ -145,6 +145,22 @@ fun SharedBookScreen(
 
     // Share my current page as soon as the canvas is ready.
     LaunchedEffect(view) { if (view != null) pushMine() }
+    // Apply brush settings via an effect rather than AndroidView.update: the pane is wrapped in
+    // movableContent, and after it's moved (rotation / view-mode change) update() stops re-observing
+    // state — so selections would silently stop applying. This effect always re-syncs.
+    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing) {
+        val v = view ?: return@LaunchedEffect
+        v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
+        v.erasing = erasing
+        v.onStrokeEnd = {
+            val pg = page
+            val b = v.exportBitmap()
+            if (b != null) {
+                scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, b) }
+                scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) }
+            }
+        }
+    }
     BackHandler { saveLocal(); onBack() }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
@@ -192,18 +208,7 @@ fun SharedBookScreen(
                                     view = v
                                 }
                             },
-                            update = { v ->
-                                v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-                                v.erasing = erasing
-                                v.onStrokeEnd = {
-                                    val pg = page
-                                    val b = v.exportBitmap()
-                                    if (b != null) {
-                                        scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, b) }
-                                        scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) }
-                                    }
-                                }
-                            },
+                            update = { /* brush state is applied via LaunchedEffect (movableContent-safe) */ },
                         )
                     }
                 }
