@@ -76,7 +76,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     /** Creates the canvas bitmaps at [w]x[h] px (capped for memory). Call once when opening a page-set. */
     fun initCanvas(w: Int, h: Int) {
-        val cap = 1600
+        val cap = 1280
         val s = min(1f, cap.toFloat() / max(w, h))
         val nw = max(1, (w * s).toInt()); val nh = max(1, (h * s).toInt())
         if (nw == cw && nh == ch && contentBmp != null) return
@@ -293,6 +293,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     private fun stampPencil(x: Float, y: Float, r: Float) {
         val c = content ?: return
+        fill.style = Paint.Style.FILL; fill.strokeWidth = 0f   // fill is shared with water/pen; keep it FILL
         val g = grainPx()
         val n = min(900, max(5f, r * r * 0.7f).toInt())
         for (i in 0 until n) {
@@ -304,6 +305,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
     private fun stampCrayon(x: Float, y: Float, r: Float) {
         val c = content ?: return
+        fill.style = Paint.Style.FILL; fill.strokeWidth = 0f
         val g = grainPx()
         val m = min(800, max(10f, r * r * 0.55f).toInt())
         for (j in 0 until m) {
