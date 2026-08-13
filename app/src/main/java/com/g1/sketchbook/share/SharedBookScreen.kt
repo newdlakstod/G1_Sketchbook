@@ -13,11 +13,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
@@ -35,7 +41,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -58,11 +66,16 @@ import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.min
 
+/** How the two canvases are laid out. */
+private enum class ViewMode { EQUAL, LARGE, SOLO }
+/** Which canvas is focused (enlarged / shown alone). */
+private enum class Focus { MINE, THEIRS }
+
 /**
- * A shared sketchbook: same 15-page book as a personal one, but shown as a split view — my
- * interactive canvas on one half (right in landscape / bottom in portrait), the partner's live
- * snapshot on the other. Pages are saved locally; each stroke also pushes a small snapshot so the
- * partner sees my current page. Fixed to A4 + watercolor paper.
+ * A shared sketchbook: same 15-page book as a personal one, shown with a selectable view mode —
+ * EQUAL (even split), LARGE (one big + the other as a small strip), or SOLO (only one). My canvas
+ * is interactive; the partner's is a live snapshot. Pages save locally; each stroke pushes a
+ * snapshot so the partner sees my current page. Fixed to A4 + watercolor paper.
  */
 @Composable
 fun SharedBookScreen(
@@ -92,6 +105,8 @@ fun SharedBookScreen(
 
     var partner by remember { mutableStateOf<ShareRepository.Slot?>(null) }
     var partnerBmp by remember { mutableStateOf<Bitmap?>(null) }
+    var mode by remember { mutableStateOf(ViewMode.EQUAL) }
+    var focus by remember { mutableStateOf(Focus.MINE) }
 
     LaunchedEffect(code) {
         share.observeSession(code).collect { st -> partner = st.slots.firstOrNull { it.uid != myUid } }
@@ -138,16 +153,32 @@ fun SharedBookScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "나가기")
             }
             Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                Text("${book.name}  ·  코드 $code", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                Text(book.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
                 Text(
-                    if (partner == null) "상대를 기다리는 중…" else "${partner!!.name} 님과 함께",
-                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (partner == null) "상대를 기다리는 중… · 코드 $code" else "${partner!!.name} 님과 함께",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                 )
+            }
+            // View-mode selector; focus (mine/partner) appears when a canvas is enlarged/soloed.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (mode != ViewMode.EQUAL) {
+                    SegGroup {
+                        SegChip("나", focus == Focus.MINE) { focus = Focus.MINE }
+                        SegChip("상대", focus == Focus.THEIRS) { focus = Focus.THEIRS }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                }
+                SegGroup {
+                    SegChip("분할", mode == ViewMode.EQUAL) { mode = ViewMode.EQUAL }
+                    SegChip("크게", mode == ViewMode.LARGE) { mode = ViewMode.LARGE }
+                    SegChip("하나", mode == ViewMode.SOLO) { mode = ViewMode.SOLO }
+                }
             }
         }
 
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(8.dp)) {
             val landscape = maxWidth > maxHeight
+            val mw = maxWidth; val mh = maxHeight   // capture out of the layout-scope marker
             val mine = remember {
                 movableContentOf<Modifier> { m ->
                     PaneFrame(m, "나 · $myName", accent = true) {
@@ -194,13 +225,34 @@ fun SharedBookScreen(
                     }
                 }
             }
-            if (landscape) {
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    theirs(Modifier.weight(1f).fillMaxSize()); mine(Modifier.weight(1f).fillMaxSize())
+            val bigIsMine = focus == Focus.MINE
+            when (mode) {
+                ViewMode.SOLO -> Box(Modifier.fillMaxSize()) {
+                    if (bigIsMine) mine(Modifier.fillMaxSize()) else theirs(Modifier.fillMaxSize())
+                    // Keep my BrushView alive (page/strokes) even while only the partner is shown.
+                    if (!bigIsMine) Box(Modifier.size(1.dp)) { mine(Modifier.size(1.dp)) }
                 }
-            } else {
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    theirs(Modifier.weight(1f).fillMaxWidth()); mine(Modifier.weight(1f).fillMaxWidth())
+                ViewMode.LARGE -> {
+                    val small: @Composable (Modifier) -> Unit = if (bigIsMine) theirs else mine
+                    val big: @Composable (Modifier) -> Unit = if (bigIsMine) mine else theirs
+                    if (landscape) {
+                        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            small(Modifier.fillMaxHeight().width(mw * 0.26f)); big(Modifier.weight(1f).fillMaxHeight())
+                        }
+                    } else {
+                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            small(Modifier.fillMaxWidth().height(mh * 0.22f)); big(Modifier.weight(1f).fillMaxWidth())
+                        }
+                    }
+                }
+                ViewMode.EQUAL -> if (landscape) {
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        theirs(Modifier.weight(1f).fillMaxSize()); mine(Modifier.weight(1f).fillMaxSize())
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        theirs(Modifier.weight(1f).fillMaxWidth()); mine(Modifier.weight(1f).fillMaxWidth())
+                    }
                 }
             }
         }
@@ -217,6 +269,23 @@ fun SharedBookScreen(
             onNextPage = { if (page < pageCount - 1) goTo(page + 1) },
             onAddPage = { addPage() }, onDeletePage = { deletePage() },
         )
+    }
+}
+
+@Composable
+private fun SegGroup(content: @Composable RowScope.() -> Unit) {
+    Row(Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant), content = content)
+}
+
+@Composable
+private fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(RoundedCornerShape(8.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+            .clickable { onClick() }.padding(horizontal = 9.dp, vertical = 6.dp),
+    ) {
+        Text(label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
