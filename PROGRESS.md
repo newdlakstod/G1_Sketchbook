@@ -126,6 +126,12 @@
   - 브러시 종류별(볼펜/연필/크레파스/수채화) 굵기·투명도를 독립 저장(`mutableStateMapOf<BrushType,Float>` + 지우개 전용 `eraserSize`). 활성 sizeDp/opacity는 `erasing`이면 지우개값, 아니면 현재 브러시값. `onSize`/`onOpacity`가 활성 대상만 갱신. Sketchbook·Shared·Diary 3개 화면 모두 적용.
   - 색상 즐겨찾기 10개→5개로 축소, 개인 편집 가능. `SessionStore.favoriteColors`(SharedPrefs `fav_colors`, 5개 검증, `DefaultFavorites`=네이비/세이지/레드/앰버/그린)에 영속. `BrushControls`에 `favorites`/`onEditFavorite` 파라미터 + `combinedClickable`(탭=선택, 롱프레스=현재색으로 덮어쓰기).
 
+- **개발용 미리보기 + 캔버스 팬 여백 + 일기탭 스펙 주석** (v1.45.0, 2026-08-14):
+  - Pretendard 폰트 추가(`res/font/pretendard_{regular,medium,bold}.otf`, `theme/Fonts.kt`의 `Pretendard` FontFamily). 원본은 `support/font/Pretendard`.
+  - 설정탭 "개발자 > 폰트·사이즈 미리보기"(`DevPreviewScreen`, BackHandler): Pretendard·Cavorting를 10~120sp 5단위로, 정사각형을 10~200dp 10단위로 나열해 실제 크기 확인.
+  - **캔버스 팬 여백**(`BrushView.clampAndRefresh`): 화면 절반까지 여백 허용 → 줌 상태에서 캔버스 귀퉁이를 화면 중앙까지 끌어와 가장자리 드로잉 가능. 캔버스 픽셀 크기는 불변.
+  - **임시 스펙 주석**(`dev/DevAnno.kt`): `DevAnno.SHOW`(현재 true) 하나로 일괄 on/off. `Modifier.devBounds(key)`로 요소 위치 수집 → `DevAnnoOverlay`가 Pretendard 라벨 + 지시선을 그림. 일기달력 탭(slide 2)에 연도60sp·월100sp·화살표35dp·요일25sp·일21sp·오늘원38dp·좌우여백24dp·오늘일기 아이콘 표시. 배포 전 `DevAnno.SHOW=false`(또는 파일+호출부 삭제)로 제거.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

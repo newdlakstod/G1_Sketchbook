@@ -1,7 +1,9 @@
 package com.g1.sketchbook.ui.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +70,8 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
+import com.g1.sketchbook.ui.theme.Cavorting
+import com.g1.sketchbook.ui.theme.Pretendard
 import com.g1.sketchbook.ui.theme.ThemeMode
 
 private val CoverColors = listOf(
@@ -273,6 +277,8 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
                         onSignOut: () -> Unit, onRename: (String) -> Unit, onSetAvatar: (String) -> Unit) {
     var editing by remember { mutableStateOf(false) }
     var avatarEditing by remember { mutableStateOf(false) }
+    var showDev by remember { mutableStateOf(false) }
+    if (showDev) { DevPreviewScreen(onBack = { showDev = false }); return }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("설정", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(20.dp))
@@ -319,6 +325,10 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        Spacer(Modifier.height(18.dp))
+        SettingLabel("개발자")
+        OutlinedButton(onClick = { showDev = true }, modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = MaterialTheme.shapes.small) { Text("폰트 · 사이즈 미리보기") }
         Spacer(Modifier.height(24.dp))
         OutlinedButton(onClick = onSignOut, modifier = Modifier.fillMaxWidth().height(50.dp),
             shape = MaterialTheme.shapes.small) { Text("로그아웃") }
@@ -354,6 +364,61 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
             },
             confirmButton = { TextButton(onClick = { avatarEditing = false }) { Text("닫기") } },
         )
+    }
+}
+
+/** Dev-only: how Pretendard/Cavorting look at 10–120sp (step 5) and how squares look 10–200dp. */
+@Composable
+private fun DevPreviewScreen(onBack: () -> Unit) {
+    BackHandler { onBack() }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+        .systemBarsPadding().padding(20.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.Filled.Create, "뒤로") }
+            Text("폰트 · 사이즈 미리보기", fontFamily = Pretendard, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(16.dp))
+
+        Text("Pretendard (10–120sp, 5단위)", fontFamily = Pretendard, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(8.dp))
+        for (s in 10..120 step 5) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("${s}sp", fontFamily = Pretendard, fontSize = 12.sp, modifier = Modifier.width(44.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("다람쥐 Ag 12", fontFamily = Pretendard, fontSize = s.sp, maxLines = 1)
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+
+        Spacer(Modifier.height(20.dp))
+        Text("Cavorting (10–120sp, 5단위)", fontFamily = Pretendard, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(8.dp))
+        for (s in 10..120 step 5) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text("${s}sp", fontFamily = Pretendard, fontSize = 12.sp, modifier = Modifier.width(44.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("August 12", fontFamily = Cavorting, fontSize = s.sp, maxLines = 1)
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+
+        Spacer(Modifier.height(20.dp))
+        Text("정사각형 (10–200dp)", fontFamily = Pretendard, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(8.dp))
+        for (d in 10..200 step 10) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${d}dp", fontFamily = Pretendard, fontSize = 12.sp, modifier = Modifier.width(48.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(Modifier.size(d.dp).clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.secondary)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp)))
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+        Spacer(Modifier.height(40.dp))
     }
 }
 

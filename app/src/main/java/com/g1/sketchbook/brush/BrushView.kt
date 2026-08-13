@@ -116,14 +116,21 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         disp.invert(inv)
     }
 
-    /** Keeps the zoomed content from drifting fully off-screen; recentres when not zoomed. */
+    /**
+     * Keeps the zoomed content from drifting fully off-screen; recentres when not zoomed.
+     * We allow up to half the view as empty margin on every side, so any point of the canvas —
+     * including the far corners — can be panned all the way to the screen centre (easier to draw
+     * the edges/corners). This does NOT change the canvas size, only how far it may be panned.
+     */
     private fun clampAndRefresh() {
         computeDisplay()
         val r = RectF(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(r)
+        val mx = width / 2f   // let the canvas edge travel to the screen centre
+        val my = height / 2f
         var ax = 0f; var ay = 0f
-        if (r.width() >= width) { if (r.left > 0) ax = -r.left else if (r.right < width) ax = width - r.right }
+        if (r.width() >= width) { if (r.left > mx) ax = mx - r.left else if (r.right < width - mx) ax = (width - mx) - r.right }
         else ax = (width - r.width()) / 2f - r.left
-        if (r.height() >= height) { if (r.top > 0) ay = -r.top else if (r.bottom < height) ay = height - r.bottom }
+        if (r.height() >= height) { if (r.top > my) ay = my - r.top else if (r.bottom < height - my) ay = (height - my) - r.bottom }
         else ay = (height - r.height()) / 2f - r.top
         if (ax != 0f || ay != 0f) { userM.postTranslate(ax, ay); computeDisplay() }
         invalidate()
