@@ -70,6 +70,15 @@
 - **공유 스케치북 보기 모드** (v1.26.0, 2026-08-13):
   - `SharedBookScreen`에 보기 모드 선택: EQUAL(균등분할)/LARGE(한쪽 크게+반대쪽 상단·측면 축소)/SOLO(하나만). `나/상대` focus 토글(LARGE·SOLO에서). 상단 세그먼트 컨트롤(SegGroup/SegChip). SOLO+상대일 때 내 BrushView는 1dp로 살려 상태 유지. `maxWidth/maxHeight`는 layout-scope 밖으로 캡처(mw/mh).
 
+- **배치 수정** (v1.27.0, 2026-08-13):
+  - (#1) `BrushView` 연필/크레파스 입자를 `grainPx()=(1/fitScale).coerceIn(1,5)`로 스케일 → 큰 A4 캔버스가 작은 분할 뷰에 표시될 때도 보임(볼펜만 되던 문제 해결). 입자 수 상한(900/800).
+  - (#3) `BrushControls` 전체 지우기 확인 AlertDialog(모든 드로잉 화면 공통).
+  - (#4) `DiaryScreen` A4 세로 캔버스(`Catalog.size("a4")` initCanvas) + 상단 TopAppBar 제거(전체 캔버스).
+  - (#5) 달력 셀·`DiaryPanel` 미리보기 `aspectRatio(A4_RATIO=210/297)`.
+  - (#6) `DiaryCalendarScreen` 세로모드=달력만(패널 숨김).
+  - (#7) 그림일기 상단바 제거. (스케치북/공유는 이미 전체화면. 그림일기는 탭이라 하단 네비게이션은 유지됨.)
+  - **미완**: (#2) 제스처 동작 설정(두손가락 드래그 4방향/탭/더블탭 → undo/redo/투명도/굵기/펜/색상/지우개 매핑). 기존 핀치줌과 충돌·설정 UI·저장 필요 → 다음 버전.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
