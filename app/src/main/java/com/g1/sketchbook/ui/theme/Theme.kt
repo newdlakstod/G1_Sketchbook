@@ -15,58 +15,62 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Warm "paper notebook" palette: cream backgrounds, deep navy ink, and soft storybook accents.
- * The whole app commits to this single light look (the design is warm/paper-based), so there is
- * no dark scheme to fight it.
+ * App palette (from the reference): sage green, deep navy, neutral grey, soft taupe.
+ * Navy is the ink/primary, sage & taupe are the calm brand accents.
  */
-val Navy = Color(0xFF2B4C9B)
-val NavyDeep = Color(0xFF223C7A)
-val Cream = Color(0xFFF6EFDF)
-val CardCream = Color(0xFFFFFBF2)
-val PaperCanvas = Color(0xFFFBF6EA)
-val Ink = Color(0xFF223150)
-val Olive = Color(0xFF7E9A52)
-val Clay = Color(0xFFDE7F3C)
-val SoftLine = Color(0xFFD9CDB2)
+val Sage = Color(0xFFACBDAA)
+val Navy = Color(0xFF1E2D4C)
+val Grey = Color(0xFF858585)
+val Taupe = Color(0xFFCEC0BB)
 
 private val LightColors = lightColorScheme(
     primary = Navy,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDCE4F7),
-    onPrimaryContainer = NavyDeep,
-    secondary = Olive,
-    onSecondary = Color.White,
-    tertiary = Clay,
-    onTertiary = Color.White,
-    background = Cream,
-    onBackground = Ink,
-    surface = CardCream,
-    onSurface = Ink,
-    surfaceVariant = Color(0xFFEDE4D0),
-    onSurfaceVariant = Color(0xFF6B6552),
-    outline = SoftLine,
-    outlineVariant = Color(0xFFE4DAC3),
-    error = Color(0xFFC0553B),
+    primaryContainer = Color(0xFFDBE0E8),
+    onPrimaryContainer = Navy,
+    secondary = Sage,
+    onSecondary = Navy,
+    secondaryContainer = Color(0xFFD7E0D0),
+    onSecondaryContainer = Navy,
+    tertiary = Taupe,
+    onTertiary = Navy,
+    tertiaryContainer = Color(0xFFE8E0DA),
+    onTertiaryContainer = Navy,
+    background = Color(0xFFEAEDE6),
+    onBackground = Navy,
+    surface = Color(0xFFFBFCFA),
+    onSurface = Navy,
+    surfaceVariant = Color(0xFFDEE3D8),
+    onSurfaceVariant = Grey,
+    outline = Color(0xFFB4BCAF),
+    outlineVariant = Color(0xFFCDD3C7),
+    error = Color(0xFFB4553F),
+    onError = Color.White,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF8FB0F0),
-    onPrimary = Color(0xFF10203F),
-    primaryContainer = Color(0xFF2B3D63),
-    onPrimaryContainer = Color(0xFFD7E2FA),
-    secondary = Color(0xFFAFC488),
-    onSecondary = Color(0xFF1A2410),
-    tertiary = Color(0xFFEBA268),
-    onTertiary = Color(0xFF3A2410),
-    background = Color(0xFF15171F),
-    onBackground = Color(0xFFECE6D6),
-    surface = Color(0xFF1E2230),
-    onSurface = Color(0xFFECE6D6),
-    surfaceVariant = Color(0xFF2A2E3C),
-    onSurfaceVariant = Color(0xFFB4AE9C),
-    outline = Color(0xFF3A3F4E),
-    outlineVariant = Color(0xFF2C3140),
-    error = Color(0xFFE0785C),
+    primary = Sage,
+    onPrimary = Navy,
+    primaryContainer = Color(0xFF2E3A46),
+    onPrimaryContainer = Sage,
+    secondary = Color(0xFFB7C7B4),
+    onSecondary = Color(0xFF17202E),
+    secondaryContainer = Color(0xFF34413A),
+    onSecondaryContainer = Color(0xFFD7E0D0),
+    tertiary = Taupe,
+    onTertiary = Color(0xFF2A2420),
+    tertiaryContainer = Color(0xFF433B36),
+    onTertiaryContainer = Color(0xFFE8E0DA),
+    background = Color(0xFF14171B),
+    onBackground = Color(0xFFE7E9E4),
+    surface = Color(0xFF1C2129),
+    onSurface = Color(0xFFE7E9E4),
+    surfaceVariant = Color(0xFF2A2F35),
+    onSurfaceVariant = Color(0xFFAAB0A6),
+    outline = Color(0xFF454B50),
+    outlineVariant = Color(0xFF333940),
+    error = Color(0xFFD98A73),
+    onError = Color(0xFF2A1410),
 )
 
 private val AppShapes = Shapes(

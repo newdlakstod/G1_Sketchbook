@@ -21,18 +21,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
 import com.g1.sketchbook.R
 
-private val Navy = Color(0xFF1E3FAE)
-private val Ivory = Color(0xFFF3ECD9)
+private val SageBg = Color(0xFFACBDAA)
+private val Ink = Color(0xFF1E2D4C)
 
 @Composable
 fun SplashScreen() {
     Column(
-        modifier = Modifier.fillMaxSize().background(Navy),
+        modifier = Modifier.fillMaxSize().background(SageBg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("G1", color = Ivory, fontSize = 64.sp, fontWeight = FontWeight.ExtraBold)
-        Text("SKETCHBOOK", color = Ivory, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+        Text("G1", color = Ink, fontSize = 64.sp, fontWeight = FontWeight.ExtraBold)
+        Text("SKETCHBOOK", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
         Spacer(Modifier.height(12.dp))
         Image(
             painter = painterResource(R.drawable.mascot_duck),
@@ -43,7 +43,7 @@ fun SplashScreen() {
         Spacer(Modifier.height(12.dp))
         Text(
             "Draw together, keep the little days.",
-            color = Ivory.copy(alpha = 0.7f), fontSize = 13.sp, textAlign = TextAlign.Center,
+            color = Ink.copy(alpha = 0.65f), fontSize = 13.sp, textAlign = TextAlign.Center,
         )
     }
 }

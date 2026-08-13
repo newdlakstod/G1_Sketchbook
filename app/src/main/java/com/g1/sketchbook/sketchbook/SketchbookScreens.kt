@@ -99,8 +99,8 @@ fun bgDrawable(key: String) = when (key) {
 }
 
 private val CoverColors = listOf(
-    Color(0xFF2B4C9B), Color(0xFF7E9A52), Color(0xFFDE7F3C),
-    Color(0xFFE0B23C), Color(0xFFCE7A7A), Color(0xFF5B8A8C),
+    Color(0xFF1E2D4C), Color(0xFF6E8266), Color(0xFF9C8C82),
+    Color(0xFF4F6E6A), Color(0xFFB79A94), Color(0xFF7C8A76),
 )
 private val PAPER_KEYS = listOf("a5", "a4", "a3")
 private val DISPLAY_KEYS = listOf("mobile", "tablet", "desktop")
@@ -424,7 +424,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     val density = LocalDensity.current.density
     var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
-    var color by remember { mutableStateOf(0xFF2B4C9BL) }
+    var color by remember { mutableStateOf(0xFF1E2D4CL) }
     var sizeDp by remember { mutableFloatStateOf(10f) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }

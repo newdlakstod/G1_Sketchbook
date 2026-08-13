@@ -68,8 +68,8 @@ import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.ui.theme.ThemeMode
 
 private val CoverColors = listOf(
-    Color(0xFF2B4C9B), Color(0xFF7E9A52), Color(0xFFDE7F3C),
-    Color(0xFFE0B23C), Color(0xFFCE7A7A), Color(0xFF5B8A8C),
+    Color(0xFF1E2D4C), Color(0xFF6E8266), Color(0xFF9C8C82),
+    Color(0xFF4F6E6A), Color(0xFFB79A94), Color(0xFF7C8A76),
 )
 
 @Composable

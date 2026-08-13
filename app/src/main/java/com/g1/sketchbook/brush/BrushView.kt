@@ -32,7 +32,7 @@ enum class BrushType { PEN, PENCIL, CRAYON, WATER }
 class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
     var brush = BrushType.PEN
-    var color = 0xFF2B4C9B.toInt()
+    var color = 0xFF1E2D4C.toInt()
     var strokeSize = 20f      // diameter in screen px
     var opacity = 1f
     var drawEnabled = true

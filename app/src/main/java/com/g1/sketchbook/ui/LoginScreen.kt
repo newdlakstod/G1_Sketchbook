@@ -28,8 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.R
 
-private val Navy = Color(0xFF1E3FAE)
-private val Ivory = Color(0xFFF3ECD9)
+private val SageBg = Color(0xFFACBDAA)
+private val Ink = Color(0xFF1E2D4C)
 
 @Composable
 fun LoginScreen(
@@ -40,14 +40,14 @@ fun LoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Navy)
+            .background(SageBg)
             .padding(horizontal = 36.dp, vertical = 40.dp),
     ) {
         Spacer(Modifier.height(24.dp))
-        Text("G1", color = Ivory, fontSize = 68.sp, fontWeight = FontWeight.ExtraBold)
+        Text("G1", color = Ink, fontSize = 68.sp, fontWeight = FontWeight.ExtraBold)
         Text(
             "SKETCHBOOK",
-            color = Ivory,
+            color = Ink,
             fontSize = 40.sp,
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = 1.sp,
@@ -67,14 +67,14 @@ fun LoginScreen(
 
         Text(
             "Draw together,\nkeep the little days.",
-            color = Ivory,
+            color = Ink,
             fontSize = 17.sp,
             lineHeight = 24.sp,
         )
         Spacer(Modifier.height(20.dp))
 
         if (busy) {
-            CircularProgressIndicator(color = Ivory)
+            CircularProgressIndicator(color = Ink)
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 PillButton("Log in", onClick = onSignIn)
@@ -84,7 +84,7 @@ fun LoginScreen(
 
         error?.let {
             Spacer(Modifier.height(16.dp))
-            Text(it, color = Color(0xFFFFC9BB), fontSize = 13.sp)
+            Text(it, color = Color(0xFF7A3327), fontSize = 13.sp)
         }
     }
 }
@@ -94,8 +94,8 @@ private fun PillButton(text: String, onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
         shape = RoundedCornerShape(50),
-        border = BorderStroke(1.5.dp, Ivory),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = Ivory),
+        border = BorderStroke(1.5.dp, Ink),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink),
         contentPadding = PaddingValues(horizontal = 28.dp, vertical = 12.dp),
     ) {
         Text(text, fontSize = 15.sp, fontWeight = FontWeight.Bold)

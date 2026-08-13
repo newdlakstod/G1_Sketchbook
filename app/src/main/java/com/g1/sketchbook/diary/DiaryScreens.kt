@@ -87,7 +87,7 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
     val density = LocalDensity.current.density
     var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
-    var color by remember { mutableStateOf(0xFF2B4C9BL) }
+    var color by remember { mutableStateOf(0xFF1E2D4CL) }
     var sizeDp by remember { mutableFloatStateOf(10f) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
