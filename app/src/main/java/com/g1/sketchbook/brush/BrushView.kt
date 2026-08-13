@@ -117,23 +117,30 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
 
     /**
-     * Keeps the zoomed content from drifting fully off-screen; recentres when not zoomed.
-     * We allow up to half the view as empty margin on every side, so any point of the canvas —
-     * including the far corners — can be panned all the way to the screen centre (easier to draw
-     * the edges/corners). This does NOT change the canvas size, only how far it may be panned.
+     * Keeps the panned/zoomed canvas usable: you may slide the canvas aside to reveal a strip of
+     * background on any side (so the edges/corners are easy to draw), but only up to [revealBudget],
+     * and never so far that the screen centre stops covering the canvas — that guarantees you're
+     * always drawing on the canvas, not on the empty margin. Does NOT change the canvas size.
+     * (Fit recentres via resetZoom when the zoom returns to 1.)
      */
     private fun clampAndRefresh() {
         computeDisplay()
         val r = RectF(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(r)
-        val mx = width / 2f   // let any canvas edge travel to the screen centre — both axes alike
-        val my = height / 2f
-        var ax = 0f; var ay = 0f
-        // Applied on both axes regardless of whether the canvas fills or is letterboxed, so the
-        // side margins match the top/bottom ones. (Fit recentres via resetZoom when scale hits 1.)
-        if (r.left > mx) ax = mx - r.left else if (r.right < mx) ax = mx - r.right
-        if (r.top > my) ay = my - r.top else if (r.bottom < my) ay = my - r.bottom
+        val m = 0.35f * min(width, height)   // background reveal budget per side (same on both axes)
+        val ax = axisAdjust(r.left, r.right, width.toFloat(), m)
+        val ay = axisAdjust(r.top, r.bottom, height.toFloat(), m)
         if (ax != 0f || ay != 0f) { userM.postTranslate(ax, ay); computeDisplay() }
         invalidate()
+    }
+
+    /** Translation needed to keep the canvas span [lo,hi] within its allowed pan range on one axis. */
+    private fun axisAdjust(lo: Float, hi: Float, view: Float, margin: Float): Float {
+        val size = hi - lo
+        // If the canvas is narrower than the reveal window on this axis, just keep it centred.
+        if (size <= view - 2 * margin) return (view - size) / 2f - lo
+        val loMax = margin                  // pull canvas right → reveal `margin` on the left
+        val loMin = (view - margin) - size  // pull canvas left  → reveal `margin` on the right
+        return lo.coerceIn(loMin, loMax) - lo
     }
 
     /** Draws the original paper bitmap (cover-fit, filtered for quality) across the canvas rect. */
