@@ -100,7 +100,7 @@ fun MainScreen(
             when (tab) {
                 0 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook)
                 1 -> com.g1.sketchbook.diary.DiaryScreen()
-                2 -> HomeTab(nickname, avatar, onGoSketchbooks = { onTab(0) })
+                2 -> HomeTab(nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(0) })
                 3 -> com.g1.sketchbook.diary.DiaryCalendarScreen()
                 else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
             }
@@ -124,6 +124,7 @@ private fun androidx.compose.foundation.layout.RowScope.NavItem(
 private fun HomeTab(
     nickname: String,
     avatar: String,
+    onOpenBook: (String) -> Unit,
     onGoSketchbooks: () -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -143,22 +144,33 @@ private fun HomeTab(
             Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("🦆", fontSize = 40.sp)
                 Spacer(Modifier.size(14.dp))
-                Column {
-                    Text("함께 쓰는 스케치북", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text("탭하여 스케치북 만들기 · 이어 그리기", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                Column(Modifier.weight(1f)) {
+                    Text("스케치북 열기", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("새로 만들거나 이어서 그려요", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
                 }
+                Text("→", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
         }
 
         Spacer(Modifier.height(24.dp))
-        Text("최근 스케치북", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("최근 스케치북", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            if (books.isNotEmpty()) TextButton(onClick = onGoSketchbooks) { Text("전체 보기") }
+        }
+        Spacer(Modifier.height(6.dp))
         if (books.isEmpty()) {
-            Text("아직 없어요. 스케치북 탭에서 만들어보세요.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("아직 스케치북이 없어요", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("위 카드를 눌러 첫 스케치북을 만들어보세요.", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
         } else {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 itemsIndexed(books.take(8)) { i, b ->
-                    MiniCover(b, CoverColors[i % CoverColors.size], onGoSketchbooks)
+                    MiniCover(b, CoverColors[i % CoverColors.size]) { onOpenBook(b.id) }
                 }
             }
         }
@@ -172,6 +184,10 @@ private fun MiniCover(book: Sketchbook, cover: Color, onClick: () -> Unit) {
             .background(cover, RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp, topStart = 3.dp, bottomStart = 3.dp))) {
             Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(0.7f).align(Alignment.Center))
+            if (book.shared) {
+                Text("🤝", fontSize = 13.sp, modifier = Modifier.align(Alignment.TopEnd)
+                    .padding(5.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 3.dp, vertical = 1.dp))
+            }
         }
         Text(book.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
