@@ -175,6 +175,10 @@
   - 온보딩(Splash/Login) 정적 오리(duck_walk.png)를 걷는 GIF(`res/raw/duck_walk.gif`, image/source/duck-walk.gif)로 교체.
   - GIF는 `painterResource`로 애니 안 됨 → Coil(coil-compose+coil-gif 2.7.0) 추가, 공용 `ui/DuckWalk.kt`가 GIF 디코더(API28+ ImageDecoderDecoder / 이하 GifDecoder) 포함 ImageLoader로 `AsyncImage` 재생. Splash·Login 둘 다 사용.
 
+- **임시 치수 주석 제거 + 스크린샷 정리** (v1.55.0, 2026-08-14):
+  - 달력 탭의 임시 스펙 주석(DevAnno) 완전 삭제: `dev/DevAnno.kt` 삭제, DiaryCalendarScreen/AiryCalendar의 marks·devBounds·DevAnnoOverlay·DiaryDevNotes·관련 import 제거(치수는 Dimens 참조 유지).
+  - 실수로 커밋됐던 폰 스크린샷(`image/UI design/Screenshot_*.jpg`) git 제거.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

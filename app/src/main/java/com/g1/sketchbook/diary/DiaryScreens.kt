@@ -59,7 +59,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
@@ -86,9 +85,6 @@ import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.sketchbook.Catalog
 import com.g1.sketchbook.ui.bounceClick
-import com.g1.sketchbook.dev.DevAnnoOverlay
-import com.g1.sketchbook.dev.DevNote
-import com.g1.sketchbook.dev.devBounds
 import com.g1.sketchbook.ui.theme.Cavorting
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
@@ -172,48 +168,29 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
     var marked by remember { mutableStateOf<Set<String>>(emptySet()) }
     LaunchedEffect(year, month) { marked = withContext(Dispatchers.IO) { datesWithDiary(repo, year, month) } }
 
-    val marks = remember { mutableStateMapOf<String, Rect>() }
-    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().padding(horizontal = Dimens.Calendar.sideMargin)) {
         Spacer(Modifier.height(Dimens.Calendar.topSpacer))
         Box(Modifier.fillMaxWidth()) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$year", fontFamily = Cavorting, fontSize = Dimens.Calendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.devBounds("year", marks))
-                Text(MonthNames[month], fontFamily = Cavorting, fontSize = Dimens.Calendar.monthSp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
-                    modifier = Modifier.devBounds("month", marks))
+                Text("$year", fontFamily = Cavorting, fontSize = Dimens.Calendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(MonthNames[month], fontFamily = Cavorting, fontSize = Dimens.Calendar.monthSp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             }
-            IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd).devBounds("edit", marks)) {
+            IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd)) {
                 Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary)
             }
             Box(Modifier.align(Alignment.CenterStart).size(48.dp)
                 .bounceClick { if (month == 0) { month = 11; year-- } else month-- }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.size(Dimens.Calendar.arrowIcon).devBounds("arrowL", marks))
+                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.size(Dimens.Calendar.arrowIcon))
             }
             Box(Modifier.align(Alignment.CenterEnd).size(48.dp)
                 .bounceClick { if (month == 11) { month = 0; year++ } else month++ }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.size(Dimens.Calendar.arrowIcon).devBounds("arrowR", marks))
+                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.size(Dimens.Calendar.arrowIcon))
             }
         }
         Spacer(Modifier.height(Dimens.Calendar.titleGap))
-        AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth(), marks)
-    }
-        DevAnnoOverlay(marks, DiaryDevNotes)
+        AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth())
     }
 }
-
-/** TEMPORARY dev callouts for the calendar tab (slide 2). Remove via DevAnno.SHOW = false. */
-private val DiaryDevNotes = listOf(
-    DevNote("year", "연도 60sp", anchorX = 1f, anchorY = 0.5f, dx = 90f, dy = -6f),
-    DevNote("month", "월 100sp", anchorX = 0f, anchorY = 0.5f, dx = -20f, dy = 4f),
-    DevNote("edit", "오늘일기 아이콘", anchorX = 0.5f, anchorY = 1f, dx = -20f, dy = 26f),
-    DevNote("arrowL", "화살표 35dp", anchorX = 0.5f, anchorY = 1f, dx = 6f, dy = 34f),
-    DevNote("arrowR", "화살표 35dp", anchorX = 0.5f, anchorY = 1f, dx = -6f, dy = 34f),
-    DevNote("weekday", "요일 25sp", anchorX = 0.5f, anchorY = 0f, dx = 10f, dy = -22f),
-    DevNote("day", "일 21sp", anchorX = 1f, anchorY = 0.5f, dx = 30f, dy = 0f),
-    DevNote("today", "오늘 원 38dp", anchorX = 0f, anchorY = 0.5f, dx = -20f, dy = 0f),
-    DevNote("grid", "좌우 여백 24dp", anchorX = 0f, anchorY = 0f, dx = 8f, dy = -18f),
-)
 
 private val WeekHeaders = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 private val FullWeekdays = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
@@ -243,14 +220,13 @@ private fun monthCells(year: Int, month: Int): List<Int> {
 /** Airy borderless month: today wears a pink disc, days with a diary get a dot below the number. */
 @Composable
 private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: String, onTap: () -> Unit,
-                         modifier: Modifier = Modifier, marks: MutableMap<String, Rect>? = null) {
+                         modifier: Modifier = Modifier) {
     val cells = remember(year, month) { monthCells(year, month) }
-    Column(modifier.bounceClick { onTap() }.let { if (marks != null) it.devBounds("grid", marks) else it }) {
+    Column(modifier.bounceClick { onTap() }) {
         Row(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
-            WeekHeaders.forEachIndexed { i, wd ->
+            WeekHeaders.forEach { wd ->
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text(wd, fontFamily = Cavorting, fontSize = Dimens.Calendar.weekdaySp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = if (marks != null && i == 3) Modifier.devBounds("weekday", marks) else Modifier)
+                    Text(wd, fontFamily = Cavorting, fontSize = Dimens.Calendar.weekdaySp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -261,9 +237,7 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
                         if (day > 0) {
                             val date = "%04d-%02d-%02d".format(year, month + 1, day)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(Dimens.Calendar.todayDisc)
-                                    .let { if (marks != null && (date == today || day == 15)) it.devBounds(if (date == today) "today" else "day", marks) else it },
-                                    contentAlignment = Alignment.Center) {
+                                Box(Modifier.size(Dimens.Calendar.todayDisc), contentAlignment = Alignment.Center) {
                                     if (date == today) Box(Modifier.size(Dimens.Calendar.todayDisc).shadow(4.dp, CircleShape).background(TodayPink))
                                     Text("$day", fontFamily = Cavorting, fontSize = Dimens.Calendar.daySp, color = MaterialTheme.colorScheme.onSurface)
                                 }
