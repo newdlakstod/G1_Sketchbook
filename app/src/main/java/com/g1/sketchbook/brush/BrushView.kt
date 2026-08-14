@@ -54,7 +54,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val disp = Matrix()
     private val inv = Matrix()
     private var fitScale = 1f                 // screen px per canvas px
-    private val FIT_MARGIN_FRACTION = 0.08f    // page inset from each screen edge (× shorter side)
+    private val MIN_SCALE = 0.3f              // zoom OUT past fit (PPT-style) down to 30% for lots of room
+    private val MAX_SCALE = 5f
 
     private val userM = Matrix()              // view-space pinch zoom/pan on top of the fit
     private var userScale = 1f                // total user zoom (1 = fit, capped at 5)
@@ -107,13 +108,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         val q = (rotationQ + autoQ) % 4
         val rw = if (q % 2 == 0) cw else ch
         val rh = if (q % 2 == 0) ch else cw
-        // Float the page off the screen edges on every side so the border/corners are always
-        // reachable to draw — even at rest (fit), not only when zoomed. Portrait pages otherwise
-        // fill the width edge-to-edge, leaving no room to draw their left/right edges.
-        val margin = FIT_MARGIN_FRACTION * min(width, height)
-        val availW = (width - 2 * margin).coerceAtLeast(1f)
-        val availH = (height - 2 * margin).coerceAtLeast(1f)
-        fitScale = min(availW / rw, availH / rh)
+        fitScale = min(width.toFloat() / rw, height.toFloat() / rh)
         disp.reset()
         disp.postTranslate(-cw / 2f, -ch / 2f)
         disp.postRotate(q * 90f)
@@ -133,21 +128,25 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun clampAndRefresh() {
         computeDisplay()
         val r = RectF(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(r)
-        val m = 0.35f * min(width, height)   // background reveal budget per side (same on both axes)
-        val ax = axisAdjust(r.left, r.right, width.toFloat(), m)
-        val ay = axisAdjust(r.top, r.bottom, height.toFloat(), m)
+        val ax = axisAdjust(r.left, r.right, width.toFloat())
+        val ay = axisAdjust(r.top, r.bottom, height.toFloat())
         if (ax != 0f || ay != 0f) { userM.postTranslate(ax, ay); computeDisplay() }
         invalidate()
     }
 
-    /** Translation needed to keep the canvas span [lo,hi] within its allowed pan range on one axis. */
-    private fun axisAdjust(lo: Float, hi: Float, view: Float, margin: Float): Float {
+    /** Translation needed to keep the canvas span [lo,hi] usable on one axis. */
+    private fun axisAdjust(lo: Float, hi: Float, view: Float): Float {
         val size = hi - lo
-        // If the canvas is narrower than the reveal window on this axis, just keep it centred.
-        if (size <= view - 2 * margin) return (view - size) / 2f - lo
-        val loMax = margin                  // pull canvas right → reveal `margin` on the left
-        val loMin = (view - margin) - size  // pull canvas left  → reveal `margin` on the right
-        return lo.coerceIn(loMin, loMax) - lo
+        return if (size <= view) {
+            // Zoomed out (canvas smaller than the screen on this axis): keep it fully on screen,
+            // free to sit anywhere inside the surrounding workspace (PowerPoint-style).
+            when { lo < 0f -> -lo; hi > view -> view - hi; else -> 0f }
+        } else {
+            // Zoomed in (larger than the screen): keep the screen centre over the canvas so you're
+            // always drawing on paper, while allowing up to half the screen as room on any side.
+            val c = view / 2f
+            when { lo > c -> c - lo; hi < c -> c - hi; else -> 0f }
+        }
     }
 
     /** Draws the original paper bitmap (cover-fit, filtered for quality) across the canvas rect. */
@@ -220,10 +219,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     val d = spacing(e); val mx = midX(e); val my = midY(e)
                     if (prevDist > 0f) {
                         var ds = d / prevDist
-                        val ns = (userScale * ds).coerceIn(1f, 5f); ds = ns / userScale; userScale = ns
+                        val ns = (userScale * ds).coerceIn(MIN_SCALE, MAX_SCALE); ds = ns / userScale; userScale = ns
                         userM.postScale(ds, ds, mx, my)
                         userM.postTranslate(mx - prevMidX, my - prevMidY)
-                        if (userScale <= 1.001f) resetZoom()
                         clampAndRefresh()
                     }
                     prevDist = d; prevMidX = mx; prevMidY = my
