@@ -54,6 +54,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val disp = Matrix()
     private val inv = Matrix()
     private var fitScale = 1f                 // screen px per canvas px
+    private val FIT_MARGIN_FRACTION = 0.08f    // page inset from each screen edge (× shorter side)
 
     private val userM = Matrix()              // view-space pinch zoom/pan on top of the fit
     private var userScale = 1f                // total user zoom (1 = fit, capped at 5)
@@ -106,7 +107,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         val q = (rotationQ + autoQ) % 4
         val rw = if (q % 2 == 0) cw else ch
         val rh = if (q % 2 == 0) ch else cw
-        fitScale = min(width.toFloat() / rw, height.toFloat() / rh)
+        // Float the page off the screen edges on every side so the border/corners are always
+        // reachable to draw — even at rest (fit), not only when zoomed. Portrait pages otherwise
+        // fill the width edge-to-edge, leaving no room to draw their left/right edges.
+        val margin = FIT_MARGIN_FRACTION * min(width, height)
+        val availW = (width - 2 * margin).coerceAtLeast(1f)
+        val availH = (height - 2 * margin).coerceAtLeast(1f)
+        fitScale = min(availW / rw, availH / rh)
         disp.reset()
         disp.postTranslate(-cw / 2f, -ch / 2f)
         disp.postRotate(q * 90f)
