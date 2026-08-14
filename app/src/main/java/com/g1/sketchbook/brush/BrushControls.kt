@@ -189,12 +189,18 @@ fun BrushControls(
             VDivider()
 
             // 5 favourites: tap to pick; tap the already-selected one again to open a colour wheel for it.
+            // Visual swatch stays 28dp; the tappable area is expanded to the 48dp accessibility minimum.
             favorites.forEachIndexed { i, c ->
                 val on = !erasing && c == color
                 Box {
-                    Box(Modifier.size(28.dp).clip(CircleShape).background(Color(c))
-                        .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-                        .clickable { if (on) editFavAt = i else onColor(c) })
+                    Box(
+                        Modifier.size(48.dp)
+                            .clickable(onClickLabel = "즐겨찾기 색상 ${i + 1}") { if (on) editFavAt = i else onColor(c) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(Color(c))
+                            .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape))
+                    }
                     if (editFavAt == i) Popup(AboveAnchor(gap), { editFavAt = -1 }, PopupProperties(focusable = true)) {
                         ColorPickerCard(c) { newColor -> onColor(newColor); onEditFavorite(i, newColor) }
                     }
@@ -202,10 +208,14 @@ fun BrushControls(
             }
             // Color wheel: opens a hue/saturation/value picker for any custom colour.
             Box {
-                Box(Modifier.size(28.dp).clip(CircleShape)
-                    .background(Brush.sweepGradient(HueWheel))
-                    .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                    .clickable { colorWheelOpen = !colorWheelOpen })
+                Box(
+                    Modifier.size(48.dp).clickable(onClickLabel = "사용자 지정 색상 고르기") { colorWheelOpen = !colorWheelOpen },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(Modifier.size(28.dp).clip(CircleShape)
+                        .background(Brush.sweepGradient(HueWheel))
+                        .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
+                }
                 if (colorWheelOpen) Popup(AboveAnchor(gap), { colorWheelOpen = false }, PopupProperties(focusable = true)) {
                     ColorPickerCard(color, onColor)
                 }
@@ -372,9 +382,12 @@ private fun BrushBtnWithPanel(
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     Box {
-        // Button footprint stays at the original 42dp; the enlarged icon is cropped to fit inside it.
-        Box(Modifier.size(42.dp).clipToBounds().bounceClick { if (selected) setPanelOpen(!panelOpen) else onClick() },
-            contentAlignment = Alignment.Center) { icon(tint) }
+        // Tap area is the 48dp accessibility minimum; the icon's own 42dp crop window (which frames
+        // the enlarged 52dp artwork) stays exactly as before, just centred inside the bigger hitbox.
+        Box(Modifier.size(48.dp).bounceClick { if (selected) setPanelOpen(!panelOpen) else onClick() },
+            contentAlignment = Alignment.Center) {
+            Box(Modifier.size(42.dp).clipToBounds(), contentAlignment = Alignment.Center) { icon(tint) }
+        }
         if (panelOpen) Popup(AboveAnchor(gap), { setPanelOpen(false) }, PopupProperties(focusable = true)) {
             SlidersPanel(name, showOpacity, sizeDp, opacity, onSize, onOpacity)
         }
@@ -383,7 +396,7 @@ private fun BrushBtnWithPanel(
 
 @Composable
 private fun IconBtn(icon: ImageVector, desc: String, tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
-    Box(Modifier.size(40.dp).bounceClick { onClick() }, contentAlignment = Alignment.Center) { Icon(icon, desc, tint = tint) }
+    Box(Modifier.size(48.dp).bounceClick { onClick() }, contentAlignment = Alignment.Center) { Icon(icon, desc, tint = tint) }
 }
 
 @Composable

@@ -30,15 +30,13 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.ui.theme.Cavorting
 import com.g1.sketchbook.ui.theme.Dimens
 
-private val SageBg = Color(0xFFACBDAA)
-private val Ink = Color(0xFF20201C)
-
 @Composable
 fun LoginScreen(
     busy: Boolean,
     error: String?,
     onSignIn: () -> Unit,
 ) {
+    val (SageBg, Ink) = onboardingPalette()
     Column(
         modifier = Modifier.fillMaxSize().background(SageBg).systemBarsPadding()
             .padding(horizontal = 28.dp, vertical = 24.dp),

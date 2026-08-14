@@ -18,19 +18,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.ui.theme.Cavorting
 import com.g1.sketchbook.ui.theme.Dimens
 
-private val SageBg = Color(0xFFACBDAA)
-private val Ink = Color(0xFF20201C)
-
 /** First screen the app shows — stays put until the user taps "enter" (no auto-advance timer). */
 @Composable
 fun SplashScreen(onEnter: () -> Unit) {
+    val (SageBg, Ink) = onboardingPalette()
     Column(
         modifier = Modifier.fillMaxSize().background(SageBg).systemBarsPadding()
             .padding(horizontal = 28.dp, vertical = 24.dp),

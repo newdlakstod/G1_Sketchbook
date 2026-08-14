@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.LaunchedEffect
@@ -78,6 +79,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -497,6 +499,10 @@ private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDele
         ) {
             Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(0.66f).align(Alignment.Center).padding(start = 12.dp))
+            // Scrim so the cream text stays readable regardless of the cover's own colour (some covers,
+            // e.g. the light mauve one, put light text under ~2:1 contrast without this).
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.5f)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)))))
             Column(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 8.dp, bottom = 12.dp)) {
                 Text(book.name, color = Color(0xFFF3ECD9), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -505,13 +511,15 @@ private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDele
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
             }
         }
-        IconButton(onClick = onToggleFav, modifier = Modifier.align(Alignment.TopStart).size(30.dp)) {
+        IconButton(onClick = onToggleFav, modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(30.dp)
+            .clip(CircleShape).background(Color(0x33000000))) {
             Icon(Icons.Filled.Star, "즐겨찾기",
-                tint = if (book.fav) Color(0xFFFFD43B) else Color(0xFFF3ECD9).copy(alpha = 0.55f),
+                tint = if (book.fav) Color(0xFFFFD43B) else Color(0xFFF3ECD9),
                 modifier = Modifier.size(18.dp))
         }
-        IconButton(onClick = onDelete, modifier = Modifier.align(Alignment.TopEnd).size(30.dp)) {
-            Icon(Icons.Filled.Delete, "삭제", tint = Color(0xFFF3ECD9).copy(alpha = 0.75f), modifier = Modifier.size(16.dp))
+        IconButton(onClick = onDelete, modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(30.dp)
+            .clip(CircleShape).background(Color(0x33000000))) {
+            Icon(Icons.Filled.Delete, "삭제", tint = Color(0xFFF3ECD9), modifier = Modifier.size(16.dp))
         }
     }
 }

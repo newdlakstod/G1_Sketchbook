@@ -513,7 +513,8 @@ private fun GestureActionRow(label: String, selected: GestureAction, onSelect: (
     Column {
         Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // 4개 칩("색상 스포이드" 포함)이 좁은 화면 폭을 넘어설 수 있어 가로 스크롤 허용.
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GestureAction.entries.forEach { a ->
                 FilterChip(selected == a, { onSelect(a) }, label = { Text(gestureActionLabel(a)) })
             }
