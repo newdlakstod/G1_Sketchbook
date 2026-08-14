@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -88,6 +89,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
@@ -110,7 +113,7 @@ private val CoverColors = listOf(
     Color(0xFF4F6E6A), Color(0xFFB79A94), Color(0xFF7C8A76),
 )
 private val PAPER_KEYS = listOf("a5", "a4", "a3")
-private val DISPLAY_KEYS = listOf("mobile", "tablet", "desktop")
+private val DISPLAY_KEYS = listOf("desktop", "mobile", "tablet")
 
 @Composable
 private fun SizeRow(list: List<CanvasSize>, selected: String, onSelect: (String) -> Unit) {
@@ -252,80 +255,122 @@ private fun CreateWizard(
         }
     }
 
-    val title = when (step) {
-        WStep.TYPE -> "무엇을 만들까요?"
-        WStep.NAME -> "이름을 정해요"
-        WStep.SIZE -> "캔버스 크기"
-        WStep.BG -> "캔버스 배경"
-        WStep.CODE -> "초대 코드 입력"
-    }
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(title) },
-        text = {
-            Column {
-                when (step) {
-                    WStep.TYPE -> {
+    when {
+        // 개인 스케치북 — 이름/사이즈/배경을 단계로 나누지 않고 카드 한 화면에서 전부 선택.
+        // 시안 예시 없이도 재진입 가능하도록 TYPE 선택 단계는 남겨두되(현재 진입 경로는 항상
+        // initialType을 주므로 사실상 도달하지 않음), PERSONAL은 항상 이 카드로 처리한다.
+        step == WStep.TYPE -> {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { Text("무엇을 만들까요?") },
+                text = {
+                    Column {
                         WizardChoice(Icons.Filled.Book, "개인 스케치북") { type = WType.PERSONAL; step = WStep.NAME }
                         Spacer(Modifier.height(10.dp))
                         WizardChoice(Icons.Filled.Groups, "공유 스케치북 만들기") { type = WType.SHARED_NEW; step = WStep.NAME }
                         Spacer(Modifier.height(10.dp))
                         WizardChoice(Icons.AutoMirrored.Filled.Login, "공유 스케치북 참여") { type = WType.SHARED_JOIN; code = ""; step = WStep.CODE }
                     }
-                    WStep.NAME -> {
-                        OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
-                            label = { Text("스케치북 이름") }, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
-                    }
-                    WStep.SIZE -> {
-                        Text("종이", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
-                        SizeRow(Catalog.sizes.filter { it.key in PAPER_KEYS }, sizeKey) { sizeKey = it }
-                        Spacer(Modifier.height(12.dp))
-                        Text("디스플레이", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
-                        SizeRow(Catalog.sizes.filter { it.key in DISPLAY_KEYS }, sizeKey) { sizeKey = it }
-                    }
-                    WStep.BG -> {
-                        // Live preview — updates the instant a swatch below is tapped.
-                        Image(painterResource(bgDrawable(bgKey)), "배경 미리보기", contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(12.dp)))
-                        Spacer(Modifier.height(12.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(Catalog.backgrounds) { bg ->
-                                val on = bg.key == bgKey
-                                Column(horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.clickable { bgKey = bg.key }.padding(2.dp)) {
-                                    Image(painterResource(bgDrawable(bg.key)), bg.label, contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(10.dp))
-                                            .border(if (on) 3.dp else 1.dp,
-                                                if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                                RoundedCornerShape(10.dp)))
-                                    Text(bg.label, fontSize = 11.sp)
-                                }
-                            }
-                        }
-                    }
-                    WStep.CODE -> {
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+            )
+        }
+        step == WStep.CODE -> {
+            AlertDialog(
+                onDismissRequest = { if (!busy) onDismiss() },
+                title = { Text("초대 코드 입력") },
+                text = {
+                    Column {
                         OutlinedTextField(code, { code = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(6); error = null },
                             singleLine = true, enabled = !busy, label = { Text("초대 코드") },
                             shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
+                        if (error != null) { Spacer(Modifier.height(10.dp)); Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                        if (busy) { Spacer(Modifier.height(12.dp)); androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                    }
+                },
+                confirmButton = { TextButton(enabled = !busy && code.length >= 4, onClick = { finishJoin() }) { Text("참여") } },
+                dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("취소") } },
+            )
+        }
+        type == WType.SHARED_NEW -> {
+            AlertDialog(
+                onDismissRequest = { if (!busy) onDismiss() },
+                title = { Text("이름을 정해요") },
+                text = {
+                    Column {
+                        OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
+                            label = { Text("스케치북 이름") }, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
+                        if (error != null) { Spacer(Modifier.height(10.dp)); Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                        if (busy) { Spacer(Modifier.height(12.dp)); androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                    }
+                },
+                confirmButton = { TextButton(enabled = !busy, onClick = { finishSharedNew() }) { Text("만들기") } },
+                dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("취소") } },
+            )
+        }
+        else -> {
+            PersonalCreateCard(
+                name = name, onName = { name = it.take(20) },
+                sizeKey = sizeKey, onSize = { sizeKey = it },
+                bgKey = bgKey, onBg = { bgKey = it },
+                onCancel = onDismiss, onCreate = { finishPersonal() },
+            )
+        }
+    }
+}
+
+/** 새 스케치북(개인) 카드 — 이름/종이/디스플레이/배경을 한 화면에서 고른다.
+ *  배경 스와치를 고르면 그 재질을 팝업 바로 뒤 전체 배경에 즉시 적용해 실제 느낌을 미리 볼 수 있다. */
+@Composable
+private fun PersonalCreateCard(
+    name: String, onName: (String) -> Unit,
+    sizeKey: String, onSize: (String) -> Unit,
+    bgKey: String, onBg: (String) -> Unit,
+    onCancel: () -> Unit, onCreate: () -> Unit,
+) {
+    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize()) {
+            // 팝업 뒷배경 = 선택된 종이 재질 (스와치 탭 시 즉시 갱신되어 바로 느낌을 확인할 수 있음).
+            Image(painterResource(bgDrawable(bgKey)), "배경 미리보기", contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize())
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.30f)))
+            Box(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = Dimens.Screen.bottomMargin),
+                contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier.widthIn(max = Dimens.Wizard.cardWidth).fillMaxWidth()
+                        .clip(RoundedCornerShape(Dimens.Wizard.cardRadius))
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(20.dp),
+                ) {
+                    OutlinedTextField(name, onName, singleLine = true,
+                        placeholder = { Text("스케치북 이름 입력") }, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(18.dp))
+                    Text("종이", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
+                    SizeRow(Catalog.sizes.filter { it.key in PAPER_KEYS }, sizeKey, onSize)
+                    Spacer(Modifier.height(14.dp))
+                    Text("디스플레이", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
+                    SizeRow(Catalog.sizes.filter { it.key in DISPLAY_KEYS }, sizeKey, onSize)
+                    Spacer(Modifier.height(14.dp))
+                    Text("배경", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(Catalog.backgrounds) { bg ->
+                            val on = bg.key == bgKey
+                            Image(painterResource(bgDrawable(bg.key)), bg.label, contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(48.dp).clip(CircleShape).clickable { onBg(bg.key) }
+                                    .border(if (on) 3.dp else 1.dp,
+                                        if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape))
+                        }
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = onCancel) { Text("취소") }
+                        TextButton(onClick = onCreate, enabled = name.isNotBlank()) { Text("생성", fontWeight = FontWeight.Bold) }
                     }
                 }
-                if (error != null) { Spacer(Modifier.height(10.dp)); Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
-                if (busy) { Spacer(Modifier.height(12.dp)); androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth()) }
             }
-        },
-        confirmButton = {
-            when (step) {
-                WStep.TYPE -> {}
-                WStep.NAME -> TextButton(enabled = !busy, onClick = {
-                    if (type == WType.PERSONAL) step = WStep.SIZE else finishSharedNew()
-                }) { Text(if (type == WType.PERSONAL) "다음" else "만들기") }
-                WStep.SIZE -> TextButton(onClick = { step = WStep.BG }) { Text("다음") }
-                WStep.BG -> TextButton(onClick = { finishPersonal() }) { Text("만들기") }
-                WStep.CODE -> TextButton(enabled = !busy && code.length >= 4, onClick = { finishJoin() }) { Text("참여") }
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("취소") } },
-    )
+        }
+    }
 }
 
 @Composable

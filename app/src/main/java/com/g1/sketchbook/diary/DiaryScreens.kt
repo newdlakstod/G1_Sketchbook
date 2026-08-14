@@ -72,6 +72,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -170,6 +171,9 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
 
     Column(Modifier.fillMaxSize().padding(horizontal = Dimens.Calendar.sideMargin)) {
         Spacer(Modifier.height(Dimens.Calendar.topSpacer))
+        Text("A piece of today", fontFamily = Cavorting, fontSize = Dimens.Screen.titleSp,
+            color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(Dimens.Calendar.topTitleGap))
         Box(Modifier.fillMaxWidth()) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("$year", fontFamily = Cavorting, fontSize = Dimens.Calendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -181,11 +185,11 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
             }
             Box(Modifier.align(Alignment.CenterStart).size(48.dp)
                 .bounceClick { if (month == 0) { month = 11; year-- } else month-- }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.size(Dimens.Calendar.arrowIcon))
+                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.width(Dimens.Calendar.arrowIconW).height(Dimens.Calendar.arrowIconH))
             }
             Box(Modifier.align(Alignment.CenterEnd).size(48.dp)
                 .bounceClick { if (month == 11) { month = 0; year++ } else month++ }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.size(Dimens.Calendar.arrowIcon))
+                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.width(Dimens.Calendar.arrowIconW).height(Dimens.Calendar.arrowIconH))
             }
         }
         Spacer(Modifier.height(Dimens.Calendar.titleGap))

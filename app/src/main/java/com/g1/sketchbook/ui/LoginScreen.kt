@@ -42,7 +42,7 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(12.dp))
-        Text("Daily sketch", fontFamily = Cavorting, fontSize = Dimens.Onboarding.titleSp, color = Ink, textAlign = TextAlign.Center)
+        OnboardingTitle(fontSize = Dimens.Onboarding.titleSp, color = Ink)
         DuckWalk(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp),
             contentDescription = "G1 Sketch 오리",

@@ -200,6 +200,13 @@
   - 빈 리스트 안내문구 "+ 로 만들어보세요." → "홈 화면에서 만들어보세요."로 수정(더 이상 이 화면에 + 버튼이 없으므로).
   - 부수 정리: 이제 안 쓰는 `FloatingActionButton`/`Icons.Filled.Add` import 제거.
 
+- **온보딩 타이틀 줄바꿈 · 달력 탭 레이아웃 재적용 · 새 스케치북 카드 통합 + 배경 라이브 프리뷰** (v1.59.0, 2026-08-14), 시안 2장 반영:
+  1. **온보딩 타이틀 자동 줄바꿈**: `OnboardingTitle`(신규 공용 컴포저블, `ui/OnboardingTitle.kt`) 추가 — `rememberTextMeasurer()`로 "Daily sketch" 한 줄 폭을 실측해 화면 폭보다 크면(기기 비율상 타이틀이 화면보다 클 때) "Daily"/"sketch" 두 줄로 자동 전환. Splash/Login 두 화면 모두 이 컴포저블로 교체.
+  2. **달력 탭 레이아웃**: 다른 탭과 동일한 위치·크기의 탭 타이틀 "A piece of today"(`Dimens.Screen.titleSp`=78sp) 신설 — 연도/월 위에 추가(다른 탭 타이틀과 정렬·색 통일). 이전/다음 달 화살표를 정사각 35dp → 10×20dp(`Dimens.Calendar.arrowIconW/H`)로 재조정. 신규 `Dimens.Calendar.topTitleGap`=16dp(타이틀~연도 간격).
+  3. **새 스케치북(개인) 화면 통합**: 기존 이름→사이즈→배경 3단계 `AlertDialog` 순차 전환을 없애고, 이름 입력/종이/디스플레이/배경 선택을 카드 한 화면에 전부 배치(`PersonalCreateCard`, 신규). 디스플레이 아이콘 순서를 시안대로 데스크톱/모바일/태블릿으로 재정렬. 하단에 취소(좌)/생성(우) 버튼. 공유 만들기(이름만)·참여(코드만) 흐름은 기존 단일 단계 그대로 유지.
+  4. **배경 선택 시 팝업 뒷배경 실시간 프리뷰**: `PersonalCreateCard`를 `AlertDialog` 대신 커스텀 `Dialog`(`usePlatformDefaultWidth=false`)로 구현 — 스와치를 탭하면 선택한 종이 재질이 팝업 카드 뒤 전체화면 배경(어둡게 스크림 처리)에 즉시 적용돼 실제 캔버스 배경 느낌을 바로 확인할 수 있음. 기존 카드 내부 110dp 미리보기 이미지는 제거(뒷배경 프리뷰로 대체).
+  - `Dimens.Wizard`에 `cardWidth`=425dp, `cardRadius`=28dp 추가.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
