@@ -176,7 +176,8 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
                 Text(MonthNames[month], fontFamily = Cavorting, fontSize = Dimens.Calendar.monthSp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
             }
             IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd)) {
-                Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(Dimens.Calendar.editIcon))
             }
             Box(Modifier.align(Alignment.CenterStart).size(48.dp)
                 .bounceClick { if (month == 0) { month = 11; year-- } else month-- }, contentAlignment = Alignment.Center) {
@@ -189,6 +190,7 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
         }
         Spacer(Modifier.height(Dimens.Calendar.titleGap))
         AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth())
+        Spacer(Modifier.height(Dimens.Calendar.bottomMargin))
     }
 }
 

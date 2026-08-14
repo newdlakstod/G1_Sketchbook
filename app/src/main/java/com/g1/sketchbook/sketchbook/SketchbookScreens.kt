@@ -39,6 +39,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
@@ -173,18 +174,29 @@ private fun SizeIcon(key: String, color: Color, modifier: Modifier) {
 }
 /** 스케치북 tab: cover list (personal + shared groups) + step-by-step create wizard. */
 @Composable
-fun SketchbookTab(nickname: String, myUid: String, onOpenBook: (String) -> Unit) {
+fun SketchbookTab(
+    nickname: String,
+    myUid: String,
+    onOpenBook: (String) -> Unit,
+    openWizardAs: WType? = null,
+    onWizardOpened: () -> Unit = {},
+) {
     val context = LocalContext.current
     val repo = remember { SketchbookRepository(context) }
     var refresh by remember { mutableIntStateOf(0) }
     val books = remember(refresh) { repo.list() }
     var creating by remember { mutableStateOf(false) }
+    var wizardType by remember { mutableStateOf<WType?>(null) }
+
+    LaunchedEffect(openWizardAs) {
+        if (openWizardAs != null) { wizardType = openWizardAs; creating = true; onWizardOpened() }
+    }
 
     if (creating) {
         CreateWizard(
-            nickname = nickname, myUid = myUid, repo = repo,
-            onDismiss = { creating = false },
-            onCreated = { book -> creating = false; refresh++; onOpenBook(book.id) },
+            nickname = nickname, myUid = myUid, repo = repo, initialType = wizardType,
+            onDismiss = { creating = false; wizardType = null },
+            onCreated = { book -> creating = false; wizardType = null; refresh++; onOpenBook(book.id) },
         )
     }
     SketchbookListScreen(
@@ -197,7 +209,7 @@ fun SketchbookTab(nickname: String, myUid: String, onOpenBook: (String) -> Unit)
 }
 
 private enum class WStep { TYPE, NAME, SIZE, BG, CODE }
-private enum class WType { PERSONAL, SHARED_NEW, SHARED_JOIN }
+enum class WType { PERSONAL, SHARED_NEW, SHARED_JOIN }
 
 /** Step-by-step popup: pick type → (name → size → bg) for creation, or (code) for joining a shared book. */
 @Composable
@@ -207,11 +219,14 @@ private fun CreateWizard(
     repo: SketchbookRepository,
     onDismiss: () -> Unit,
     onCreated: (Sketchbook) -> Unit,
+    initialType: WType? = null,
 ) {
     val scope = rememberCoroutineScope()
     val share = remember { com.g1.sketchbook.share.ShareRepository() }
-    var step by remember { mutableStateOf(WStep.TYPE) }
-    var type by remember { mutableStateOf(WType.PERSONAL) }
+    // A preset type (e.g. from the home screen's 새 노트/공유/참여 buttons) skips straight past
+    // the "무엇을 만들까요?" step into the flow for that type.
+    var step by remember { mutableStateOf(if (initialType == null) WStep.TYPE else if (initialType == WType.SHARED_JOIN) WStep.CODE else WStep.NAME) }
+    var type by remember { mutableStateOf(initialType ?: WType.PERSONAL) }
     var name by remember { mutableStateOf("") }
     var sizeKey by remember { mutableStateOf("a4") }
     var bgKey by remember { mutableStateOf("watercolor") }
@@ -271,6 +286,10 @@ private fun CreateWizard(
                         SizeRow(Catalog.sizes.filter { it.key in DISPLAY_KEYS }, sizeKey) { sizeKey = it }
                     }
                     WStep.BG -> {
+                        // Live preview — updates the instant a swatch below is tapped.
+                        Image(painterResource(bgDrawable(bgKey)), "배경 미리보기", contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(12.dp)))
+                        Spacer(Modifier.height(12.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(Catalog.backgrounds) { bg ->
                                 val on = bg.key == bgKey
@@ -335,36 +354,33 @@ private fun SketchbookListScreen(
     onToggleFav: (Sketchbook) -> Unit,
 ) {
     var pendingDelete by remember { mutableStateOf<Sketchbook?>(null) }
+    var showShared by remember { mutableStateOf(false) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = { FloatingActionButton(onClick = onCreate) { Icon(Icons.Filled.Add, "새 스케치북") } },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text("스케치북", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Sketchbook list", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.SketchbookList.titleSp,
+                color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilterIconBtn(Icons.Filled.Person, "개인", !showShared) { showShared = false }
+                FilterIconBtn(Icons.Filled.Groups, "공유받음", showShared) { showShared = true }
+            }
             Spacer(Modifier.height(12.dp))
-            if (books.isEmpty()) {
-                Text("아직 스케치북이 없어요. + 로 만들어보세요.",
+            val shown = books.filter { it.shared == showShared }
+            if (shown.isEmpty()) {
+                Text(if (showShared) "아직 공유받은 스케치북이 없어요." else "아직 스케치북이 없어요. + 로 만들어보세요.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
             } else {
-                val personal = books.filter { !it.shared }
-                val shared = books.filter { it.shared }
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(150.dp),
+                    columns = GridCells.Fixed(3),
                     modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    if (personal.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("내 스케치북") }
-                        itemsIndexed(personal, key = { _, b -> b.id }) { i, b ->
-                            CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { pendingDelete = b }, { onToggleFav(b) })
-                        }
-                    }
-                    if (shared.isNotEmpty()) {
-                        item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("함께 그린 스케치북") }
-                        itemsIndexed(shared, key = { _, b -> b.id }) { i, b ->
-                            CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { pendingDelete = b }, { onToggleFav(b) })
-                        }
+                    itemsIndexed(shown, key = { _, b -> b.id }) { i, b ->
+                        CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { pendingDelete = b }, { onToggleFav(b) })
                     }
                 }
             }
@@ -386,10 +402,17 @@ private fun SketchbookListScreen(
     }
 }
 
+/** 개인/공유받음 필터 토글 — 선택된 쪽은 원형 배경(nav 선택 표시와 같은 톤)으로 강조. */
 @Composable
-private fun SectionHeader(text: String) {
-    Text(text, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 2.dp))
+private fun FilterIconBtn(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(CircleShape)
+            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+            .bounceClick(onClick = onClick).padding(10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, label, tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @Composable

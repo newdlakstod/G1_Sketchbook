@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -29,12 +30,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -56,13 +60,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,6 +78,7 @@ import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.ui.theme.Cavorting
+import com.g1.sketchbook.ui.theme.Dimens
 import com.g1.sketchbook.ui.theme.Pretendard
 import com.g1.sketchbook.ui.theme.ThemeMode
 
@@ -96,10 +104,18 @@ fun MainScreen(
     onOpenCalendar: (Int, Int) -> Unit,
 ) {
     val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    // Home's 새 노트/공유/참여 buttons jump to the Sketchbook tab with the wizard pre-opened.
+    var pendingWizardType by remember { mutableStateOf<com.g1.sketchbook.sketchbook.WType?>(null) }
     val content: @Composable () -> Unit = {
         when (tab) {
-            0 -> HomeTab(nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(1) })
-            1 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook)
+            0 -> HomeTab(
+                nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(1) },
+                onNewBook = { pendingWizardType = com.g1.sketchbook.sketchbook.WType.PERSONAL; onTab(1) },
+                onNewShared = { pendingWizardType = com.g1.sketchbook.sketchbook.WType.SHARED_NEW; onTab(1) },
+                onJoinShared = { pendingWizardType = com.g1.sketchbook.sketchbook.WType.SHARED_JOIN; onTab(1) },
+            )
+            1 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook,
+                openWizardAs = pendingWizardType, onWizardOpened = { pendingWizardType = null })
             2 -> com.g1.sketchbook.diary.DiaryCalendarScreen(onOpenDiary, onOpenCalendar)
             else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
         }
@@ -203,71 +219,90 @@ private fun HomeTab(
     avatar: String,
     onOpenBook: (String) -> Unit,
     onGoSketchbooks: () -> Unit,
+    onNewBook: () -> Unit,
+    onNewShared: () -> Unit,
+    onJoinShared: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val repo = remember { SketchbookRepository(ctx) }
     val books = remember { repo.list() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("안녕하세요,", fontSize = 14.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-                Text("$nickname 님", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-            }
-            Avatar(avatar, 48.dp)
+    Column(Modifier.fillMaxSize().padding(top = 8.dp)) {
+        Text("Draw your time", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Home.titleSp,
+            color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(Dimens.Home.titleToIconGap))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            HomeActionIcon(Icons.Filled.Add, "새 노트 추가", onNewBook)
+            Spacer(Modifier.width(14.dp))
+            HomeActionIcon(Icons.Filled.Share, "공유 스케치북 만들기", onNewShared)
+            Spacer(Modifier.width(14.dp))
+            HomeActionIcon(Icons.AutoMirrored.Filled.Login, "공유 스케치북 참여", onJoinShared)
         }
-        Spacer(Modifier.height(20.dp))
-        Card(Modifier.fillMaxWidth().bounceClick { onGoSketchbooks() }, shape = MaterialTheme.shapes.large,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)) {
-            Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("🦆", fontSize = 40.sp)
-                Spacer(Modifier.size(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("스케치북 열기", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Text("새로 만들거나 이어서 그려요", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+        Spacer(Modifier.height(28.dp))
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (books.isEmpty()) {
+                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("아직 스케치북이 없어요", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text("위 + 버튼으로 첫 스케치북을 만들어보세요.", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                 }
-                Text("→", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            } else {
+                HomeCarousel(books, onOpenBook)
             }
         }
-
-        Spacer(Modifier.height(24.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("최근 스케치북", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
-            if (books.isNotEmpty()) TextButton(onClick = onGoSketchbooks) { Text("전체 보기") }
-        }
-        Spacer(Modifier.height(6.dp))
-        if (books.isEmpty()) {
-            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(Modifier.padding(20.dp)) {
-                    Text("아직 스케치북이 없어요", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text("위 카드를 눌러 첫 스케치북을 만들어보세요.", fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
-                }
-            }
-        } else {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                itemsIndexed(books.take(8)) { i, b ->
-                    MiniCover(b, CoverColors[i % CoverColors.size]) { onOpenBook(b.id) }
-                }
-            }
-        }
+        Spacer(Modifier.height(Dimens.Screen.bottomMargin))
     }
 }
 
 @Composable
-private fun MiniCover(book: Sketchbook, cover: Color, onClick: () -> Unit) {
-    Column(Modifier.width(96.dp).bounceClick { onClick() }) {
-        Box(Modifier.width(96.dp).aspectRatio(0.78f)
-            .background(cover, RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp, topStart = 3.dp, bottomStart = 3.dp))) {
-            Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(0.7f).align(Alignment.Center))
-            if (book.shared) {
-                Text("🤝", fontSize = 13.sp, modifier = Modifier.align(Alignment.TopEnd)
-                    .padding(5.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 3.dp, vertical = 1.dp))
+private fun HomeActionIcon(icon: ImageVector, desc: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(Dimens.Home.actionIcon).clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary).bounceClick(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, desc, tint = MaterialTheme.colorScheme.onPrimary)
+    }
+}
+
+/** Swipeable carousel of sketchbook covers — the focused (centred) one is largest, neighbours peek
+ *  in smaller and dimmer on either side. Tapping any cover opens it. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { books.size })
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+    // Side padding sized so the focused page gets its full spec width, with whatever room is left
+    // over used to peek the neighbours (never negative, even on narrow phones).
+    val peek = ((maxWidth - Dimens.Home.carouselCenterW) / 2).coerceAtLeast(20.dp)
+    androidx.compose.foundation.pager.HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = peek),
+        pageSpacing = 16.dp,
+    ) { page ->
+        val distance = (pagerState.currentPage - page + pagerState.currentPageOffsetFraction)
+            .let { if (it < 0) -it else it }.coerceIn(0f, 1f)
+        val w = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterW, Dimens.Home.carouselSideW, distance)
+        val h = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterH, Dimens.Home.carouselSideH, distance)
+        val fade = 1f - distance * 0.45f
+        val book = books[page]
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(fade).bounceClick { onOpen(book.id) }) {
+                Box(Modifier.width(w).height(h)
+                    .background(CoverColors[page % CoverColors.size], RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp))) {
+                    Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(0.6f).align(Alignment.Center))
+                    if (book.shared) {
+                        Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
+                            .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(book.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp))
             }
         }
-        Text(book.name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+    }
     }
 }
 

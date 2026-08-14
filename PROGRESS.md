@@ -179,6 +179,16 @@
   - 달력 탭의 임시 스펙 주석(DevAnno) 완전 삭제: `dev/DevAnno.kt` 삭제, DiaryCalendarScreen/AiryCalendar의 marks·devBounds·DevAnnoOverlay·DiaryDevNotes·관련 import 제거(치수는 Dimens 참조 유지).
   - 실수로 커밋됐던 폰 스크린샷(`image/UI design/Screenshot_*.jpg`) git 제거.
 
+- **홈 캐러셀 · 마법사 라이브 미리보기 · 리스트 필터/그리드 · 치수 재기입 · A안 온보딩 카피** (v1.56.0, 2026-08-14). 사용자가 dp/sp 주석이 달린 7장의 시안 이미지를 제공, 항목별로 반영:
+  1. **홈 캐러셀**: "최근 스케치북" 가로 리스트 → `HorizontalPager` 캐러셀로 교체(`HomeCarousel`). 센터 노트가 크게(`Dimens.Home.carouselCenterW/H`=267.5/402.5dp), 옆 노트는 작고 흐리게(`carouselSideW/H`=217/327dp, distance 기반 lerp+alpha). 좌우 peek 여백은 `BoxWithConstraints`로 화면폭에서 동적 계산(센터가 항상 스펙 폭 확보).
+  2. **홈 액션 버튼**: 상단 "Draw your time"(Cavorting 78sp) 타이틀 아래 68dp 간격에 새 노트(+)/공유 만들기(Share)/참여(Login) 원형 아이콘 3개 추가. 탭하면 스케치북 탭으로 이동 + 마법사가 해당 타입으로 바로 열림(`WType` 공개, `CreateWizard(initialType=...)`가 TYPE 스텝 건너뜀, `SketchbookTab(openWizardAs, onWizardOpened)` / `MainScreen`의 `pendingWizardType`로 배선).
+  3. **마법사 배경 라이브 미리보기**: WStep.BG에 선택된 배경을 즉시 보여주는 미리보기 이미지(110dp) 추가 — 스와치 탭 시 바로 갱신. (파란 아이콘 = 캔버스 사이즈/배경 선택지라는 기존 구조는 유지, 마법사 카드 자체를 시안처럼 통짜 카드로 재설계하진 않음 — AlertDialog 구조 유지.)
+  4. **리스트 개인/공유 필터**: "내 스케치북"/"함께 그린" 섹션 동시 표시 → 사람/그룹 아이콘 토글(`FilterIconBtn`)로 하나씩만 표시. 타이틀도 Cavorting "Sketchbook list" 78sp로 교체.
+  5. **리스트 그리드**: `GridCells.Adaptive(150dp)` → `GridCells.Fixed(3)` 고정 3열.
+  6. **달력 탭 치수 재기입**: `Dimens.Calendar` 갱신 — topSpacer 110→63.5dp, sideMargin 24→71dp, yearSp 60→63sp, monthSp 100→113sp, weekdaySp 25→26sp(daySp 21 유지), 신규 `editIcon`=35dp(편집 연필 아이콘에 적용), 신규 `bottomMargin`=45dp(그리드 아래 여백). `Dimens.CleanCalendar`도 갱신 — sidePadding 44→71dp, topPadding 30→63.5dp, bottomPadding 30→45dp, yearSp 30→26sp, monthSp 70→78sp.
+  7. **Dimens.kt 전체 반영**: 신규 그룹 `Screen`(bottomMargin 45dp 공용), `Onboarding`(titleSp 130sp/subtitleSp 37sp), `Home`, `Wizard`, `SketchbookList` 추가. 온보딩(Splash/Login) 타이틀 "G1 SKETCH"→"Daily sketch"(130sp) + 부제 "Draw together, keep the little days"(37sp) 신설(시안 이미지에 포함된 A안 온보딩 카피 반영).
+  - **스코프 메모**: 홈 액션 아이콘 크기(56dp)는 시안에 명시 안 돼 추정치. "스케치북 클릭 시 화면"(시안 5번째 이미지)은 홈/마법사 스펙과 중복이라 별도 화면으로 만들지 않음. 마법사 카드의 전체 비주얼(둥근 카드, 생성/취소 배치 등)은 이번엔 손대지 않음 — 필요하면 다음 버전에서 커스텀 다이얼로그로 재설계 가능.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

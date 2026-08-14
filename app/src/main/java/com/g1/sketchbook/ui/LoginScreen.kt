@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.R
 import com.g1.sketchbook.ui.theme.Cavorting
+import com.g1.sketchbook.ui.theme.Dimens
 
 private val SageBg = Color(0xFFACBDAA)
 private val Ink = Color(0xFF20201C)
@@ -41,11 +42,14 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(12.dp))
-        Text("G1 SKETCH", fontFamily = Cavorting, fontSize = 64.sp, color = Ink, textAlign = TextAlign.Center)
+        Text("Daily sketch", fontFamily = Cavorting, fontSize = Dimens.Onboarding.titleSp, color = Ink, textAlign = TextAlign.Center)
         DuckWalk(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp),
             contentDescription = "G1 Sketch 오리",
         )
+        Text("Draw together, keep the little days", fontFamily = Cavorting, fontSize = Dimens.Onboarding.subtitleSp,
+            color = Ink, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(16.dp))
         if (busy) {
             CircularProgressIndicator(color = Ink)
         } else {
