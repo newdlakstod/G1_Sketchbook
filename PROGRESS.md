@@ -167,6 +167,10 @@
   - 연결: 일기달력 탭(topSpacer/sideMargin/titleGap/yearSp/monthSp/weekdaySp/daySp/arrowIcon/todayDisc), 클린달력(sidePadding/top/bottom/titleGap/yearSp/monthSp), 캔버스(outerPadding, BrushView min/maxZoom), 브러시 기본 굵기(pen/pencil/crayon/water/eraser) — Sketchbook·Shared·Diary 3개 화면 + BrushView.
   - 미연결(추후 확장 가능): Shared 분할뷰 padding(16dp, 좁게 유지), 기타 화면별 세부 dp. 새 값은 Dimens에 추가 후 `Dimens.<그룹>.<이름>` 참조.
 
+- **배경 방향 자동 회전(잘림 최소화)** (v1.53.0, 2026-08-14):
+  - 증상: paper 배경이 가로형(1672×941)이라 세로 캔버스(예: 모바일 390×844)에 커버-핏하면 좌우가 과도하게 잘림.
+  - 수정: `drawPaper`가 배경과 페이지의 방향(가로/세로)이 다르면 배경을 90° 회전 후 커버-핏 → 배경 긴 변이 페이지 긴 변을 따라가 훨씬 많이 쓰이고 잘림 최소화. 매트릭스(`paperM`)로 회전·스케일·중앙배치 통합, onDraw/exportBitmap 공통 적용(캔버스 픽셀 좌표 기준).
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

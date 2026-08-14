@@ -70,6 +70,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val eraseFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
     private val compositeP = Paint()
     private val paperPaint = Paint(Paint.FILTER_BITMAP_FLAG)   // smooth, full-quality paper scaling
+    private val paperM = Matrix()                              // places/rotates the paper texture to cover the page
     private val pageEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val pageRect = RectF()
     private val path = Path()
@@ -152,14 +153,24 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         }
     }
 
-    /** Draws the original paper bitmap (cover-fit, filtered for quality) across the canvas rect. */
+    /**
+     * Draws the paper bitmap to cover the canvas (centre-crop, filtered). When the paper's
+     * orientation doesn't match the page (e.g. a landscape texture on a portrait mobile page),
+     * it's rotated 90° first so its long side follows the page's long side — that way far more of
+     * the image is used and much less gets cropped.
+     */
     private fun drawPaper(c: Canvas) {
-        val p = paper
-        if (p != null) {
-            val s = max(cw.toFloat() / p.width, ch.toFloat() / p.height)
-            val dw = p.width * s; val dh = p.height * s
-            c.drawBitmap(p, null, RectF((cw - dw) / 2, (ch - dh) / 2, (cw - dw) / 2 + dw, (ch - dh) / 2 + dh), paperPaint)
-        } else c.drawColor(0xFFFBF6EA.toInt())
+        val p = paper ?: run { c.drawColor(0xFFFBF6EA.toInt()); return }
+        val rotate = (p.width > p.height) != (cw > ch)     // orientation mismatch → turn the paper
+        val pw = if (rotate) p.height else p.width          // footprint after the optional rotation
+        val ph = if (rotate) p.width else p.height
+        val s = max(cw.toFloat() / pw, ch.toFloat() / ph)   // cover-fit
+        paperM.reset()
+        paperM.postTranslate(-p.width / 2f, -p.height / 2f)
+        if (rotate) paperM.postRotate(90f)
+        paperM.postScale(s, s)
+        paperM.postTranslate(cw / 2f, ch / 2f)
+        c.drawBitmap(p, paperM, paperPaint)
     }
 
     override fun onDraw(c: Canvas) {
