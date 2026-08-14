@@ -195,6 +195,11 @@
   - **정렬 버그 수정**: `SketchbookListScreen`이 자체 `Scaffold`를 갖고 있어 바깥 탭 Scaffold의 상태바 인셋과 이중으로 겹쳐 타이틀이 다른 탭보다 아래로 밀려 보이던 문제 → `contentWindowInsets = WindowInsets(0)`로 이중 인셋 제거.
   - `Dimens.Calendar.topSpacer`/`bottomMargin`을 `Screen.topMargin`/`bottomMargin` 참조로 변경(매직넘버 중복 제거, 항상 같은 값 보장). `Dimens.Home.titleSp`/`Dimens.SketchbookList.titleSp` 제거하고 `Screen.titleSp`로 통합.
 
+- **스케치북 리스트탭 노트 추가 버튼 제거** (v1.58.0, 2026-08-14):
+  - `SketchbookListScreen`의 `FloatingActionButton`("+") 삭제 — 새 스케치북 생성은 홈 탭의 새 노트 아이콘(v1.56.0)으로 일원화. `onCreate` 파라미터/콜백도 함께 제거(`SketchbookTab`의 `creating=true` 트리거 배선 삭제).
+  - 빈 리스트 안내문구 "+ 로 만들어보세요." → "홈 화면에서 만들어보세요."로 수정(더 이상 이 화면에 + 버튼이 없으므로).
+  - 부수 정리: 이제 안 쓰는 `FloatingActionButton`/`Icons.Filled.Add` import 제거.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

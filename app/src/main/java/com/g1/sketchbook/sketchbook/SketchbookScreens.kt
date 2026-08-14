@@ -36,7 +36,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Person
@@ -47,7 +46,6 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -202,7 +200,6 @@ fun SketchbookTab(
     }
     SketchbookListScreen(
         books = books,
-        onCreate = { creating = true },
         onOpen = { onOpenBook(it.id) },
         onDelete = { repo.delete(it.id); refresh++ },
         onToggleFav = { repo.toggleFav(it.id); refresh++ },
@@ -349,7 +346,6 @@ private fun WizardChoice(icon: ImageVector, title: String, onClick: () -> Unit) 
 @Composable
 private fun SketchbookListScreen(
     books: List<Sketchbook>,
-    onCreate: () -> Unit,
     onOpen: (Sketchbook) -> Unit,
     onDelete: (Sketchbook) -> Unit,
     onToggleFav: (Sketchbook) -> Unit,
@@ -361,7 +357,6 @@ private fun SketchbookListScreen(
         // The outer tab Scaffold (MainScreen) already pads for the status bar; without this a
         // second nested inset would push this tab's title lower than Home/Settings.
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        floatingActionButton = { FloatingActionButton(onClick = onCreate) { Icon(Icons.Filled.Add, "새 스케치북") } },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()
             .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, start = 16.dp, end = 16.dp)) {
@@ -375,7 +370,7 @@ private fun SketchbookListScreen(
             Spacer(Modifier.height(12.dp))
             val shown = books.filter { it.shared == showShared }
             if (shown.isEmpty()) {
-                Text(if (showShared) "아직 공유받은 스케치북이 없어요." else "아직 스케치북이 없어요. + 로 만들어보세요.",
+                Text(if (showShared) "아직 공유받은 스케치북이 없어요." else "아직 스케치북이 없어요. 홈 화면에서 만들어보세요.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
             } else {
                 LazyVerticalGrid(
