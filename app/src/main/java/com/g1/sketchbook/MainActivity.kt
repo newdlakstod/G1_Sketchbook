@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,7 +17,6 @@ import com.g1.sketchbook.ui.RootViewModel
 import com.g1.sketchbook.ui.SplashScreen
 import com.g1.sketchbook.ui.main.MainScreen
 import com.g1.sketchbook.ui.theme.G1Theme
-import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,9 +31,8 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     G1Theme(mode = state.theme) {
         var splash by remember { mutableStateOf(true) }
-        LaunchedEffect(Unit) { delay(1200); splash = false }
         when {
-            splash -> SplashScreen()
+            splash -> SplashScreen(onEnter = { splash = false })
             state.user == null -> LoginScreen(busy = state.busy, error = state.error, onSignIn = vm::signIn)
             state.needsNickname -> NicknameScreen(onSave = vm::saveNickname)
             state.openBookId != null -> com.g1.sketchbook.sketchbook.SketchbookCanvasScreen(

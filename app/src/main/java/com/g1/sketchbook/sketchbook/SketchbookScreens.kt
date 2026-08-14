@@ -85,6 +85,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -357,11 +358,15 @@ private fun SketchbookListScreen(
     var showShared by remember { mutableStateOf(false) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        // The outer tab Scaffold (MainScreen) already pads for the status bar; without this a
+        // second nested inset would push this tab's title lower than Home/Settings.
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         floatingActionButton = { FloatingActionButton(onClick = onCreate) { Icon(Icons.Filled.Add, "새 스케치북") } },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text("Sketchbook list", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.SketchbookList.titleSp,
-                color = MaterialTheme.colorScheme.onSurface)
+        Column(Modifier.padding(padding).fillMaxSize()
+            .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, start = 16.dp, end = 16.dp)) {
+            Text("Sketchbook list", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
+                color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 FilterIconBtn(Icons.Filled.Person, "개인", !showShared) { showShared = false }

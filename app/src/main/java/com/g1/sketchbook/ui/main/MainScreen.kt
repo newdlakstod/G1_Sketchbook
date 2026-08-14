@@ -226,8 +226,8 @@ private fun HomeTab(
     val ctx = LocalContext.current
     val repo = remember { SketchbookRepository(ctx) }
     val books = remember { repo.list() }
-    Column(Modifier.fillMaxSize().padding(top = 8.dp)) {
-        Text("Draw your time", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Home.titleSp,
+    Column(Modifier.fillMaxSize().padding(top = Dimens.Screen.topMargin)) {
+        Text("Draw your time", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
             color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(Dimens.Home.titleToIconGap))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -314,8 +314,10 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
     var avatarEditing by remember { mutableStateOf(false) }
     var showDev by remember { mutableStateOf(false) }
     if (showDev) { DevPreviewScreen(onBack = { showDev = false }); return }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Text("설정", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+        .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, start = 20.dp, end = 20.dp)) {
+        Text("Setting", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
+            color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(20.dp))
         SettingLabel("프로필")
         Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,

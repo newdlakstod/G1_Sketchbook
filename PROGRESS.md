@@ -189,6 +189,12 @@
   7. **Dimens.kt 전체 반영**: 신규 그룹 `Screen`(bottomMargin 45dp 공용), `Onboarding`(titleSp 130sp/subtitleSp 37sp), `Home`, `Wizard`, `SketchbookList` 추가. 온보딩(Splash/Login) 타이틀 "G1 SKETCH"→"Daily sketch"(130sp) + 부제 "Draw together, keep the little days"(37sp) 신설(시안 이미지에 포함된 A안 온보딩 카피 반영).
   - **스코프 메모**: 홈 액션 아이콘 크기(56dp)는 시안에 명시 안 돼 추정치. "스케치북 클릭 시 화면"(시안 5번째 이미지)은 홈/마법사 스펙과 중복이라 별도 화면으로 만들지 않음. 마법사 카드의 전체 비주얼(둥근 카드, 생성/취소 배치 등)은 이번엔 손대지 않음 — 필요하면 다음 버전에서 커스텀 다이얼로그로 재설계 가능.
 
+- **온보딩 enter 게이트 + 탭 타이틀 통일** (v1.57.0, 2026-08-14):
+  - **온보딩**: 스플래시가 1.2초 후 자동으로 넘어가던 것을 제거, `SplashScreen(onEnter)`에 "enter" 알약 버튼 추가 — 눌러야 다음(로그인)으로 진입. `MainActivity`의 `LaunchedEffect(Unit){delay(1200)...}` 삭제.
+  - **탭 타이틀 통일**: `Dimens.Screen`(신규) = `topMargin`63.5dp/`bottomMargin`45dp/`titleSp`78sp를 홈·스케치북 리스트·설정 3탭이 공유. 설정 탭 타이틀 "설정"→"Setting"(Cavorting, 78sp, 가운데 정렬, onSurface — 기존 24sp 기본폰트/좌측정렬에서 통일). 스케치북 리스트 타이틀도 가운데 정렬로 변경.
+  - **정렬 버그 수정**: `SketchbookListScreen`이 자체 `Scaffold`를 갖고 있어 바깥 탭 Scaffold의 상태바 인셋과 이중으로 겹쳐 타이틀이 다른 탭보다 아래로 밀려 보이던 문제 → `contentWindowInsets = WindowInsets(0)`로 이중 인셋 제거.
+  - `Dimens.Calendar.topSpacer`/`bottomMargin`을 `Screen.topMargin`/`bottomMargin` 참조로 변경(매직넘버 중복 제거, 항상 같은 값 보장). `Dimens.Home.titleSp`/`Dimens.SketchbookList.titleSp` 제거하고 `Screen.titleSp`로 통합.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
