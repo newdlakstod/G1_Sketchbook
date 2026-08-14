@@ -22,6 +22,9 @@ import kotlin.random.Random
 
 enum class BrushType { PEN, PENCIL, CRAYON, WATER }
 
+/** Action a gesture can trigger — mapped per-gesture in Settings, off (NONE) by default. */
+enum class GestureAction { NONE, UNDO, REDO, EYEDROP }
+
 /**
  * Fixed-resolution canvas: strokes are drawn into bitmaps sized to the sketchbook's own pixel
  * dimensions (independent of screen). The content is then fit into the view (with an optional 90°
@@ -41,6 +44,12 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var paper: Bitmap? = null
     var onStrokeEnd: (() -> Unit)? = null
 
+    // Gesture shortcuts (configured in Settings; NONE = off, so behaviour is unchanged until opted in).
+    var twoFingerTapAction = GestureAction.NONE
+    var threeFingerTapAction = GestureAction.NONE
+    var longPressAction = GestureAction.NONE
+    var onEyedrop: ((Int) -> Unit)? = null
+
     private var cw = 0; private var ch = 0
     private var contentBmp: Bitmap? = null
     private var content: Canvas? = null
@@ -57,12 +66,38 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var fitScale = 1f                 // screen px per canvas px
     private val MIN_SCALE = Dimens.Canvas.minZoom   // zoom OUT past fit (PPT-style); see ui.theme.Dimens
     private val MAX_SCALE = Dimens.Canvas.maxZoom
+    private val MAX_UNDO = 19          // kept snapshots; +1 (the live state) = 20 undoable steps
+    private val LONG_PRESS_MS = 500L
+    private val TAP_WINDOW_MS = 300L
 
     private val userM = Matrix()              // view-space pinch zoom/pan on top of the fit
     private var userScale = 1f                // total user zoom (1 = fit, capped at 5)
     private var pinching = false
     private var prevDist = 0f
     private var prevMidX = 0f; private var prevMidY = 0f
+
+    // Multi-finger tap detection (2/3-finger tap gestures) — tracked alongside the pinch above,
+    // but harmless no-ops while both tap actions are GestureAction.NONE (the default).
+    private val tapSlopPx = 24f * resources.displayMetrics.density
+    private var multiDownTime = 0L
+    private var multiDownCount = 0
+    private var multiStartMidX = 0f; private var multiStartMidY = 0f
+    private var multiStartDist = 0f
+    private var multiMoved = false
+    private var multiTapFired = false
+
+    // Long-press detection — a stroke always starts on ACTION_DOWN (so a plain tap still draws a
+    // dot); if the finger sits still past LONG_PRESS_MS without lifting, we undo that tentative dot
+    // and fire the mapped gesture instead. Also a no-op while longPressAction is NONE.
+    private var longPressPending = false
+    private var downX = 0f; private var downY = 0f
+    private val longPressRunnable = Runnable {
+        if (longPressPending && strokeStarted && !pinching) {
+            longPressPending = false
+            discardStroke()
+            runGesture(longPressAction, downX, downY)
+        }
+    }
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pen = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
@@ -176,6 +211,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     override fun onDraw(c: Canvas) {
         val cb = contentBmp ?: return
         c.save(); c.concat(disp)
+        // Cover-fit paper can overshoot the page rect on one axis; clip so it never spills onto the
+        // surrounding zoomed-out workspace (only the canvas-sized area should ever show the texture).
+        c.clipRect(0f, 0f, cw.toFloat(), ch.toFloat())
         drawPaper(c)
         c.drawBitmap(cb, 0f, 0f, null)
         c.restore()
@@ -193,7 +231,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun pushUndo() { snapshotTo(undo); redo.clear() }
     private fun snapshotTo(stack: ArrayDeque<Bitmap>) {
         val b = contentBmp ?: return
-        stack.addLast(b.copy(Bitmap.Config.ARGB_8888, false)); if (stack.size > 4) stack.removeFirst()
+        stack.addLast(b.copy(Bitmap.Config.ARGB_8888, false)); if (stack.size > MAX_UNDO) stack.removeFirst()
     }
 
     fun loadContent(saved: Bitmap?) {
@@ -224,13 +262,23 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             MotionEvent.ACTION_DOWN -> {
                 pinching = false
                 val p = mapPoint(e.x, e.y); acc = 0f; lx = p[0]; ly = p[1]; lt = now
+                downX = e.x; downY = e.y
                 beginStroke(lx, ly)
+                if (longPressAction != GestureAction.NONE) {
+                    longPressPending = true
+                    postDelayed(longPressRunnable, LONG_PRESS_MS)
+                }
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
+                if (longPressPending) { longPressPending = false; removeCallbacks(longPressRunnable) }
                 if (e.pointerCount == 2) {
                     if (strokeStarted) discardStroke()   // don't leave a stray dot when zoom begins
                     pinching = true
                     prevDist = spacing(e); prevMidX = midX(e); prevMidY = midY(e)
+                    multiStartDist = prevDist; multiStartMidX = prevMidX; multiStartMidY = prevMidY
+                    multiDownTime = now; multiDownCount = 2; multiMoved = false; multiTapFired = false
+                } else if (e.pointerCount == 3) {
+                    multiDownTime = now; multiDownCount = 3; multiMoved = false; multiTapFired = false
                 }
             }
             MotionEvent.ACTION_MOVE -> {
@@ -243,21 +291,32 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                         userM.postTranslate(mx - prevMidX, my - prevMidY)
                         clampAndRefresh()
                     }
+                    if (hypot(mx - multiStartMidX, my - multiStartMidY) > tapSlopPx ||
+                        kotlin.math.abs(d - multiStartDist) > tapSlopPx) multiMoved = true
                     prevDist = d; prevMidX = mx; prevMidY = my
                 } else if (strokeStarted && !pinching) {
                     val p = mapPoint(e.x, e.y); val x = p[0]; val y = p[1]
                     val dd = hypot(x - lx, y - ly); val v = dd / max(1L, now - lt)
                     strokeMove(lx, ly, x, y, v); lx = x; ly = y; lt = now; invalidate()
+                    if (longPressPending && hypot(e.x - downX, e.y - downY) > tapSlopPx) {
+                        longPressPending = false; removeCallbacks(longPressRunnable)
+                    }
                 }
             }
             MotionEvent.ACTION_POINTER_UP -> {
+                if (!multiMoved && !multiTapFired && multiDownCount > 0 && multiDownCount == e.pointerCount &&
+                    (now - multiDownTime) < TAP_WINDOW_MS) {
+                    val action = when (multiDownCount) { 2 -> twoFingerTapAction; 3 -> threeFingerTapAction; else -> GestureAction.NONE }
+                    if (action != GestureAction.NONE) { runGesture(action, multiStartMidX, multiStartMidY); multiTapFired = true }
+                }
                 // Dropping back to one finger ends the pinch; the leftover finger must not start
                 // a stray stroke, so we just clear pinch state (a fresh DOWN will draw next).
                 if (e.pointerCount <= 2) { pinching = false; prevDist = 0f }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (longPressPending) { longPressPending = false; removeCallbacks(longPressRunnable) }
                 if (strokeStarted) endStroke()
-                pinching = false; prevDist = 0f
+                pinching = false; prevDist = 0f; multiDownCount = 0
             }
         }
         return true
@@ -272,6 +331,38 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         base?.let { b -> content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) } }
         undo.removeLastOrNull()
         strokeStarted = false; base = null; invalidate()
+    }
+
+    private fun runGesture(action: GestureAction, sx: Float, sy: Float) {
+        when (action) {
+            GestureAction.UNDO -> undo()
+            GestureAction.REDO -> redo()
+            GestureAction.EYEDROP -> pickColorAt(sx, sy)?.let { c -> color = c; onEyedrop?.invoke(c) }
+            GestureAction.NONE -> {}
+        }
+    }
+
+    /** Samples the colour actually shown at a screen point: strokes first, then the paper texture underneath. */
+    private fun pickColorAt(sx: Float, sy: Float): Int? {
+        val p = mapPoint(sx, sy)
+        val x = p[0].toInt(); val y = p[1].toInt()
+        if (x !in 0 until cw || y !in 0 until ch) return null
+        contentBmp?.let { cb -> val px = cb.getPixel(x, y); if (((px ushr 24) and 0xFF) > 10) return px or (0xFF shl 24) }
+        val paperBmp = paper ?: return 0xFFFBF6EA.toInt()
+        val rotate = (paperBmp.width > paperBmp.height) != (cw > ch)
+        val pw = if (rotate) paperBmp.height else paperBmp.width
+        val ph = if (rotate) paperBmp.width else paperBmp.height
+        val s = max(cw.toFloat() / pw, ch.toFloat() / ph)
+        val m = Matrix()
+        m.postTranslate(-paperBmp.width / 2f, -paperBmp.height / 2f)
+        if (rotate) m.postRotate(90f)
+        m.postScale(s, s)
+        m.postTranslate(cw / 2f, ch / 2f)
+        val im = Matrix(); if (!m.invert(im)) return 0xFFFBF6EA.toInt()
+        val pt = floatArrayOf(x.toFloat(), y.toFloat()); im.mapPoints(pt)
+        val px = pt[0].toInt().coerceIn(0, paperBmp.width - 1)
+        val py = pt[1].toInt().coerceIn(0, paperBmp.height - 1)
+        return paperBmp.getPixel(px, py) or (0xFF shl 24)
     }
 
     private val tmp = FloatArray(2)

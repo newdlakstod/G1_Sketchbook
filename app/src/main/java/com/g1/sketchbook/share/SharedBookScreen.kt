@@ -160,6 +160,10 @@ fun SharedBookScreen(
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
         v.erasing = erasing
+        v.twoFingerTapAction = session.twoFingerTapAction
+        v.threeFingerTapAction = session.threeFingerTapAction
+        v.longPressAction = session.longPressAction
+        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false }
         v.onStrokeEnd = {
             val pg = page
             v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
@@ -280,7 +284,7 @@ fun SharedBookScreen(
             onNextPage = { if (page < pageCount - 1) goTo(page + 1) },
             onAddPage = { addPage() }, onDeletePage = { deletePage() },
             favorites = favorites,
-            onEditFavorite = { i -> val nf = favorites.toMutableList(); nf[i] = color; favorites = nf; session.favoriteColors = nf },
+            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
         )
     }
 }

@@ -70,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -462,10 +463,12 @@ private fun FilterIconBtn(icon: ImageVector, label: String, selected: Boolean, o
 
 @Composable
 private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDelete: () -> Unit, onToggleFav: () -> Unit) {
+    val coverShape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp)
     Box(Modifier.aspectRatio(0.78f)) {
         Box(
             Modifier.fillMaxSize()
-                .clip(RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp))
+                .shadow(6.dp, coverShape, clip = false)
+                .clip(coverShape)
                 .background(cover).bounceClick(onClick = onOpen),
         ) {
             Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
@@ -550,6 +553,10 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 update = { v ->
                     v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
                     v.erasing = erasing
+                    v.twoFingerTapAction = session.twoFingerTapAction
+                    v.threeFingerTapAction = session.threeFingerTapAction
+                    v.longPressAction = session.longPressAction
+                    v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
@@ -566,7 +573,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             onNextPage = { if (page < pageCount - 1) goTo(page + 1) },
             onAddPage = { addPage() }, onDeletePage = { deletePage() },
             favorites = favorites,
-            onEditFavorite = { i -> val nf = favorites.toMutableList(); nf[i] = color; favorites = nf; session.favoriteColors = nf },
+            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
         )
     }
 }

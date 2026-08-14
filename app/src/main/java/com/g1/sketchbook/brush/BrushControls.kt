@@ -6,7 +6,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,7 +83,6 @@ private val HueWheel = listOf(
 )
 
 /** Single-row floating dock. Optional leading controls (back / page nav / rotate) show when provided. */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun BrushControls(
     brush: BrushType, color: Long, sizeDp: Float, opacity: Float, erasing: Boolean,
@@ -98,9 +96,10 @@ fun BrushControls(
     onAddPage: (() -> Unit)? = null,
     onDeletePage: (() -> Unit)? = null,
     favorites: List<Long> = BrushPalette.take(5),
-    onEditFavorite: (Int) -> Unit = {},
+    onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
 ) {
-    var panel by remember { mutableIntStateOf(0) } // 0 none, 1 width, 2 opacity, 3 color
+    var panel by remember { mutableIntStateOf(0) } // 0 none, 1 width+opacity, 3 color wheel
+    var editFavAt by remember { mutableIntStateOf(-1) } // -1 none, else favourites index being edited
     var confirmClear by remember { mutableStateOf(false) }
     val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
 
@@ -139,30 +138,43 @@ fun BrushControls(
             onRotate?.let { IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전", onClick = it) }
             if (onBack != null || pageLabel != null || onRotate != null) VDivider()
 
-            BrushBtn(!erasing && brush == BrushType.PEN, { onBrush(BrushType.PEN) }) { t ->
-                Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-            }
-            BrushBtn(!erasing && brush == BrushType.PENCIL, { onBrush(BrushType.PENCIL) }) { t ->
-                Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-            }
-            BrushBtn(!erasing && brush == BrushType.CRAYON, { onBrush(BrushType.CRAYON) }) { t ->
-                Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-            }
-            BrushBtn(!erasing && brush == BrushType.WATER, { onBrush(BrushType.WATER) }) { t ->
-                Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-            }
-            BrushBtn(erasing, { onToggleErase() }) { t ->
-                Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+            // Brush icons: tap to switch, tap again while already selected to open width/opacity sliders.
+            Box {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    BrushBtn(!erasing && brush == BrushType.PEN, { onBrush(BrushType.PEN) }, { panel = if (panel == 1) 0 else 1 }) { t ->
+                        Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+                    }
+                    BrushBtn(!erasing && brush == BrushType.PENCIL, { onBrush(BrushType.PENCIL) }, { panel = if (panel == 1) 0 else 1 }) { t ->
+                        Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+                    }
+                    BrushBtn(!erasing && brush == BrushType.CRAYON, { onBrush(BrushType.CRAYON) }, { panel = if (panel == 1) 0 else 1 }) { t ->
+                        Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+                    }
+                    BrushBtn(!erasing && brush == BrushType.WATER, { onBrush(BrushType.WATER) }, { panel = if (panel == 1) 0 else 1 }) { t ->
+                        Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+                    }
+                    BrushBtn(erasing, { onToggleErase() }, { panel = if (panel == 1) 0 else 1 }) { t ->
+                        Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+                    }
+                }
+                if (panel == 1) Popup(AboveAnchor(gap), { panel = 0 }, PopupProperties(focusable = true)) {
+                    SlidersPanel(showOpacity = !erasing, sizeDp, opacity, onSize, onOpacity)
+                }
             }
 
             VDivider()
 
-            // 5 favourites: tap to pick, long-press to overwrite with the current colour.
+            // 5 favourites: tap to pick; tap the already-selected one again to open a colour wheel for it.
             favorites.forEachIndexed { i, c ->
                 val on = !erasing && c == color
-                Box(Modifier.size(28.dp).clip(CircleShape).background(Color(c))
-                    .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-                    .combinedClickable(onClick = { onColor(c) }, onLongClick = { onEditFavorite(i) }))
+                Box {
+                    Box(Modifier.size(28.dp).clip(CircleShape).background(Color(c))
+                        .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
+                        .clickable { if (on) editFavAt = i else onColor(c) })
+                    if (editFavAt == i) Popup(AboveAnchor(gap), { editFavAt = -1 }, PopupProperties(focusable = true)) {
+                        ColorPickerCard(c) { newColor -> onColor(newColor); onEditFavorite(i, newColor) }
+                    }
+                }
             }
             // Color wheel: opens a hue/saturation/value picker for any custom colour.
             Box {
@@ -177,26 +189,6 @@ fun BrushControls(
 
             VDivider()
 
-            Box {
-                Box(Modifier.size(40.dp).clickable { panel = if (panel == 1) 0 else 1 }, contentAlignment = Alignment.Center) {
-                    Box(Modifier.size((sizeDp / 2f + 6f).coerceIn(6f, 30f).dp)
-                        .background(if (erasing) MaterialTheme.colorScheme.onSurfaceVariant else Color(color), CircleShape))
-                }
-                if (panel == 1) Popup(AboveAnchor(gap), { panel = 0 }, PopupProperties(focusable = true)) {
-                    SliderCard("굵기", "${sizeDp.toInt()}", sizeDp, 2f..48f, onSize) { onSize(10f) }
-                }
-            }
-            Box {
-                Box(Modifier.height(40.dp).clickable { panel = if (panel == 2) 0 else 2 }.padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
-                    Text("${opacity.toInt()}%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                }
-                if (panel == 2) Popup(AboveAnchor(gap), { panel = 0 }, PopupProperties(focusable = true)) {
-                    SliderCard("불투명도", "${opacity.toInt()}%", opacity, 0f..100f, onOpacity) { onOpacity(100f) }
-                }
-            }
-
-            VDivider()
-
             IconBtn(Icons.AutoMirrored.Filled.Undo, "되돌리기", onClick = onUndo)
             IconBtn(Icons.AutoMirrored.Filled.Redo, "다시 실행", onClick = onRedo)
             IconBtn(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555), onClick = { confirmClear = true })
@@ -204,28 +196,40 @@ fun BrushControls(
     }
 }
 
+/** Width (and, unless erasing, opacity) sliders — opened by tapping the already-selected brush icon again. */
 @Composable
-private fun SliderCard(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>,
-                       onChange: (Float) -> Unit, onReset: () -> Unit) {
+private fun SlidersPanel(showOpacity: Boolean, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Column(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Box(Modifier.size(30.dp).clickable { onReset() }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Rotate90DegreesCw, "기본값", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.width(6.dp))
-                Box(Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 5.dp)) {
-                    Text(valueText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                }
+            SliderRow("굵기", "${sizeDp.toInt()}", sizeDp, 2f..48f, onSize) { onSize(10f) }
+            if (showOpacity) {
+                Spacer(Modifier.height(14.dp))
+                SliderRow("불투명도", "${opacity.toInt()}%", opacity, 0f..100f, onOpacity) { onOpacity(100f) }
             }
-            Slider(value, onChange, valueRange = range,
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.surface,
-                    activeTrackColor = MaterialTheme.colorScheme.onSurface,
-                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                ))
         }
+    }
+}
+
+@Composable
+private fun SliderRow(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>,
+                      onChange: (Float) -> Unit, onReset: () -> Unit) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Box(Modifier.size(30.dp).clickable { onReset() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Rotate90DegreesCw, "기본값", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.width(6.dp))
+            Box(Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                Text(valueText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+        Slider(value, onChange, valueRange = range,
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.surface,
+                activeTrackColor = MaterialTheme.colorScheme.onSurface,
+                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+            ))
     }
 }
 
@@ -304,12 +308,14 @@ private class AboveAnchor(private val gapPx: Int) : PopupPositionProvider {
     }
 }
 
+/** Tap to select; tap again while already selected opens its settings (width/opacity) instead. */
 @Composable
-private fun BrushBtn(selected: Boolean, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
+private fun BrushBtn(selected: Boolean, onClick: () -> Unit, onReclick: () -> Unit, icon: @Composable (Color) -> Unit) {
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     // Button footprint stays at the original 42dp; the enlarged icon is cropped to fit inside it.
-    Box(Modifier.size(42.dp).clipToBounds().bounceClick { onClick() }, contentAlignment = Alignment.Center) { icon(tint) }
+    Box(Modifier.size(42.dp).clipToBounds().bounceClick { if (selected) onReclick() else onClick() },
+        contentAlignment = Alignment.Center) { icon(tint) }
 }
 
 @Composable

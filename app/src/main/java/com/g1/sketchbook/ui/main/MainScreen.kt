@@ -74,6 +74,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.R
+import com.g1.sketchbook.brush.GestureAction
+import com.g1.sketchbook.data.SessionStore
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
@@ -314,6 +316,11 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
     var avatarEditing by remember { mutableStateOf(false) }
     var showDev by remember { mutableStateOf(false) }
     if (showDev) { DevPreviewScreen(onBack = { showDev = false }); return }
+    val context = LocalContext.current
+    val session = remember { SessionStore(context) }
+    var gesture2Tap by remember { mutableStateOf(session.twoFingerTapAction) }
+    var gesture3Tap by remember { mutableStateOf(session.threeFingerTapAction) }
+    var gestureLongPress by remember { mutableStateOf(session.longPressAction) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
         .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, start = 20.dp, end = 20.dp)) {
         Text("Setting", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
@@ -345,6 +352,18 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
                     FilterChip(theme == ThemeMode.LIGHT, { onTheme(ThemeMode.LIGHT) }, label = { Text("라이트") })
                     FilterChip(theme == ThemeMode.DARK, { onTheme(ThemeMode.DARK) }, label = { Text("다크") })
                 }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        SettingLabel("제스처")
+        Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(Modifier.padding(18.dp)) {
+                GestureActionRow("두 손가락 탭", gesture2Tap) { gesture2Tap = it; session.twoFingerTapAction = it }
+                Spacer(Modifier.height(16.dp))
+                GestureActionRow("세 손가락 탭", gesture3Tap) { gesture3Tap = it; session.threeFingerTapAction = it }
+                Spacer(Modifier.height(16.dp))
+                GestureActionRow("화면 길게 누르기", gestureLongPress) { gestureLongPress = it; session.longPressAction = it }
             }
         }
         Spacer(Modifier.height(18.dp))
@@ -467,6 +486,28 @@ private fun SettingLabel(text: String) {
     Text(text, fontSize = 13.sp, fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
+}
+
+private fun gestureActionLabel(a: GestureAction) = when (a) {
+    GestureAction.NONE -> "없음"
+    GestureAction.UNDO -> "뒤로가기"
+    GestureAction.REDO -> "앞으로가기"
+    GestureAction.EYEDROP -> "색상 스포이드"
+}
+
+/** One gesture's mapping: a label plus a chip row of the four possible actions. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GestureActionRow(label: String, selected: GestureAction, onSelect: (GestureAction) -> Unit) {
+    Column {
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GestureAction.entries.forEach { a ->
+                FilterChip(selected == a, { onSelect(a) }, label = { Text(gestureActionLabel(a)) })
+            }
+        }
+    }
 }
 
 @Composable
