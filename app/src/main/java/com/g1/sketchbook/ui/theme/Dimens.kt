@@ -21,8 +21,10 @@ object Dimens {
 
     /** 온보딩 (Splash/Login) */
     object Onboarding {
-        val titleSp = 130.sp        // "Daily sketch" 타이틀
+        val titleSp = 130.sp        // "Daily sketch" 타이틀 — 화면 폭에 맞춰 줄어들 수 있는 최대값(고정 아님)
         val subtitleSp = 37.sp      // "Draw together, keep the little days" 부제
+        val duckW = 765.dp          // 오리 GIF 비율 고정용 — 실제 크기는 화면 폭에 맞춰 이 비율로 축소됨
+        val duckH = 510.dp
     }
 
     /** 홈 탭 (타이틀 크기·위치는 Screen 공용값 사용) */

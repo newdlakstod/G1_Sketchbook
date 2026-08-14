@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
@@ -40,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -97,8 +99,10 @@ fun BrushControls(
     onDeletePage: (() -> Unit)? = null,
     favorites: List<Long> = BrushPalette.take(5),
     onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
+    eyedropArmed: Boolean = false,
+    onToggleEyedrop: () -> Unit = {},
 ) {
-    var panel by remember { mutableIntStateOf(0) } // 0 none, 1 width+opacity, 3 color wheel
+    var colorWheelOpen by remember { mutableStateOf(false) }
     var editFavAt by remember { mutableIntStateOf(-1) } // -1 none, else favourites index being edited
     var confirmClear by remember { mutableStateOf(false) }
     val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
@@ -138,28 +142,27 @@ fun BrushControls(
             onRotate?.let { IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전", onClick = it) }
             if (onBack != null || pageLabel != null || onRotate != null) VDivider()
 
-            // Brush icons: tap to switch, tap again while already selected to open width/opacity sliders.
-            Box {
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    BrushBtn(!erasing && brush == BrushType.PEN, { onBrush(BrushType.PEN) }, { panel = if (panel == 1) 0 else 1 }) { t ->
-                        Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-                    }
-                    BrushBtn(!erasing && brush == BrushType.PENCIL, { onBrush(BrushType.PENCIL) }, { panel = if (panel == 1) 0 else 1 }) { t ->
-                        Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-                    }
-                    BrushBtn(!erasing && brush == BrushType.CRAYON, { onBrush(BrushType.CRAYON) }, { panel = if (panel == 1) 0 else 1 }) { t ->
-                        Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-                    }
-                    BrushBtn(!erasing && brush == BrushType.WATER, { onBrush(BrushType.WATER) }, { panel = if (panel == 1) 0 else 1 }) { t ->
-                        Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-                    }
-                    BrushBtn(erasing, { onToggleErase() }, { panel = if (panel == 1) 0 else 1 }) { t ->
-                        Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-                    }
-                }
-                if (panel == 1) Popup(AboveAnchor(gap), { panel = 0 }, PopupProperties(focusable = true)) {
-                    SlidersPanel(showOpacity = !erasing, sizeDp, opacity, onSize, onOpacity)
-                }
+            // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
+            // width/opacity panel (anchored + labelled per brush, not a single shared control).
+            BrushBtnWithPanel(!erasing && brush == BrushType.PEN, "펜", sizeDp, opacity, true, gap,
+                onClick = { onBrush(BrushType.PEN) }, onSize = onSize, onOpacity = onOpacity) { t ->
+                Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+            }
+            BrushBtnWithPanel(!erasing && brush == BrushType.PENCIL, "연필", sizeDp, opacity, true, gap,
+                onClick = { onBrush(BrushType.PENCIL) }, onSize = onSize, onOpacity = onOpacity) { t ->
+                Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+            }
+            BrushBtnWithPanel(!erasing && brush == BrushType.CRAYON, "크레파스", sizeDp, opacity, true, gap,
+                onClick = { onBrush(BrushType.CRAYON) }, onSize = onSize, onOpacity = onOpacity) { t ->
+                Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+            }
+            BrushBtnWithPanel(!erasing && brush == BrushType.WATER, "수채화", sizeDp, opacity, true, gap,
+                onClick = { onBrush(BrushType.WATER) }, onSize = onSize, onOpacity = onOpacity) { t ->
+                Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+            }
+            BrushBtnWithPanel(erasing, "지우개", sizeDp, opacity, false, gap,
+                onClick = { onToggleErase() }, onSize = onSize, onOpacity = onOpacity) { t ->
+                Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
 
             VDivider()
@@ -181,11 +184,15 @@ fun BrushControls(
                 Box(Modifier.size(28.dp).clip(CircleShape)
                     .background(Brush.sweepGradient(HueWheel))
                     .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                    .clickable { panel = if (panel == 3) 0 else 3 })
-                if (panel == 3) Popup(AboveAnchor(gap), { panel = 0 }, PopupProperties(focusable = true)) {
+                    .clickable { colorWheelOpen = !colorWheelOpen })
+                if (colorWheelOpen) Popup(AboveAnchor(gap), { colorWheelOpen = false }, PopupProperties(focusable = true)) {
                     ColorPickerCard(color, onColor)
                 }
             }
+            // Eyedropper: arm it, then the next tap on the canvas picks that colour instead of drawing.
+            IconBtn(Icons.Filled.Colorize, "스포이드",
+                tint = if (eyedropArmed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                onClick = onToggleEyedrop)
 
             VDivider()
 
@@ -196,11 +203,15 @@ fun BrushControls(
     }
 }
 
-/** Width (and, unless erasing, opacity) sliders — opened by tapping the already-selected brush icon again. */
+/** Width (and, unless erasing, opacity) sliders for ONE specific brush — opened by tapping that
+ *  brush's icon again while it's already selected; the brush name heads the panel so it's clear
+ *  which brush is being adjusted (each brush keeps its own width/opacity, not a shared value). */
 @Composable
-private fun SlidersPanel(showOpacity: Boolean, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
+private fun SlidersPanel(title: String, showOpacity: Boolean, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Column(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
             SliderRow("굵기", "${sizeDp.toInt()}", sizeDp, 2f..48f, onSize) { onSize(10f) }
             if (showOpacity) {
                 Spacer(Modifier.height(14.dp))
@@ -308,14 +319,27 @@ private class AboveAnchor(private val gapPx: Int) : PopupPositionProvider {
     }
 }
 
-/** Tap to select; tap again while already selected opens its settings (width/opacity) instead. */
+/** Tap to select; tap again while already selected opens THIS brush's own width/opacity panel,
+ *  anchored right above this icon (not a shared control), with the brush's name as the header. */
 @Composable
-private fun BrushBtn(selected: Boolean, onClick: () -> Unit, onReclick: () -> Unit, icon: @Composable (Color) -> Unit) {
+private fun BrushBtnWithPanel(
+    selected: Boolean, name: String, sizeDp: Float, opacity: Float, showOpacity: Boolean, gap: Int,
+    onClick: () -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
+    icon: @Composable (Color) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    // Switching to a different brush should close a panel left open for the previous one.
+    LaunchedEffect(selected) { if (!selected) open = false }
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-    // Button footprint stays at the original 42dp; the enlarged icon is cropped to fit inside it.
-    Box(Modifier.size(42.dp).clipToBounds().bounceClick { if (selected) onReclick() else onClick() },
-        contentAlignment = Alignment.Center) { icon(tint) }
+    Box {
+        // Button footprint stays at the original 42dp; the enlarged icon is cropped to fit inside it.
+        Box(Modifier.size(42.dp).clipToBounds().bounceClick { if (selected) open = !open else onClick() },
+            contentAlignment = Alignment.Center) { icon(tint) }
+        if (open) Popup(AboveAnchor(gap), { open = false }, PopupProperties(focusable = true)) {
+            SlidersPanel(name, showOpacity, sizeDp, opacity, onSize, onOpacity)
+        }
+    }
 }
 
 @Composable

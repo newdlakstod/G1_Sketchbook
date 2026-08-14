@@ -5,11 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -42,11 +44,15 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(12.dp))
-        OnboardingTitle(fontSize = Dimens.Onboarding.titleSp, color = Ink)
-        DuckWalk(
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp),
-            contentDescription = "G1 Sketch 오리",
-        )
+        OnboardingTitle(maxFontSize = Dimens.Onboarding.titleSp, color = Ink)
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            DuckWalk(
+                modifier = Modifier.fillMaxWidth().widthIn(max = Dimens.Onboarding.duckW)
+                    .aspectRatio(Dimens.Onboarding.duckW / Dimens.Onboarding.duckH)
+                    .padding(vertical = 12.dp),
+                contentDescription = "G1 Sketch 오리",
+            )
+        }
         Text("Draw together, keep the little days", fontFamily = Cavorting, fontSize = Dimens.Onboarding.subtitleSp,
             color = Ink, textAlign = TextAlign.Center)
         Spacer(Modifier.height(16.dp))

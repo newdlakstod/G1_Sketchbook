@@ -62,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -272,6 +273,12 @@ private fun HomeActionIcon(icon: ImageVector, desc: String, onClick: () -> Unit)
 @Composable
 private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { books.size })
+    // Cap each swipe to at most one page regardless of flick speed — a fast flick used to be able to
+    // fly through several covers in a row; touching down still cancels any in-flight fling as usual.
+    val flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
+        state = pagerState,
+        pagerSnapDistance = androidx.compose.foundation.pager.PagerSnapDistance.atMost(1),
+    )
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
     // Side padding sized so the focused page gets its full spec width, with whatever room is left
     // over used to peek the neighbours (never negative, even on narrow phones).
@@ -281,6 +288,7 @@ private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = peek),
         pageSpacing = 16.dp,
+        flingBehavior = flingBehavior,
     ) { page ->
         val distance = (pagerState.currentPage - page + pagerState.currentPageOffsetFraction)
             .let { if (it < 0) -it else it }.coerceIn(0f, 1f)
@@ -288,10 +296,13 @@ private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
         val h = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterH, Dimens.Home.carouselSideH, distance)
         val fade = 1f - distance * 0.45f
         val book = books[page]
+        val coverShape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp)
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(fade).bounceClick { onOpen(book.id) }) {
                 Box(Modifier.width(w).height(h)
-                    .background(CoverColors[page % CoverColors.size], RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp))) {
+                    .shadow(12.dp, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
+                    .clip(coverShape)
+                    .background(CoverColors[page % CoverColors.size])) {
                     Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize(0.6f).align(Alignment.Center))
                     if (book.shared) {

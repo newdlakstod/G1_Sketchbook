@@ -113,6 +113,7 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
     val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
     val session = remember { com.g1.sketchbook.data.SessionStore(ctx) }
     var favorites by remember { mutableStateOf(session.favoriteColors) }
+    var eyedropArmed by remember { mutableStateOf(false) }
     val size = remember { Catalog.size("a4") }
     val cw = size.pxW(); val ch = size.pxH()
 
@@ -140,7 +141,8 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
                         v.twoFingerTapAction = session.twoFingerTapAction
                         v.threeFingerTapAction = session.threeFingerTapAction
                         v.longPressAction = session.longPressAction
-                        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false }
+                        v.eyedropArmed = eyedropArmed
+                        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false }
                         v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(date, b) } } }
                     },
                 )
@@ -154,7 +156,8 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
             onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(date, b) } } },
             onBack = onBack, onRotate = { view?.rotate() },
             favorites = favorites,
-            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf })
+            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed })
     }
 }
 

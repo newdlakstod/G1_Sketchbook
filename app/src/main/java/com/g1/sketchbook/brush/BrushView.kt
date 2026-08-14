@@ -49,6 +49,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var threeFingerTapAction = GestureAction.NONE
     var longPressAction = GestureAction.NONE
     var onEyedrop: ((Int) -> Unit)? = null
+    /** One-shot: set true to make the very next tap sample a colour instead of drawing (toolbar eyedropper). */
+    var eyedropArmed = false
 
     private var cw = 0; private var ch = 0
     private var contentBmp: Bitmap? = null
@@ -106,7 +108,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val compositeP = Paint()
     private val paperPaint = Paint(Paint.FILTER_BITMAP_FLAG)   // smooth, full-quality paper scaling
     private val paperM = Matrix()                              // places/rotates the paper texture to cover the page
-    private val pageEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val pageShadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pageRect = RectF()
     private val path = Path()
     private val rnd = Random(7)
@@ -210,6 +212,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     override fun onDraw(c: Canvas) {
         val cb = contentBmp ?: return
+        // A soft drop shadow behind the page (screen space) makes the drawable paper obvious against
+        // the surrounding workspace — otherwise the letterbox margins look drawable but silently
+        // ignore touches. Drawn before the paper/content so it only peeks out around the edges.
+        pageRect.set(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(pageRect)
+        drawPageShadow(c, pageRect)
         c.save(); c.concat(disp)
         // Cover-fit paper can overshoot the page rect on one axis; clip so it never spills onto the
         // surrounding zoomed-out workspace (only the canvas-sized area should ever show the texture).
@@ -217,18 +224,31 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         drawPaper(c)
         c.drawBitmap(cb, 0f, 0f, null)
         c.restore()
-        // Outline the page (screen space) so the drawable paper is obvious against the surrounding
-        // workspace — otherwise the letterbox margins look drawable but silently ignore touches.
-        pageRect.set(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(pageRect)
-        pageEdge.strokeWidth = 12f; pageEdge.color = 0x14000000; c.drawRect(pageRect, pageEdge)   // soft halo
-        pageEdge.strokeWidth = 2f;  pageEdge.color = 0x59000000; c.drawRect(pageRect, pageEdge)   // crisp edge
     }
 
-    fun clearCanvas() { pushUndo(); content?.drawColor(0, PorterDuff.Mode.CLEAR); invalidate() }
+    /** Cheap layered-rect approximation of a soft drop shadow (no BlurMaskFilter, which needs a
+     *  software layer to render under hardware acceleration) — light source from the upper-left. */
+    private fun drawPageShadow(c: Canvas, r: RectF) {
+        val dx = 5f; val dy = 11f
+        val spreads = intArrayOf(30, 18, 8)
+        val alphas = intArrayOf(10, 18, 30)
+        for (i in spreads.indices) {
+            val s = spreads[i].toFloat()
+            pageShadow.color = alphas[i] shl 24
+            c.drawRoundRect(r.left - s + dx, r.top - s + dy, r.right + s + dx, r.bottom + s + dy, 14f, 14f, pageShadow)
+        }
+    }
+
+    fun clearCanvas() { pushUndo(); redo.clear(); content?.drawColor(0, PorterDuff.Mode.CLEAR); invalidate() }
     fun undo() { val b = undo.removeLastOrNull() ?: return; snapshotTo(redo); restore(b); invalidate() }
     fun redo() { val b = redo.removeLastOrNull() ?: return; snapshotTo(undo); restore(b); invalidate() }
     private fun restore(b: Bitmap) { content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) } }
-    private fun pushUndo() { snapshotTo(undo); redo.clear() }
+    // NOTE: does NOT clear the redo stack — every touch-down provisionally calls this (via
+    // beginStroke) before we know whether it'll become a real stroke or get discarded by a pinch/
+    // long-press/multi-tap gesture. Clearing redo here used to wipe it on every touch, silently
+    // breaking "redo" whenever it was triggered by a gesture. Redo is invalidated only once a
+    // stroke actually commits — see endStroke().
+    private fun pushUndo() { snapshotTo(undo) }
     private fun snapshotTo(stack: ArrayDeque<Bitmap>) {
         val b = contentBmp ?: return
         stack.addLast(b.copy(Bitmap.Config.ARGB_8888, false)); if (stack.size > MAX_UNDO) stack.removeFirst()
@@ -261,6 +281,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pinching = false
+                if (eyedropArmed) {
+                    eyedropArmed = false
+                    runGesture(GestureAction.EYEDROP, e.x, e.y)
+                    return true   // consume the tap as a pick, not a stroke
+                }
                 val p = mapPoint(e.x, e.y); acc = 0f; lx = p[0]; ly = p[1]; lt = now
                 downX = e.x; downY = e.y
                 beginStroke(lx, ly)
@@ -369,7 +394,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun mapPoint(x: Float, y: Float): FloatArray { tmp[0] = x; tmp[1] = y; inv.mapPoints(tmp); return tmp }
 
     private fun beginStroke(x: Float, y: Float) { pushUndo(); strokePrep(); strokeStart(x, y); strokeStarted = true; invalidate() }
-    private fun endStroke() { strokeStarted = false; base = null; onStrokeEnd?.invoke(); invalidate() }
+    private fun endStroke() { strokeStarted = false; base = null; redo.clear(); onStrokeEnd?.invoke(); invalidate() }
     private fun strokePrep() { strokeLayer?.drawColor(0, PorterDuff.Mode.CLEAR); base = contentBmp?.copy(Bitmap.Config.ARGB_8888, false) }
     private fun composite() {
         val c = content ?: return; val b = base ?: return; val sb = strokeBmp ?: return

@@ -106,6 +106,7 @@ fun SharedBookScreen(
     val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
     val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var favorites by remember { mutableStateOf(session.favoriteColors) }
+    var eyedropArmed by remember { mutableStateOf(false) }
     var page by remember { mutableIntStateOf(0) }
     var pageCount by remember { mutableIntStateOf(book.pageCount) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
@@ -156,14 +157,15 @@ fun SharedBookScreen(
     // Apply brush settings via an effect rather than AndroidView.update: the pane is wrapped in
     // movableContent, and after it's moved (rotation / view-mode change) update() stops re-observing
     // state — so selections would silently stop applying. This effect always re-syncs.
-    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing) {
+    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed) {
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
         v.erasing = erasing
         v.twoFingerTapAction = session.twoFingerTapAction
         v.threeFingerTapAction = session.threeFingerTapAction
         v.longPressAction = session.longPressAction
-        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false }
+        v.eyedropArmed = eyedropArmed
+        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false }
         v.onStrokeEnd = {
             val pg = page
             v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
@@ -285,6 +287,7 @@ fun SharedBookScreen(
             onAddPage = { addPage() }, onDeletePage = { deletePage() },
             favorites = favorites,
             onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
         )
     }
 }

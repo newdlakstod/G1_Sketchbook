@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -147,7 +148,7 @@ private fun SizeIcon(key: String, color: Color, modifier: Modifier) {
             "mobile" -> {
                 val pw = w * 0.40f; val ph = h * 0.94f; val l = (w - pw) / 2; val t = (h - ph) / 2; val r = pw * 0.22f
                 drawRoundRect(color, Offset(l, t), Size(pw, ph), CornerRadius(r, r), style = st)
-                drawLine(color, Offset(l + pw * 0.34f, t + ph * 0.09f), Offset(l + pw * 0.66f, t + ph * 0.09f), sw, StrokeCap.Round)
+                drawCircle(color, sw * 0.7f, Offset(l + pw / 2, t + ph * 0.09f))   // front-camera dot
                 drawLine(color, Offset(l + pw * 0.32f, t + ph * 0.92f), Offset(l + pw * 0.68f, t + ph * 0.92f), sw, StrokeCap.Round)
             }
             "tablet" -> {
@@ -345,14 +346,16 @@ private fun PersonalCreateCard(
                         .padding(20.dp),
                 ) {
                     OutlinedTextField(name, onName, singleLine = true,
-                        placeholder = { Text("스케치북 이름 입력") }, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth())
+                        placeholder = { Text("스케치북 이름 입력") }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(18.dp))
                     Text("종이", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
                     SizeRow(Catalog.sizes.filter { it.key in PAPER_KEYS }, sizeKey, onSize)
                     Spacer(Modifier.height(14.dp))
                     Text("디스플레이", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
                     SizeRow(Catalog.sizes.filter { it.key in DISPLAY_KEYS }, sizeKey, onSize)
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(16.dp))
                     Text("배경", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(Catalog.backgrounds) { bg ->
@@ -467,7 +470,7 @@ private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDele
     Box(Modifier.aspectRatio(0.78f)) {
         Box(
             Modifier.fillMaxSize()
-                .shadow(6.dp, coverShape, clip = false)
+                .shadow(12.dp, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
                 .clip(coverShape)
                 .background(cover).bounceClick(onClick = onOpen),
         ) {
@@ -515,6 +518,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
     val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var favorites by remember { mutableStateOf(session.favoriteColors) }
+    var eyedropArmed by remember { mutableStateOf(false) }
     var page by remember { mutableIntStateOf(0) }
     var pageCount by remember { mutableIntStateOf(book.pageCount) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
@@ -556,7 +560,8 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.twoFingerTapAction = session.twoFingerTapAction
                     v.threeFingerTapAction = session.threeFingerTapAction
                     v.longPressAction = session.longPressAction
-                    v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false }
+                    v.eyedropArmed = eyedropArmed
+                    v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
@@ -574,6 +579,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             onAddPage = { addPage() }, onDeletePage = { deletePage() },
             favorites = favorites,
             onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
         )
     }
 }
