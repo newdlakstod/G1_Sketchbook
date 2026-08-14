@@ -161,6 +161,12 @@
   - 증상: 가로 화면에서 A4 세로 페이지가 자동회전해 높이에 맞춰지고 폰이 더 넓어 좌우 레터박스(배경) 발생 → 배경은 종이 밖이라 터치해도 안 그려지는데 앱 배경색과 종이색이 비슷해 "좌우 드로잉 인식 안됨"으로 느껴짐.
   - 수정: `onDraw`에서 페이지 rect를 화면 좌표로 매핑해 **은은한 헤일로 + 얇은 테두리**를 그림 → 그릴 수 있는 종이 영역이 주변 작업공간과 명확히 구분됨(회전 q는 90° 배수라 mapRect 정확). 터치 로직 변경 없음.
 
+- **치수 중앙 설정값 파일** (v1.52.0, 2026-08-14):
+  - 사용자 요청: "앱에 쓰는 치수들 한 파일에 모아서 내가 수정하면 자동 반영."
+  - `ui/theme/Dimens.kt` 신설 — `object Dimens`에 그룹별(Calendar/CleanCalendar/Canvas/Brush) dp·sp·배율 값 정리, 각 줄 한글 주석. 숫자만 고치고 리빌드하면 반영.
+  - 연결: 일기달력 탭(topSpacer/sideMargin/titleGap/yearSp/monthSp/weekdaySp/daySp/arrowIcon/todayDisc), 클린달력(sidePadding/top/bottom/titleGap/yearSp/monthSp), 캔버스(outerPadding, BrushView min/maxZoom), 브러시 기본 굵기(pen/pencil/crayon/water/eraser) — Sketchbook·Shared·Diary 3개 화면 + BrushView.
+  - 미연결(추후 확장 가능): Shared 분할뷰 padding(16dp, 좁게 유지), 기타 화면별 세부 dp. 새 값은 Dimens에 추가 후 `Dimens.<그룹>.<이름>` 참조.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

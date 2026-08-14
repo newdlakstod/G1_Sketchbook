@@ -60,6 +60,7 @@ import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.bgDrawable
+import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -98,9 +99,9 @@ fun SharedBookScreen(
     var brush by remember { mutableStateOf(BrushType.PEN) }
     var color by remember { mutableStateOf(0xFF1E2D4CL) }
     var erasing by remember { mutableStateOf(false) }
-    val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to 10f, BrushType.PENCIL to 12f, BrushType.CRAYON to 16f, BrushType.WATER to 20f) }
+    val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
-    var eraserSize by remember { mutableFloatStateOf(24f) }
+    var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
     val session = remember { com.g1.sketchbook.data.SessionStore(context) }

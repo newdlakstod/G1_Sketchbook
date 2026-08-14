@@ -12,6 +12,7 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import com.g1.sketchbook.ui.theme.Dimens
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -54,8 +55,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val disp = Matrix()
     private val inv = Matrix()
     private var fitScale = 1f                 // screen px per canvas px
-    private val MIN_SCALE = 0.3f              // zoom OUT past fit (PPT-style) down to 30% for lots of room
-    private val MAX_SCALE = 5f
+    private val MIN_SCALE = Dimens.Canvas.minZoom   // zoom OUT past fit (PPT-style); see ui.theme.Dimens
+    private val MAX_SCALE = Dimens.Canvas.maxZoom
 
     private val userM = Matrix()              // view-space pinch zoom/pan on top of the fit
     private var userScale = 1f                // total user zoom (1 = fit, capped at 5)

@@ -90,6 +90,7 @@ import com.g1.sketchbook.dev.DevAnnoOverlay
 import com.g1.sketchbook.dev.DevNote
 import com.g1.sketchbook.dev.devBounds
 import com.g1.sketchbook.ui.theme.Cavorting
+import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
@@ -108,9 +109,9 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
     var brush by remember { mutableStateOf(BrushType.PEN) }
     var color by remember { mutableStateOf(0xFF1E2D4CL) }
     var erasing by remember { mutableStateOf(false) }
-    val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to 10f, BrushType.PENCIL to 12f, BrushType.CRAYON to 16f, BrushType.WATER to 20f) }
+    val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
-    var eraserSize by remember { mutableFloatStateOf(24f) }
+    var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
     val session = remember { com.g1.sketchbook.data.SessionStore(ctx) }
@@ -121,7 +122,7 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
     BackHandler { onBack() }
     // Full-bleed canvas at A4 portrait ratio (opens full-screen, like a sketchbook).
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(Dimens.Canvas.outerPadding), contentAlignment = Alignment.Center) {
             val ratio = cw.toFloat() / ch
             val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
             val h = w / ratio
@@ -173,13 +174,13 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
 
     val marks = remember { mutableStateMapOf<String, Rect>() }
     Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-        Spacer(Modifier.height(110.dp))
+    Column(Modifier.fillMaxSize().padding(horizontal = Dimens.Calendar.sideMargin)) {
+        Spacer(Modifier.height(Dimens.Calendar.topSpacer))
         Box(Modifier.fillMaxWidth()) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$year", fontFamily = Cavorting, fontSize = 60.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Text("$year", fontFamily = Cavorting, fontSize = Dimens.Calendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.devBounds("year", marks))
-                Text(MonthNames[month], fontFamily = Cavorting, fontSize = 100.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
+                Text(MonthNames[month], fontFamily = Cavorting, fontSize = Dimens.Calendar.monthSp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
                     modifier = Modifier.devBounds("month", marks))
             }
             IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd).devBounds("edit", marks)) {
@@ -187,14 +188,14 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
             }
             Box(Modifier.align(Alignment.CenterStart).size(48.dp)
                 .bounceClick { if (month == 0) { month = 11; year-- } else month-- }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.size(35.dp).devBounds("arrowL", marks))
+                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.size(Dimens.Calendar.arrowIcon).devBounds("arrowL", marks))
             }
             Box(Modifier.align(Alignment.CenterEnd).size(48.dp)
                 .bounceClick { if (month == 11) { month = 0; year++ } else month++ }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.size(35.dp).devBounds("arrowR", marks))
+                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.size(Dimens.Calendar.arrowIcon).devBounds("arrowR", marks))
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Dimens.Calendar.titleGap))
         AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth(), marks)
     }
         DevAnnoOverlay(marks, DiaryDevNotes)
@@ -248,7 +249,7 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
         Row(Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
             WeekHeaders.forEachIndexed { i, wd ->
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text(wd, fontFamily = Cavorting, fontSize = 25.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Text(wd, fontFamily = Cavorting, fontSize = Dimens.Calendar.weekdaySp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = if (marks != null && i == 3) Modifier.devBounds("weekday", marks) else Modifier)
                 }
             }
@@ -260,11 +261,11 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
                         if (day > 0) {
                             val date = "%04d-%02d-%02d".format(year, month + 1, day)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(38.dp)
+                                Box(Modifier.size(Dimens.Calendar.todayDisc)
                                     .let { if (marks != null && (date == today || day == 15)) it.devBounds(if (date == today) "today" else "day", marks) else it },
                                     contentAlignment = Alignment.Center) {
-                                    if (date == today) Box(Modifier.size(38.dp).shadow(4.dp, CircleShape).background(TodayPink))
-                                    Text("$day", fontFamily = Cavorting, fontSize = 21.sp, color = MaterialTheme.colorScheme.onSurface)
+                                    if (date == today) Box(Modifier.size(Dimens.Calendar.todayDisc).shadow(4.dp, CircleShape).background(TodayPink))
+                                    Text("$day", fontFamily = Cavorting, fontSize = Dimens.Calendar.daySp, color = MaterialTheme.colorScheme.onSurface)
                                 }
                                 Box(Modifier.padding(top = 3.dp).size(6.dp).clip(CircleShape)
                                     .background(if (date in marked) DiaryDot else Color.Transparent))
@@ -290,13 +291,14 @@ fun CleanCalendarScreen(year: Int, month: Int, onBack: () -> Unit) {
     BackHandler { if (detailDate != null) detailDate = null else onBack() }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()
-        .padding(start = 44.dp, end = 44.dp, top = 30.dp, bottom = 30.dp)) {
+        .padding(start = Dimens.CleanCalendar.sidePadding, end = Dimens.CleanCalendar.sidePadding,
+            top = Dimens.CleanCalendar.topPadding, bottom = Dimens.CleanCalendar.bottomPadding)) {
         // Shared title — identical for slide 3 and slide 4.
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$year", fontFamily = Cavorting, fontSize = 30.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(MonthNames[month], fontFamily = Cavorting, fontSize = 70.sp, maxLines = 1)
+            Text("$year", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(MonthNames[month], fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.monthSp, maxLines = 1)
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(Dimens.CleanCalendar.titleGap))
         if (detailDate == null) {
             CleanGrid(year, month, thumbs, Modifier.weight(1f).fillMaxWidth()) { detailDate = it }
         } else {
