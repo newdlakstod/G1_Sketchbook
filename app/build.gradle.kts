@@ -13,9 +13,19 @@ android {
         applicationId = "com.g1.sketchbook"
         minSdk = 24
         targetSdk = 35
-        versionCode = 62
-        versionName = "1.47.0"
+        versionCode = 63
+        versionName = "1.48.0"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        // Sideloaded APKs install more reliably when signed with the legacy V1 (JAR) scheme
+        // as well as V2/V3 — some devices' package installers reject V2-only APKs.
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+        }
     }
 
     buildTypes {
