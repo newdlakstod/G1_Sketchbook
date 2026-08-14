@@ -13,8 +13,8 @@ android {
         applicationId = "com.g1.sketchbook"
         minSdk = 24
         targetSdk = 35
-        versionCode = 68
-        versionName = "1.53.0"
+        versionCode = 69
+        versionName = "1.54.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -76,6 +76,9 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
+
+    implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

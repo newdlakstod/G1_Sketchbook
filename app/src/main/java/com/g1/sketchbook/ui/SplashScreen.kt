@@ -34,11 +34,9 @@ fun SplashScreen() {
     ) {
         Spacer(Modifier.height(12.dp))
         Text("G1 SKETCH", fontFamily = Cavorting, fontSize = 64.sp, color = Ink, textAlign = TextAlign.Center)
-        Image(
-            painter = painterResource(R.drawable.duck_walk),
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
+        DuckWalk(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp),
+            contentDescription = null,
         )
         Spacer(Modifier.height(40.dp))
     }

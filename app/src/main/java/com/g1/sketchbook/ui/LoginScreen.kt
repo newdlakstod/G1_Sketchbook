@@ -42,11 +42,9 @@ fun LoginScreen(
     ) {
         Spacer(Modifier.height(12.dp))
         Text("G1 SKETCH", fontFamily = Cavorting, fontSize = 64.sp, color = Ink, textAlign = TextAlign.Center)
-        Image(
-            painter = painterResource(R.drawable.duck_walk),
-            contentDescription = "G1 Sketch 오리",
-            contentScale = ContentScale.Fit,
+        DuckWalk(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 12.dp),
+            contentDescription = "G1 Sketch 오리",
         )
         if (busy) {
             CircularProgressIndicator(color = Ink)

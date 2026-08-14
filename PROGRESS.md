@@ -171,6 +171,10 @@
   - 증상: paper 배경이 가로형(1672×941)이라 세로 캔버스(예: 모바일 390×844)에 커버-핏하면 좌우가 과도하게 잘림.
   - 수정: `drawPaper`가 배경과 페이지의 방향(가로/세로)이 다르면 배경을 90° 회전 후 커버-핏 → 배경 긴 변이 페이지 긴 변을 따라가 훨씬 많이 쓰이고 잘림 최소화. 매트릭스(`paperM`)로 회전·스케일·중앙배치 통합, onDraw/exportBitmap 공통 적용(캔버스 픽셀 좌표 기준).
 
+- **온보딩 오리 GIF 애니메이션** (v1.54.0, 2026-08-14):
+  - 온보딩(Splash/Login) 정적 오리(duck_walk.png)를 걷는 GIF(`res/raw/duck_walk.gif`, image/source/duck-walk.gif)로 교체.
+  - GIF는 `painterResource`로 애니 안 됨 → Coil(coil-compose+coil-gif 2.7.0) 추가, 공용 `ui/DuckWalk.kt`가 GIF 디코더(API28+ ImageDecoderDecoder / 이하 GifDecoder) 포함 ImageLoader로 `AsyncImage` 재생. Splash·Login 둘 다 사용.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
