@@ -69,6 +69,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val eraseFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
     private val compositeP = Paint()
     private val paperPaint = Paint(Paint.FILTER_BITMAP_FLAG)   // smooth, full-quality paper scaling
+    private val pageEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val pageRect = RectF()
     private val path = Path()
     private val rnd = Random(7)
 
@@ -165,6 +167,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         drawPaper(c)
         c.drawBitmap(cb, 0f, 0f, null)
         c.restore()
+        // Outline the page (screen space) so the drawable paper is obvious against the surrounding
+        // workspace — otherwise the letterbox margins look drawable but silently ignore touches.
+        pageRect.set(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(pageRect)
+        pageEdge.strokeWidth = 12f; pageEdge.color = 0x14000000; c.drawRect(pageRect, pageEdge)   // soft halo
+        pageEdge.strokeWidth = 2f;  pageEdge.color = 0x59000000; c.drawRect(pageRect, pageEdge)   // crisp edge
     }
 
     fun clearCanvas() { pushUndo(); content?.drawColor(0, PorterDuff.Mode.CLEAR); invalidate() }
