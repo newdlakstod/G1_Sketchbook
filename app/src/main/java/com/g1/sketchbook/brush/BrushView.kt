@@ -48,9 +48,17 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var twoFingerTapAction = GestureAction.NONE
     var threeFingerTapAction = GestureAction.NONE
     var longPressAction = GestureAction.NONE
+    /** Fires continuously while an armed eyedropper drag is in progress: sampled colour + screen pos,
+     *  for a floating preview bubble the caller can render (no colour change until release). */
+    var onEyedropPreview: ((Int, Float, Float) -> Unit)? = null
+    /** Final colour pick on release. */
     var onEyedrop: ((Int) -> Unit)? = null
-    /** One-shot: set true to make the very next tap sample a colour instead of drawing (toolbar eyedropper). */
+    /** Armed drag was released outside the canvas / cancelled — caller should hide its preview bubble. */
+    var onEyedropCancel: (() -> Unit)? = null
+    /** Set true to make the next touch sample a colour instead of drawing (toolbar eyedropper). Stays
+     *  armed for the whole press-drag-release; disarmed automatically on release. */
     var eyedropArmed = false
+    private var eyedropDragging = false
 
     private var cw = 0; private var ch = 0
     private var contentBmp: Bitmap? = null
@@ -227,13 +235,17 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
 
     /** Cheap layered-rect approximation of a soft drop shadow (no BlurMaskFilter, which needs a
-     *  software layer to render under hardware acceleration) — light source from the upper-left. */
+     *  software layer to render under hardware acceleration) — light source from the upper-left.
+     *  Tuned to the same weight as the sketchbook cover shadow (Modifier.shadow(12.dp, ...)) so the
+     *  canvas reads as "the same kind of shadow", just behind a page instead of a book cover. */
+    private val shadowDensity = resources.displayMetrics.density
     private fun drawPageShadow(c: Canvas, r: RectF) {
-        val dx = 5f; val dy = 11f
-        val spreads = intArrayOf(30, 18, 8)
-        val alphas = intArrayOf(10, 18, 30)
+        val d = shadowDensity
+        val dx = 3f * d; val dy = 7f * d
+        val spreads = floatArrayOf(12f * d, 8f * d, 4f * d)
+        val alphas = intArrayOf(18, 30, 46)
         for (i in spreads.indices) {
-            val s = spreads[i].toFloat()
+            val s = spreads[i]
             pageShadow.color = alphas[i] shl 24
             c.drawRoundRect(r.left - s + dx, r.top - s + dy, r.right + s + dx, r.bottom + s + dy, 14f, 14f, pageShadow)
         }
@@ -278,14 +290,32 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!drawEnabled) return false
         val now = System.currentTimeMillis()
+        // Eyedropper: while armed (toolbar button) or already dragging, every touch is a colour pick,
+        // never a stroke — handled entirely separately from drawing/gestures below.
+        if (eyedropArmed || eyedropDragging) {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    eyedropDragging = true
+                    pickColorAt(e.x, e.y)?.let { c -> onEyedropPreview?.invoke(c, e.x, e.y) }
+                }
+                MotionEvent.ACTION_MOVE -> if (eyedropDragging) {
+                    pickColorAt(e.x, e.y)?.let { c -> onEyedropPreview?.invoke(c, e.x, e.y) }
+                }
+                MotionEvent.ACTION_UP -> if (eyedropDragging) {
+                    eyedropDragging = false; eyedropArmed = false
+                    val picked = pickColorAt(e.x, e.y)
+                    if (picked != null) { color = picked; onEyedrop?.invoke(picked) } else onEyedropCancel?.invoke()
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    eyedropDragging = false; eyedropArmed = false
+                    onEyedropCancel?.invoke()
+                }
+            }
+            return true
+        }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pinching = false
-                if (eyedropArmed) {
-                    eyedropArmed = false
-                    runGesture(GestureAction.EYEDROP, e.x, e.y)
-                    return true   // consume the tap as a pick, not a stroke
-                }
                 val p = mapPoint(e.x, e.y); acc = 0f; lx = p[0]; ly = p[1]; lt = now
                 downX = e.x; downY = e.y
                 beginStroke(lx, ly)
@@ -309,15 +339,18 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             MotionEvent.ACTION_MOVE -> {
                 if (pinching && e.pointerCount >= 2) {
                     val d = spacing(e); val mx = midX(e); val my = midY(e)
-                    if (prevDist > 0f) {
+                    if (!multiMoved && (hypot(mx - multiStartMidX, my - multiStartMidY) > tapSlopPx ||
+                            kotlin.math.abs(d - multiStartDist) > tapSlopPx)) multiMoved = true
+                    // Only apply the pinch/pan transform once we're sure this isn't a tap (past slop) —
+                    // otherwise the tiny natural hand tremor of placing/lifting 2-3 fingers for a tap
+                    // gesture (e.g. redo) nudges the canvas by a stray pixel or two every time.
+                    if (multiMoved && prevDist > 0f) {
                         var ds = d / prevDist
                         val ns = (userScale * ds).coerceIn(MIN_SCALE, MAX_SCALE); ds = ns / userScale; userScale = ns
                         userM.postScale(ds, ds, mx, my)
                         userM.postTranslate(mx - prevMidX, my - prevMidY)
                         clampAndRefresh()
                     }
-                    if (hypot(mx - multiStartMidX, my - multiStartMidY) > tapSlopPx ||
-                        kotlin.math.abs(d - multiStartDist) > tapSlopPx) multiMoved = true
                     prevDist = d; prevMidX = mx; prevMidY = my
                 } else if (strokeStarted && !pinching) {
                     val p = mapPoint(e.x, e.y); val x = p[0]; val y = p[1]

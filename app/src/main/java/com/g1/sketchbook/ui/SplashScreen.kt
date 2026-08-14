@@ -1,6 +1,7 @@
 package com.g1.sketchbook.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -50,10 +51,10 @@ fun SplashScreen(onEnter: () -> Unit) {
             color = Ink, textAlign = TextAlign.Center)
         Spacer(Modifier.height(16.dp))
         Box(
-            Modifier.clip(RoundedCornerShape(50)).background(Ink).bounceClick(onClick = onEnter)
+            Modifier.clip(RoundedCornerShape(50)).border(2.dp, Ink, RoundedCornerShape(50)).bounceClick(onClick = onEnter)
                 .padding(horizontal = 46.dp, vertical = 14.dp),
         ) {
-            Text("enter", color = Color.White, fontSize = 16.sp)
+            Text("enter", color = Ink, fontSize = 16.sp)
         }
         Spacer(Modifier.height(24.dp))
     }

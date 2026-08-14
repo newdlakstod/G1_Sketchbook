@@ -39,6 +39,7 @@ import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
@@ -47,6 +48,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -357,7 +360,7 @@ private fun PersonalCreateCard(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Spacer(Modifier.height(16.dp))
                     Text("배경", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
                         items(Catalog.backgrounds) { bg ->
                             val on = bg.key == bgKey
                             Image(painterResource(bgDrawable(bg.key)), bg.label, contentScale = ContentScale.Crop,
@@ -399,8 +402,12 @@ private fun SketchbookListScreen(
     onDelete: (Sketchbook) -> Unit,
     onToggleFav: (Sketchbook) -> Unit,
 ) {
+    val context = LocalContext.current
+    val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var pendingDelete by remember { mutableStateOf<Sketchbook?>(null) }
     var showShared by remember { mutableStateOf(false) }
+    var columns by remember { mutableIntStateOf(session.gridColumns) }
+    var columnMenuOpen by remember { mutableStateOf(false) }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         // The outer tab Scaffold (MainScreen) already pads for the status bar; without this a
@@ -412,9 +419,23 @@ private fun SketchbookListScreen(
             Text("Sketchbook list", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
                 color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilterIconBtn(Icons.Filled.Person, "개인", !showShared) { showShared = false }
-                FilterIconBtn(Icons.Filled.Groups, "공유받음", showShared) { showShared = true }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FilterIconBtn(Icons.Filled.Person, "개인", !showShared) { showShared = false }
+                    FilterIconBtn(Icons.Filled.Groups, "공유받음", showShared) { showShared = true }
+                }
+                // 그리드 열 수(3/4/5) 설정 — 선택하면 즉시 반영 + 저장.
+                Box {
+                    IconButton(onClick = { columnMenuOpen = true }) { Icon(Icons.Filled.Menu, "목록 배열") }
+                    DropdownMenu(expanded = columnMenuOpen, onDismissRequest = { columnMenuOpen = false }) {
+                        (3..5).forEach { n ->
+                            DropdownMenuItem(
+                                text = { Text("${n}열", fontWeight = if (n == columns) FontWeight.Bold else FontWeight.Normal) },
+                                onClick = { columns = n; session.gridColumns = n; columnMenuOpen = false },
+                            )
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(12.dp))
             val shown = books.filter { it.shared == showShared }
@@ -423,7 +444,7 @@ private fun SketchbookListScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
+                    columns = GridCells.Fixed(columns),
                     modifier = Modifier.fillMaxSize(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -519,6 +540,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var favorites by remember { mutableStateOf(session.favoriteColors) }
     var eyedropArmed by remember { mutableStateOf(false) }
+    var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     var page by remember { mutableIntStateOf(0) }
     var pageCount by remember { mutableIntStateOf(book.pageCount) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
@@ -561,10 +583,13 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.threeFingerTapAction = session.threeFingerTapAction
                     v.longPressAction = session.longPressAction
                     v.eyedropArmed = eyedropArmed
-                    v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false }
+                    v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
+                    v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
+                    v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
+            eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
         }
         BrushControls(
             brush, color, sizeDp, opacity, erasing,

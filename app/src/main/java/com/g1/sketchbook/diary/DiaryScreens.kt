@@ -114,6 +114,7 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
     val session = remember { com.g1.sketchbook.data.SessionStore(ctx) }
     var favorites by remember { mutableStateOf(session.favoriteColors) }
     var eyedropArmed by remember { mutableStateOf(false) }
+    var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     val size = remember { Catalog.size("a4") }
     val cw = size.pxW(); val ch = size.pxH()
 
@@ -142,10 +143,13 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
                         v.threeFingerTapAction = session.threeFingerTapAction
                         v.longPressAction = session.longPressAction
                         v.eyedropArmed = eyedropArmed
-                        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false }
+                        v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
+                        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
+                        v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
                         v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(date, b) } } }
                     },
                 )
+                eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
             }
         }
         BrushControls(brush, color, sizeDp, opacity, erasing,

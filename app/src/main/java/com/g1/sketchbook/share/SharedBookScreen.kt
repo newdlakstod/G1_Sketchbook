@@ -107,6 +107,7 @@ fun SharedBookScreen(
     val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var favorites by remember { mutableStateOf(session.favoriteColors) }
     var eyedropArmed by remember { mutableStateOf(false) }
+    var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     var page by remember { mutableIntStateOf(0) }
     var pageCount by remember { mutableIntStateOf(book.pageCount) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
@@ -165,7 +166,9 @@ fun SharedBookScreen(
         v.threeFingerTapAction = session.threeFingerTapAction
         v.longPressAction = session.longPressAction
         v.eyedropArmed = eyedropArmed
-        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false }
+        v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
+        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
+        v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
         v.onStrokeEnd = {
             val pg = page
             v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
@@ -221,6 +224,7 @@ fun SharedBookScreen(
                             },
                             update = { /* brush state is applied via LaunchedEffect (movableContent-safe) */ },
                         )
+                        eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
                     }
                 }
             }

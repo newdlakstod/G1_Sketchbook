@@ -59,6 +59,11 @@ class SessionStore(context: Context) {
     private fun readGesture(key: String): GestureAction =
         runCatching { GestureAction.valueOf(prefs.getString(key, null) ?: "NONE") }.getOrDefault(GestureAction.NONE)
 
+    /** Sketchbook list grid column count (3/4/5), user-adjustable via the list's hamburger menu. */
+    var gridColumns: Int
+        get() = prefs.getInt(KEY_GRID_COLUMNS, 3).coerceIn(3, 5)
+        set(value) = prefs.edit().putInt(KEY_GRID_COLUMNS, value.coerceIn(3, 5)).apply()
+
     /** Sketchbooks the user knows about, most-recently-opened first. */
     fun sketchbooks(): List<SketchbookRef> {
         val raw = prefs.getString(KEY_BOOKS, null) ?: return emptyList()
@@ -98,6 +103,7 @@ class SessionStore(context: Context) {
         private const val KEY_GESTURE_2TAP = "gesture_2tap"
         private const val KEY_GESTURE_3TAP = "gesture_3tap"
         private const val KEY_GESTURE_LONGPRESS = "gesture_longpress"
+        private const val KEY_GRID_COLUMNS = "grid_columns"
         private const val MAX_BOOKS = 30
         val DefaultFavorites = listOf(0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L)
     }

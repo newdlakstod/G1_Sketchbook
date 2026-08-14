@@ -2,6 +2,7 @@ package com.g1.sketchbook.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -60,10 +61,10 @@ fun LoginScreen(
             CircularProgressIndicator(color = Ink)
         } else {
             Box(
-                Modifier.clip(RoundedCornerShape(50)).background(Ink).bounceClick { onSignIn() }
+                Modifier.clip(RoundedCornerShape(50)).border(2.dp, Ink, RoundedCornerShape(50)).bounceClick { onSignIn() }
                     .padding(horizontal = 46.dp, vertical = 14.dp),
             ) {
-                Text("continue", color = Color.White, fontSize = 16.sp)
+                Text("continue", color = Ink, fontSize = 16.sp)
             }
         }
         error?.let {
