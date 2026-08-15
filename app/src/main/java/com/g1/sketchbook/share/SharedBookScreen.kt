@@ -117,6 +117,8 @@ fun SharedBookScreen(
     var turnSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     val turnProgress = remember { Animatable(0f) }
     var dragBaseSnapshot by remember { mutableStateOf<Bitmap?>(null) }
+    var fullscreen by remember { mutableStateOf(false) }
+    var locked by remember { mutableStateOf(false) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var partner by remember { mutableStateOf<ShareRepository.Slot?>(null) }
@@ -174,10 +176,10 @@ fun SharedBookScreen(
     // Apply brush settings via an effect rather than AndroidView.update: the pane is wrapped in
     // movableContent, and after it's moved (rotation / view-mode change) update() stops re-observing
     // state — so selections would silently stop applying. This effect always re-syncs.
-    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed) {
+    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed, locked) {
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-        v.erasing = erasing
+        v.erasing = erasing; v.locked = locked
         v.twoFingerTapAction = session.twoFingerTapAction
         v.threeFingerTapAction = session.threeFingerTapAction
         v.longPressAction = session.longPressAction
@@ -193,9 +195,13 @@ fun SharedBookScreen(
             v.exportBitmap()?.let { b -> scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) } } // partner: with paper
         }
     }
-    BackHandler { saveLocal(); onBack() }
+    com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
+    BackHandler { if (fullscreen) fullscreen = false else { saveLocal(); onBack() } }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
+    Column(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .let { if (fullscreen) it else it.systemBarsPadding() },
+    ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(40.dp).clickable { saveLocal(); onBack() }, contentAlignment = Alignment.Center) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "나가기")
@@ -308,6 +314,8 @@ fun SharedBookScreen(
             favorites = favorites,
             onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
+            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+            locked = locked, onToggleLock = { locked = !locked },
         )
     }
     if (pagesOpen) {

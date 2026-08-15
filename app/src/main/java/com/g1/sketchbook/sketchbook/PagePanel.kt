@@ -15,12 +15,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -93,10 +96,12 @@ suspend fun Animatable<Float, AnimationVector1D>.playPageTurn(dir: Float) {
 }
 
 /**
- * Page turning + a grid of page thumbnails (checkerboard layout — 3 columns × 5 rows for the fixed
- * 15 pages) to jump straight to any page — everything page-related lives behind the toolbar's one
- * "페이지" button instead of a cluster of separate icons. Each cell shows just its page number below
- * the thumbnail.
+ * Page turning + a grid of page thumbnails (checkerboard layout — 3 columns for the fixed 15 pages)
+ * to jump straight to any page — everything page-related lives behind the toolbar's one "페이지"
+ * button instead of a cluster of separate icons. Each cell shows just its page number below the
+ * thumbnail. Rendered as a small, centred popup card (not a near-fullscreen sheet) so it stays out
+ * of the way of the canvas behind it; the grid itself scrolls internally if it would otherwise grow
+ * taller than the card.
  */
 @Composable
 fun PagePanel(
@@ -109,34 +114,39 @@ fun PagePanel(
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
-            Modifier.fillMaxSize().background(Color(0x66000000))
+            Modifier.fillMaxSize().background(Color(0x55000000))
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onDismiss),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.78f)
-                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                    .background(MaterialTheme.colorScheme.background)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = {})
-                    .padding(horizontal = 18.dp, vertical = 16.dp),
+            Surface(
+                shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.background,
+                shadowElevation = 16.dp, tonalElevation = 3.dp,
+                modifier = Modifier.width(292.dp)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = {}),
             ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("페이지", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { if (currentPage > 0) onSelect(currentPage - 1) }, enabled = currentPage > 0) {
-                        Icon(Icons.Filled.ChevronLeft, "이전 페이지")
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("페이지", fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { if (currentPage > 0) onSelect(currentPage - 1) }, enabled = currentPage > 0,
+                            modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Filled.ChevronLeft, "이전 페이지")
+                        }
+                        Text("${currentPage + 1}/$pageCount", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        IconButton(onClick = { if (currentPage < pageCount - 1) onSelect(currentPage + 1) }, enabled = currentPage < pageCount - 1,
+                            modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Filled.ChevronRight, "다음 페이지")
+                        }
                     }
-                    Text("${currentPage + 1}/$pageCount", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    IconButton(onClick = { if (currentPage < pageCount - 1) onSelect(currentPage + 1) }, enabled = currentPage < pageCount - 1) {
-                        Icon(Icons.Filled.ChevronRight, "다음 페이지")
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    items(pageCount) { i ->
-                        PageGridItem(repo, bookId, i, i == currentPage) { onSelect(i) }
+                    Spacer(Modifier.height(8.dp))
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.heightIn(max = 320.dp),
+                    ) {
+                        items(pageCount) { i ->
+                            PageGridItem(repo, bookId, i, i == currentPage) { onSelect(i) }
+                        }
                     }
                 }
             }

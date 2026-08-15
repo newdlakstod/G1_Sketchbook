@@ -564,6 +564,8 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var turnSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     val turnProgress = remember { Animatable(0f) }
     var dragBaseSnapshot by remember { mutableStateOf<Bitmap?>(null) }
+    var fullscreen by remember { mutableStateOf(false) }
+    var locked by remember { mutableStateOf(false) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
@@ -601,9 +603,13 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
         }
     }
 
-    BackHandler { saveCurrent(); onBack() }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
-        Box(Modifier.weight(1f).fillMaxWidth().padding(Dimens.Canvas.outerPadding)) {
+    com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
+    BackHandler { if (fullscreen) fullscreen = false else { saveCurrent(); onBack() } }
+    Column(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .let { if (fullscreen) it else it.systemBarsPadding() },
+    ) {
+        Box(Modifier.weight(1f).fillMaxWidth().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding)) {
             // BrushView fills the whole area and fits/auto-rotates the fixed-size page inside it.
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
@@ -617,7 +623,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 },
                 update = { v ->
                     v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-                    v.erasing = erasing
+                    v.erasing = erasing; v.locked = locked
                     v.twoFingerTapAction = session.twoFingerTapAction
                     v.threeFingerTapAction = session.threeFingerTapAction
                     v.longPressAction = session.longPressAction
@@ -644,6 +650,8 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             favorites = favorites,
             onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
+            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+            locked = locked, onToggleLock = { locked = !locked },
         )
     }
     if (pagesOpen) {

@@ -31,7 +31,11 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -101,6 +105,13 @@ fun BrushControls(
     onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
     eyedropArmed: Boolean = false,
     onToggleEyedrop: () -> Unit = {},
+    /** 전체화면: hides the system status/nav bars for more drawing room. Icon reflects current state. */
+    fullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null,
+    /** 화면 잠금: freezes pinch zoom/pan and the 90° rotate button so they can't be nudged by accident
+     *  mid-drawing; drawing itself is unaffected. Icon reflects current state. */
+    locked: Boolean = false,
+    onToggleLock: (() -> Unit)? = null,
 ) {
     var colorWheelOpen by remember { mutableStateOf(false) }
     var editFavAt by remember { mutableIntStateOf(-1) } // -1 none, else favourites index being edited
@@ -138,8 +149,21 @@ fun BrushControls(
             onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
             // Page turning/thumbnail list/selection all live behind one button now — see PagePanel.
             onOpenPages?.let { IconBtn(Icons.Filled.Layers, "페이지", onClick = it) }
-            onRotate?.let { IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전", onClick = it) }
-            if (onBack != null || onOpenPages != null || onRotate != null) VDivider()
+            onRotate?.let {
+                // Dimmed (not disabled) while locked — BrushView.rotate() itself no-ops, this just
+                // signals why tapping does nothing instead of silently failing.
+                IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (locked) 0.35f else 1f), onClick = it)
+            }
+            onToggleLock?.let {
+                IconBtn(if (locked) Icons.Filled.Lock else Icons.Filled.LockOpen, if (locked) "화면 잠금 해제" else "화면 잠금",
+                    tint = if (locked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
+            }
+            onToggleFullscreen?.let {
+                IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "전체화면 종료" else "전체화면",
+                    tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
+            }
+            if (onBack != null || onOpenPages != null || onRotate != null || onToggleLock != null || onToggleFullscreen != null) VDivider()
 
             // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
             // width/opacity panel (anchored + labelled per brush, not a single shared control).

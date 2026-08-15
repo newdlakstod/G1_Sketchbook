@@ -41,6 +41,10 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var opacity = 1f
     var drawEnabled = true
     var erasing = false
+    /** "화면 잠금" toggle from the toolbar — when true, blocks pinch zoom/pan and the 90° rotate
+     *  button, but drawing itself is untouched. Guards the transform paths directly rather than the
+     *  caller, so it can't be bypassed by any entry point (button, gesture, future ones). */
+    var locked = false
     var paper: Bitmap? = null
     var onStrokeEnd: (() -> Unit)? = null
 
@@ -164,7 +168,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     private fun resetZoom() { userM.reset(); userScale = 1f; pinching = false; prevDist = 0f }
 
-    fun rotate() { rotationQ = (rotationQ + 1) % 4; resetZoom(); computeDisplay(); invalidate() }
+    fun rotate() { if (locked) return; rotationQ = (rotationQ + 1) % 4; resetZoom(); computeDisplay(); invalidate() }
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
         // A resize (fold/rotate) invalidates the old view-space zoom, so drop back to fit.
@@ -370,7 +374,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     // Only apply the pinch/pan transform once we're sure this isn't a tap (past slop) —
                     // otherwise the tiny natural hand tremor of placing/lifting 2-3 fingers for a tap
                     // gesture (e.g. redo) nudges the canvas by a stray pixel or two every time.
-                    if (multiMoved && prevDist > 0f) {
+                    // Also skipped while locked — the toolbar's 잠금 toggle freezes zoom/pan (and
+                    // rotate, guarded in rotate() above) without touching 2-finger tap gestures.
+                    if (multiMoved && prevDist > 0f && !locked) {
                         var ds = d / prevDist
                         val ns = (userScale * ds).coerceIn(MIN_SCALE, MAX_SCALE); ds = ns / userScale; userScale = ns
                         userM.postScale(ds, ds, mx, my)
