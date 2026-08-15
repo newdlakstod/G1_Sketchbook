@@ -294,13 +294,16 @@ private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
             .let { if (it < 0) -it else it }.coerceIn(0f, 1f)
         val w = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterW, Dimens.Home.carouselSideW, distance)
         val h = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterH, Dimens.Home.carouselSideH, distance)
-        val fade = 1f - distance * 0.45f
+        val fade = 1f - distance * 0.5f
+        // Shadow strength follows proximity too — the focused cover "lifts forward", neighbours
+        // recede — so the size shrink alone doesn't have to carry the whole depth illusion.
+        val elevation = androidx.compose.ui.unit.lerp(18.dp, 4.dp, distance)
         val book = books[page]
         val coverShape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp)
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(fade).bounceClick { onOpen(book.id) }) {
                 Box(Modifier.width(w).height(h)
-                    .shadow(12.dp, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
+                    .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
                     .clip(coverShape)
                     .background(CoverColors[page % CoverColors.size])) {
                     Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,

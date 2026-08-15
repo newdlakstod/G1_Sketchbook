@@ -32,9 +32,11 @@ object Dimens {
         val titleToIconGap = 68.dp      // 타이틀 ~ 아이콘 행 사이 간격
         val actionIcon = 56.dp          // 새 노트/공유/참여 원형 아이콘 버튼 지름 (명시 안 됨, 추정치)
         val carouselCenterW = 267.5.dp  // 캐러셀 가운데(포커스) 노트 너비
-        val carouselCenterH = 402.5.dp  // 캐러셀 가운데(포커스) 노트 높이
+        val carouselCenterH = 402.dp    // 캐러셀 가운데(포커스) 노트 높이
         val carouselSideW = 217.dp      // 캐러셀 옆(비포커스) 노트 너비
         val carouselSideH = 327.dp      // 캐러셀 옆(비포커스) 노트 높이
+        /** 표지 가로세로 비율(가운데 노트 기준) — 스케치북 리스트 썸네일도 이 비율을 그대로 씀(고정 비율). */
+        val coverRatio = (carouselCenterW / carouselCenterH)
     }
 
     /** 새 스케치북 만들기 화면 (팝업 카드 — 이름/사이즈/배경을 한 화면에서 선택) */
@@ -49,14 +51,13 @@ object Dimens {
         val topSpacer = Screen.topMargin   // 탭 타이틀 위 상단 여백 — 다른 탭과 동일
         val bottomMargin = Screen.bottomMargin  // 하단 네비게이션 바 위 여백 — 다른 탭과 동일
         val sideMargin = 71.dp      // 좌우 여백
-        val topTitleGap = 16.dp     // "A piece of today" 탭 타이틀 ~ 연도 사이 간격
-        val titleGap = 24.dp        // 월 타이틀과 달력 그리드 사이 간격
-        val yearSp = 63.sp          // 연도 글자 크기
-        val monthSp = 113.sp        // 월(Jaunaly) 글자 크기
+        val topTitleGap = 16.dp     // "A piece of today" 탭 타이틀 ~ 연월 사이 간격
+        val titleGap = 24.dp        // 연월 타이틀과 달력 그리드 사이 간격
+        val yearMonthSp = 52.sp     // "2026.01" 형식 연월 표기 글자 크기(연도/월 이름 분리 표기 대신 한 줄로 통합)
         val weekdaySp = 26.sp       // 요일(Sun..Sat) 글자 크기
         val daySp = 21.sp           // 날짜 숫자 크기
-        val arrowIconW = 10.dp      // 이전/다음 달 화살표 아이콘 너비
-        val arrowIconH = 20.dp      // 이전/다음 달 화살표 아이콘 높이
+        val arrowIconW = 10.dp      // 이전/다음 달 화살표 너비 — Icon 크기가 아니라 직접 그리는 화살표(Canvas)의 크기
+        val arrowIconH = 20.dp      // 이전/다음 달 화살표 높이
         val editIcon = 35.dp        // 오늘 일기 편집(연필) 아이콘 크기
         val todayDisc = 38.dp       // 오늘 핑크 원 지름
     }

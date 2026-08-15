@@ -494,7 +494,9 @@ private fun FilterIconBtn(icon: ImageVector, label: String, selected: Boolean, o
 @Composable
 private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDelete: () -> Unit, onToggleFav: () -> Unit) {
     val coverShape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp)
-    Box(Modifier.aspectRatio(0.78f)) {
+    // Same cover ratio as the home carousel (Dimens.Home.coverRatio) — every note cover keeps one
+    // fixed proportion across the whole app, whichever screen shows it.
+    Box(Modifier.aspectRatio(Dimens.Home.coverRatio)) {
         Box(
             Modifier.fillMaxSize()
                 .shadow(12.dp, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)

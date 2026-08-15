@@ -9,6 +9,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,8 +33,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
@@ -186,26 +185,42 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
             color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(Dimens.Calendar.topTitleGap))
         Box(Modifier.fillMaxWidth()) {
-            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$year", fontFamily = Cavorting, fontSize = Dimens.Calendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MonthNames[month], fontFamily = Cavorting, fontSize = Dimens.Calendar.monthSp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
-            }
+            Text(
+                "$year.${(month + 1).toString().padStart(2, '0')}", fontFamily = Cavorting, fontSize = Dimens.Calendar.yearMonthSp,
+                color = MaterialTheme.colorScheme.onSurface, maxLines = 1, modifier = Modifier.align(Alignment.Center),
+            )
             IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd)) {
                 Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(Dimens.Calendar.editIcon))
             }
             Box(Modifier.align(Alignment.CenterStart).size(48.dp)
                 .bounceClick { if (month == 0) { month = 11; year-- } else month-- }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronLeft, "이전 달", modifier = Modifier.width(Dimens.Calendar.arrowIconW).height(Dimens.Calendar.arrowIconH))
+                ChevronArrow(pointLeft = true, modifier = Modifier.width(Dimens.Calendar.arrowIconW).height(Dimens.Calendar.arrowIconH))
             }
             Box(Modifier.align(Alignment.CenterEnd).size(48.dp)
                 .bounceClick { if (month == 11) { month = 0; year++ } else month++ }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.ChevronRight, "다음 달", modifier = Modifier.width(Dimens.Calendar.arrowIconW).height(Dimens.Calendar.arrowIconH))
+                ChevronArrow(pointLeft = false, modifier = Modifier.width(Dimens.Calendar.arrowIconW).height(Dimens.Calendar.arrowIconH))
             }
         }
         Spacer(Modifier.height(Dimens.Calendar.titleGap))
         AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth())
         Spacer(Modifier.height(Dimens.Calendar.bottomMargin))
+    }
+}
+
+/** A chevron drawn to exactly fill its (non-square) box — Material's ChevronLeft/Right are a square
+ *  viewBox, so forcing them into a narrow 10x20dp box just shrinks the whole glyph to fit the 10dp
+ *  width (Fit-scaled), reading as "too small". Drawing the two strokes directly avoids that. */
+@Composable
+private fun ChevronArrow(pointLeft: Boolean, modifier: Modifier, color: Color = MaterialTheme.colorScheme.onSurface) {
+    Canvas(modifier) {
+        val w = size.width; val h = size.height
+        val stroke = Stroke(width = w * 0.5f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val path = Path().apply {
+            if (pointLeft) { moveTo(w, 0f); lineTo(0f, h / 2f); lineTo(w, h) }
+            else { moveTo(0f, 0f); lineTo(w, h / 2f); lineTo(0f, h) }
+        }
+        drawPath(path, color, style = stroke)
     }
 }
 
