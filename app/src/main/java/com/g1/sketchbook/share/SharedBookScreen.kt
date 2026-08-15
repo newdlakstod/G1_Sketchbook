@@ -119,6 +119,10 @@ fun SharedBookScreen(
     var dragBaseSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(false) }
+    // 페이지 넘기기 모드: on, single-finger swipe turns pages and drawing/zoom/pan are fully disabled
+    // (see BrushView.pageTurnMode) — keeps page-turning and normal canvas interaction mutually
+    // exclusive so turning pages while zoomed can't shift the pinch/pan state.
+    var pageTurnMode by remember { mutableStateOf(false) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var partner by remember { mutableStateOf<ShareRepository.Slot?>(null) }
@@ -176,19 +180,21 @@ fun SharedBookScreen(
     // Apply brush settings via an effect rather than AndroidView.update: the pane is wrapped in
     // movableContent, and after it's moved (rotation / view-mode change) update() stops re-observing
     // state — so selections would silently stop applying. This effect always re-syncs.
-    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed, locked) {
+    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed, locked, pageTurnMode) {
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-        v.erasing = erasing; v.locked = locked
+        v.erasing = erasing; v.locked = locked; v.pageTurnMode = pageTurnMode
         v.twoFingerTapAction = session.twoFingerTapAction
         v.threeFingerTapAction = session.threeFingerTapAction
         v.longPressAction = session.longPressAction
+        v.threeFingerDragAction = session.threeFingerDragAction
         v.eyedropArmed = eyedropArmed
         v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
         v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
         v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
         v.onPageDragProgress = { p -> onPageDragProgress(p) }
         v.onPageDragEnd = { commit -> onPageDragEnd(commit) }
+        v.onSwipeTurn = { dir -> goTo(page + dir) }
         v.onStrokeEnd = {
             val pg = page
             v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
@@ -316,6 +322,7 @@ fun SharedBookScreen(
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
             locked = locked, onToggleLock = { locked = !locked },
+            pageTurnMode = pageTurnMode, onTogglePageTurnMode = { pageTurnMode = !pageTurnMode },
         )
     }
     if (pagesOpen) {

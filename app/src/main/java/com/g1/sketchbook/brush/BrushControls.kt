@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
@@ -112,6 +113,10 @@ fun BrushControls(
      *  mid-drawing; drawing itself is unaffected. Icon reflects current state. */
     locked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
+    /** 페이지 넘기기 모드: while on, a single-finger swipe turns pages and drawing/zoom/pan are fully
+     *  disabled — the only way to interactively turn pages now (see BrushView.pageTurnMode). */
+    pageTurnMode: Boolean = false,
+    onTogglePageTurnMode: (() -> Unit)? = null,
 ) {
     var colorWheelOpen by remember { mutableStateOf(false) }
     var editFavAt by remember { mutableIntStateOf(-1) } // -1 none, else favourites index being edited
@@ -149,6 +154,10 @@ fun BrushControls(
             onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
             // Page turning/thumbnail list/selection all live behind one button now — see PagePanel.
             onOpenPages?.let { IconBtn(Icons.Filled.Layers, "페이지", onClick = it) }
+            onTogglePageTurnMode?.let {
+                IconBtn(Icons.AutoMirrored.Filled.MenuBook, if (pageTurnMode) "페이지 넘기기 모드 종료" else "페이지 넘기기 모드",
+                    tint = if (pageTurnMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
+            }
             onRotate?.let {
                 // Dimmed (not disabled) while locked — BrushView.rotate() itself no-ops, this just
                 // signals why tapping does nothing instead of silently failing.
@@ -163,7 +172,8 @@ fun BrushControls(
                 IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "전체화면 종료" else "전체화면",
                     tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
             }
-            if (onBack != null || onOpenPages != null || onRotate != null || onToggleLock != null || onToggleFullscreen != null) VDivider()
+            if (onBack != null || onOpenPages != null || onTogglePageTurnMode != null || onRotate != null ||
+                onToggleLock != null || onToggleFullscreen != null) VDivider()
 
             // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
             // width/opacity panel (anchored + labelled per brush, not a single shared control).

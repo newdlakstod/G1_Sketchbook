@@ -559,13 +559,18 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
     var pagesOpen by remember { mutableStateOf(false) }
     // Page-turn visuals: turnSnapshot is the outgoing page's exact on-screen capture; turnProgress
-    // (-1..1) drives PageTurnOverlay for BOTH the discrete (chevron/thumbnail) and the interactive
-    // 3-finger-drag turn — snapTo for live drag-following, animateTo for the auto/settle animations.
+    // (-1..1) drives PageTurnOverlay for BOTH the discrete (chevron/thumbnail/swipe-turn) and the
+    // interactive (페이지 넘기기 모드 single-finger drag) turn — snapTo for live drag-following,
+    // animateTo for the auto/settle animations.
     var turnSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     val turnProgress = remember { Animatable(0f) }
     var dragBaseSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(false) }
+    // 페이지 넘기기 모드: on, single-finger swipe turns pages and drawing/zoom/pan are fully disabled
+    // (see BrushView.pageTurnMode) — turning pages while zoomed used to shift the pinch/pan state
+    // unpredictably, so page-turning and normal canvas interaction are now made mutually exclusive.
+    var pageTurnMode by remember { mutableStateOf(false) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
@@ -583,8 +588,8 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             scope.launch { turnProgress.playPageTurn(dir); turnSnapshot = null }
         }
     }
-    // Interactive 3-finger drag: follows the fingers live, then either finishes the turn (commit) or
-    // springs back to rest (cancel) on release.
+    // Interactive page-turn-mode drag: follows the finger live, then either finishes the turn
+    // (commit) or springs back to rest (cancel) on release.
     fun onPageDragProgress(p: Float) {
         if (dragBaseSnapshot == null) { dragBaseSnapshot = view?.captureScreenBitmap(); turnSnapshot = dragBaseSnapshot }
         scope.launch { turnProgress.snapTo(p) }
@@ -623,16 +628,18 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 },
                 update = { v ->
                     v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-                    v.erasing = erasing; v.locked = locked
+                    v.erasing = erasing; v.locked = locked; v.pageTurnMode = pageTurnMode
                     v.twoFingerTapAction = session.twoFingerTapAction
                     v.threeFingerTapAction = session.threeFingerTapAction
                     v.longPressAction = session.longPressAction
+                    v.threeFingerDragAction = session.threeFingerDragAction
                     v.eyedropArmed = eyedropArmed
                     v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
                     v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
                     v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
                     v.onPageDragProgress = { p -> onPageDragProgress(p) }
                     v.onPageDragEnd = { commit -> onPageDragEnd(commit) }
+                    v.onSwipeTurn = { dir -> goTo(page + dir) }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
@@ -652,6 +659,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
             locked = locked, onToggleLock = { locked = !locked },
+            pageTurnMode = pageTurnMode, onTogglePageTurnMode = { pageTurnMode = !pageTurnMode },
         )
     }
     if (pagesOpen) {

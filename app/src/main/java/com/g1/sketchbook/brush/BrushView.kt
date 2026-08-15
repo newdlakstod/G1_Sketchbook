@@ -23,7 +23,7 @@ import kotlin.random.Random
 enum class BrushType { PEN, PENCIL, CRAYON, WATER }
 
 /** Action a gesture can trigger — mapped per-gesture in Settings, off (NONE) by default. */
-enum class GestureAction { NONE, UNDO, REDO, EYEDROP }
+enum class GestureAction { NONE, UNDO, REDO, EYEDROP, PAGE_TURN }
 
 /**
  * Fixed-resolution canvas: strokes are drawn into bitmaps sized to the sketchbook's own pixel
@@ -52,6 +52,23 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var twoFingerTapAction = GestureAction.NONE
     var threeFingerTapAction = GestureAction.NONE
     var longPressAction = GestureAction.NONE
+    /** What a 3-finger drag-then-release does (defaults to page-turning, its original hardcoded
+     *  behaviour) — fired once on release, direction from the overall drag, not a live preview. */
+    var threeFingerDragAction = GestureAction.PAGE_TURN
+    /** Fires once for a discrete swipe-triggered page turn (3-finger drag, or a tap gesture mapped
+     *  to PAGE_TURN): -1/1 = direction. No live preview — the caller just turns the page outright,
+     *  same as tapping a chevron in PagePanel. */
+    var onSwipeTurn: ((Int) -> Unit)? = null
+    /** "페이지 넘기기 모드" — while true, ALL touch input is dedicated to a single-finger left/right
+     *  swipe that live-follows the finger via [onPageDragProgress]/[onPageDragEnd] below; drawing and
+     *  pinch zoom/pan are both fully disabled. Turning pages while zoomed used to shift the pinch/pan
+     *  state unpredictably because drawing, zoom and page-turn gestures could all interleave — this
+     *  mode sidesteps that entirely by making page-turning and normal canvas interaction mutually
+     *  exclusive rather than trying to disambiguate them touch-by-touch. */
+    var pageTurnMode = false
+    private var swipeTurnActive = false
+    private var swipeTurnStartX = 0f
+    private var lastSwipeProgress = 0f
     /** Fires continuously while an armed eyedropper drag is in progress: sampled colour + screen pos,
      *  for a floating preview bubble the caller can render (no colour change until release). */
     var onEyedropPreview: ((Int, Float, Float) -> Unit)? = null
@@ -64,10 +81,10 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var eyedropArmed = false
     private var eyedropDragging = false
 
-    /** Fires continuously while dragging 3 fingers left/right to turn pages: -1..1, sign = direction
-     *  (positive = toward next), magnitude = how far through the turn the drag currently is. */
+    /** Fires continuously while [pageTurnMode]'s single-finger swipe is live-dragging: -1..1, sign =
+     *  direction (positive = toward next), magnitude = how far through the turn the drag currently is. */
     var onPageDragProgress: ((Float) -> Unit)? = null
-    /** Fires once the fingers lift: -1/1 to commit a page turn in that direction, 0 to cancel/snap back. */
+    /** Fires once the finger lifts: -1/1 to commit a page turn in that direction, 0 to cancel/snap back. */
     var onPageDragEnd: ((Int) -> Unit)? = null
 
     private var cw = 0; private var ch = 0
@@ -106,8 +123,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var multiMoved = false
     private var multiTapFired = false
 
-    // Three-finger horizontal drag = interactive page turn (distinct from the 3-finger TAP gesture
-    // above, and takes priority over pinch/pan once 3+ fingers are down — pinch stays 2-finger only).
+    // Three-finger horizontal drag — distinct from the 3-finger TAP gesture above. Unlike the
+    // page-turn-mode swipe, this is a discrete trigger: on release, past-slop movement fires
+    // threeFingerDragAction ONCE (direction only, no live preview) — see runGesture().
     private var threeDragActive = false
     private var threeDragStartX = 0f
     private var lastDragProgress = 0f
@@ -307,6 +325,29 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     // ---- touch (one finger draws, two fingers pinch-zoom/pan) ----
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!drawEnabled) return false
+        // Page-turning mode takes over touch input entirely: a single-finger left/right swipe drives
+        // the turn live (see [pageTurnMode] doc) — no drawing, no eyedrop, no pinch zoom/pan.
+        if (pageTurnMode) {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { swipeTurnActive = false; swipeTurnStartX = e.x; lastSwipeProgress = 0f }
+                MotionEvent.ACTION_MOVE -> if (e.pointerCount == 1) {
+                    val dx = e.x - swipeTurnStartX
+                    if (!swipeTurnActive && kotlin.math.abs(dx) > tapSlopPx) swipeTurnActive = true
+                    if (swipeTurnActive) {
+                        lastSwipeProgress = (-dx / width.toFloat()).coerceIn(-1f, 1f)
+                        onPageDragProgress?.invoke(lastSwipeProgress)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (swipeTurnActive) {
+                        val commit = when { lastSwipeProgress > 0.25f -> 1; lastSwipeProgress < -0.25f -> -1; else -> 0 }
+                        onPageDragEnd?.invoke(commit)
+                    }
+                    swipeTurnActive = false
+                }
+            }
+            return true
+        }
         val now = System.currentTimeMillis()
         // Eyedropper: while armed (toolbar button) or already dragging, every touch is a colour pick,
         // never a stroke — handled entirely separately from drawing/gestures below.
@@ -357,16 +398,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             }
             MotionEvent.ACTION_MOVE -> {
                 if (pinching && e.pointerCount >= 3) {
-                    // Three(+)-finger horizontal drag: interactive page turn, following the fingers —
-                    // takes over from pinch/pan once a 3rd finger is down.
+                    // Three(+)-finger horizontal drag: track direction only (no live preview — the
+                    // mapped action fires once on release, below) — takes over from pinch/pan once a
+                    // 3rd finger is down.
                     val mx = avgX(e)
                     val dx = mx - threeDragStartX
                     if (!threeDragActive && kotlin.math.abs(dx) > tapSlopPx) { threeDragActive = true; multiMoved = true }
-                    if (threeDragActive) {
-                        val progress = (-dx / width.toFloat()).coerceIn(-1f, 1f)   // drag left -> positive (next)
-                        lastDragProgress = progress
-                        onPageDragProgress?.invoke(progress)
-                    }
+                    if (threeDragActive) lastDragProgress = (-dx / width.toFloat()).coerceIn(-1f, 1f)   // drag left -> positive (next)
                 } else if (pinching && e.pointerCount == 2) {
                     val d = spacing(e); val mx = midX(e); val my = midY(e)
                     if (!multiMoved && (hypot(mx - multiStartMidX, my - multiStartMidY) > tapSlopPx ||
@@ -397,7 +435,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 if (threeDragActive && e.pointerCount == 3) {
                     threeDragActive = false
                     val commit = when { lastDragProgress > 0.25f -> 1; lastDragProgress < -0.25f -> -1; else -> 0 }
-                    onPageDragEnd?.invoke(commit)
+                    if (commit != 0) runGesture(threeFingerDragAction, multiStartMidX, multiStartMidY, commit)
                 }
                 if (!multiMoved && !multiTapFired && multiDownCount > 0 && multiDownCount == e.pointerCount &&
                     (now - multiDownTime) < TAP_WINDOW_MS) {
@@ -412,7 +450,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 if (threeDragActive) {
                     threeDragActive = false
                     val commit = when { lastDragProgress > 0.25f -> 1; lastDragProgress < -0.25f -> -1; else -> 0 }
-                    onPageDragEnd?.invoke(commit)
+                    if (commit != 0) runGesture(threeFingerDragAction, multiStartMidX, multiStartMidY, commit)
                 }
                 if (longPressPending) { longPressPending = false; removeCallbacks(longPressRunnable) }
                 if (strokeStarted) endStroke()
@@ -434,11 +472,14 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         strokeStarted = false; base = null; invalidate()
     }
 
-    private fun runGesture(action: GestureAction, sx: Float, sy: Float) {
+    /** [dir] is only meaningful for PAGE_TURN (a tap gesture has no direction, so it defaults to
+     *  advancing forward); other actions ignore it. */
+    private fun runGesture(action: GestureAction, sx: Float, sy: Float, dir: Int = 0) {
         when (action) {
             GestureAction.UNDO -> undo()
             GestureAction.REDO -> redo()
             GestureAction.EYEDROP -> pickColorAt(sx, sy)?.let { c -> color = c; onEyedrop?.invoke(c) }
+            GestureAction.PAGE_TURN -> onSwipeTurn?.invoke(if (dir != 0) dir else 1)
             GestureAction.NONE -> {}
         }
     }

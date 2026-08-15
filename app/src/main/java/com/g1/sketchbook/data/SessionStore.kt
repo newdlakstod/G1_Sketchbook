@@ -55,6 +55,12 @@ class SessionStore(context: Context) {
     var longPressAction: GestureAction
         get() = readGesture(KEY_GESTURE_LONGPRESS)
         set(value) = prefs.edit().putString(KEY_GESTURE_LONGPRESS, value.name).apply()
+    /** Three-finger drag — defaults to page-turning (its original hardcoded behaviour), but is now
+     *  just another mappable gesture slot like the ones above. */
+    var threeFingerDragAction: GestureAction
+        get() = runCatching { GestureAction.valueOf(prefs.getString(KEY_GESTURE_3DRAG, null) ?: "PAGE_TURN") }
+            .getOrDefault(GestureAction.PAGE_TURN)
+        set(value) = prefs.edit().putString(KEY_GESTURE_3DRAG, value.name).apply()
 
     private fun readGesture(key: String): GestureAction =
         runCatching { GestureAction.valueOf(prefs.getString(key, null) ?: "NONE") }.getOrDefault(GestureAction.NONE)
@@ -103,6 +109,7 @@ class SessionStore(context: Context) {
         private const val KEY_GESTURE_2TAP = "gesture_2tap"
         private const val KEY_GESTURE_3TAP = "gesture_3tap"
         private const val KEY_GESTURE_LONGPRESS = "gesture_longpress"
+        private const val KEY_GESTURE_3DRAG = "gesture_3drag"
         private const val KEY_GRID_COLUMNS = "grid_columns"
         private const val MAX_BOOKS = 30
         val DefaultFavorites = listOf(0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L)
