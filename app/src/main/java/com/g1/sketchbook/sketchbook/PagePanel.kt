@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
@@ -64,19 +65,17 @@ import kotlinx.coroutines.withContext
 
 /**
  * Renders the outgoing page's exact on-screen snapshot as an analog, book-like BEND rather than a
- * single rigid flip: the page is split at its own horizontal MIDPOINT into two segments that fold
- * one after another around that shared crease, instead of the whole page swinging as one flat plane
- * around an outer edge — that two-stage compounding is what actually reads as "paper bending".
+ * single rigid flip: the page is split at its own horizontal MIDPOINT into two segments (siblings,
+ * each independently positioned via alignment — no child-outside-parent-bounds trickery, and an
+ * explicit [zIndex] so this always draws above the live AndroidView canvas underneath it):
  *
  *  - Phase A (t: 0→0.5): the FAR segment — the half away from the fixed spine, i.e. the part your
  *    finger would actually lift first — rotates up and fades away around the midpoint crease, while
  *    the NEAR (spine-adjacent) segment stays flat.
  *  - Phase B (t: 0.5→1): the NEAR segment then folds too, around that same crease, continuing the
- *    turn until the page is fully gone.
- *
- * The FAR segment is composed as a CHILD of the NEAR segment's box so its rotation compounds on top
- * of the NEAR segment's own (which starts at zero and only grows in phase B) — exactly like a real
- * page, whose curl increases the further you get from the spine.
+ *    turn until the page is fully gone. By the time NEAR starts moving, FAR has already faded out
+ *    (its alpha reaches 0 partway through phase A), so the two segments never visibly need to line
+ *    up mid-rotation — each just has to look right on its own.
  *
  * Drives both the discrete (chevron/thumbnail) and interactive (drag) turns; [progress] is -1..1
  * where 0 = at rest (nothing drawn) and ±1 = fully turned. Matches whatever zoom/pan/rotation was on
@@ -97,10 +96,35 @@ fun PageTurnOverlay(snapshot: Bitmap?, progress: Float) {
     val phaseA = (t / 0.5f).coerceIn(0f, 1f)
     val phaseB = ((t - 0.5f) / 0.5f).coerceIn(0f, 1f)
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize().zIndex(10f)) {
         val fullW = maxWidth
         val halfW = fullW / 2
-        // NEAR segment: anchored at the true spine edge, which never moves from the screen edge.
+
+        // FAR segment first, so the NEAR segment (still on screen once FAR is long gone) stacks
+        // visually on top of it during the brief window both are visible.
+        if (phaseA > 0f) {
+            Box(
+                Modifier.align(if (hingeLeft) Alignment.CenterEnd else Alignment.CenterStart)
+                    .fillMaxHeight().width(halfW)
+                    .graphicsLayer {
+                        cameraDistance = camera
+                        transformOrigin = TransformOrigin(originX, 0.5f)
+                        rotationY = rotSign * phaseA * 80f
+                        alpha = 1f - ((phaseA - 0.5f) / 0.35f).coerceIn(0f, 1f)
+                    },
+            ) {
+                Box(Modifier.fillMaxSize().clipToBounds()) {
+                    Image(
+                        snapshot.asImageBitmap(), null, contentScale = ContentScale.FillBounds,
+                        modifier = Modifier.fillMaxHeight().width(fullW).offset(x = if (hingeLeft) -halfW else 0.dp),
+                    )
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = (phaseA * 0.35f).coerceIn(0f, 0.35f))))
+                }
+            }
+        }
+
+        // NEAR segment: anchored at the true spine edge, which never moves from the screen edge —
+        // flat through phase A, then folds too in phase B.
         Box(
             Modifier.align(if (hingeLeft) Alignment.CenterStart else Alignment.CenterEnd)
                 .fillMaxHeight().width(halfW)
@@ -117,27 +141,6 @@ fun PageTurnOverlay(snapshot: Bitmap?, progress: Float) {
                     modifier = Modifier.fillMaxHeight().width(fullW).offset(x = if (hingeLeft) 0.dp else -halfW),
                 )
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = (phaseB * 0.35f).coerceIn(0f, 0.35f))))
-            }
-            // FAR segment (child of the NEAR box above — its rotation compounds on top of NEAR's).
-            if (phaseA > 0f) {
-                Box(
-                    Modifier.fillMaxHeight().width(halfW)
-                        .offset(x = if (hingeLeft) halfW else -halfW)
-                        .graphicsLayer {
-                            cameraDistance = camera
-                            transformOrigin = TransformOrigin(originX, 0.5f)
-                            rotationY = rotSign * phaseA * 80f
-                            alpha = 1f - ((phaseA - 0.5f) / 0.35f).coerceIn(0f, 1f)
-                        },
-                ) {
-                    Box(Modifier.fillMaxSize().clipToBounds()) {
-                        Image(
-                            snapshot.asImageBitmap(), null, contentScale = ContentScale.FillBounds,
-                            modifier = Modifier.fillMaxHeight().width(fullW).offset(x = if (hingeLeft) -halfW else 0.dp),
-                        )
-                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = (phaseA * 0.35f).coerceIn(0f, 0.35f))))
-                    }
-                }
             }
         }
     }
