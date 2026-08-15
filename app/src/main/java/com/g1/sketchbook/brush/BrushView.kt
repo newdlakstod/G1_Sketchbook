@@ -105,7 +105,15 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         if (longPressPending && strokeStarted && !pinching) {
             longPressPending = false
             discardStroke()
-            runGesture(longPressAction, downX, downY)
+            if (longPressAction == GestureAction.EYEDROP) {
+                // Hand off to the same press-drag-release flow the toolbar eyedropper uses, instead
+                // of firing blind — the finger is still down, so this shows the floating colour
+                // preview immediately and only commits when the finger lifts.
+                eyedropDragging = true
+                pickColorAt(downX, downY)?.let { c -> onEyedropPreview?.invoke(c, downX, downY) }
+            } else {
+                runGesture(longPressAction, downX, downY)
+            }
         }
     }
 
@@ -237,16 +245,21 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     /** Cheap layered-rect approximation of a soft drop shadow (no BlurMaskFilter, which needs a
      *  software layer to render under hardware acceleration) — light source from the upper-left.
      *  Tuned to the same weight as the sketchbook cover shadow (Modifier.shadow(12.dp, ...)) so the
-     *  canvas reads as "the same kind of shadow", just behind a page instead of a book cover. */
+     *  canvas reads as "the same kind of shadow", just behind a page instead of a book cover.
+     *  Many thin layers with a quadratic alpha falloff so the steps blend into a smooth-looking
+     *  gradient instead of a few visibly banded rings (3 layers read as "3 flat tiers", not a shadow). */
     private val shadowDensity = resources.displayMetrics.density
     private fun drawPageShadow(c: Canvas, r: RectF) {
         val d = shadowDensity
         val dx = 3f * d; val dy = 7f * d
-        val spreads = floatArrayOf(12f * d, 8f * d, 4f * d)
-        val alphas = intArrayOf(18, 30, 46)
-        for (i in spreads.indices) {
-            val s = spreads[i]
-            pageShadow.color = alphas[i] shl 24
+        val maxSpread = 16f * d
+        val steps = 18
+        val peakAlpha = 70
+        for (i in steps downTo 1) {
+            val t = i.toFloat() / steps                          // 1 at the outer edge, →0 near the page
+            val s = maxSpread * t
+            val alpha = (peakAlpha * (1f - t) * (1f - t)).toInt().coerceIn(0, 255)
+            pageShadow.color = alpha shl 24
             c.drawRoundRect(r.left - s + dx, r.top - s + dy, r.right + s + dx, r.bottom + s + dy, 14f, 14f, pageShadow)
         }
     }
