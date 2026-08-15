@@ -609,7 +609,13 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     }
 
     com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
-    BackHandler { if (fullscreen) fullscreen = false else { saveCurrent(); onBack() } }
+    BackHandler {
+        when {
+            pageTurnMode -> { pageTurnMode = false; fullscreen = false }
+            fullscreen -> fullscreen = false
+            else -> { saveCurrent(); onBack() }
+        }
+    }
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .let { if (fullscreen) it else it.systemBarsPadding() },
@@ -632,35 +638,42 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.twoFingerTapAction = session.twoFingerTapAction
                     v.threeFingerTapAction = session.threeFingerTapAction
                     v.longPressAction = session.longPressAction
-                    v.threeFingerDragAction = session.threeFingerDragAction
                     v.eyedropArmed = eyedropArmed
                     v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
                     v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
                     v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
                     v.onPageDragProgress = { p -> onPageDragProgress(p) }
                     v.onPageDragEnd = { commit -> onPageDragEnd(commit) }
-                    v.onSwipeTurn = { dir -> goTo(page + dir) }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
             PageTurnOverlay(turnSnapshot, turnProgress.value)
+            // 페이지 넘기기 모드의 유일한 탈출구 — 툴바가 숨겨져 있는 동안 이 버튼이 대신 그 역할을 함.
+            if (pageTurnMode) {
+                com.g1.sketchbook.brush.PageTurnConfirmButton(
+                    onConfirm = { pageTurnMode = false; fullscreen = false },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 28.dp, end = 20.dp),
+                )
+            }
         }
-        BrushControls(
-            brush, color, sizeDp, opacity, erasing,
-            onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
-            onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
-            onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
-            onUndo = { view?.undo() }, onRedo = { view?.redo() }, onClear = { view?.clearCanvas(); saveCurrent() },
-            onRotate = { view?.rotate() },
-            onOpenPages = { pagesOpen = true },
-            favorites = favorites,
-            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
-            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
-            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
-            locked = locked, onToggleLock = { locked = !locked },
-            pageTurnMode = pageTurnMode, onTogglePageTurnMode = { pageTurnMode = !pageTurnMode },
-        )
+        if (!pageTurnMode) {
+            BrushControls(
+                brush, color, sizeDp, opacity, erasing,
+                onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
+                onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
+                onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
+                onUndo = { view?.undo() }, onRedo = { view?.redo() }, onClear = { view?.clearCanvas(); saveCurrent() },
+                onRotate = { view?.rotate() },
+                onOpenPages = { pagesOpen = true },
+                favorites = favorites,
+                onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+                eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
+                fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+                locked = locked, onToggleLock = { locked = !locked },
+                pageTurnMode = pageTurnMode, onTogglePageTurnMode = { pageTurnMode = true; fullscreen = true },
+            )
+        }
     }
     if (pagesOpen) {
         PagePanel(repo, book.id, page, pageCount, onSelect = { p -> goTo(p); pagesOpen = false }, onDismiss = { pagesOpen = false })

@@ -141,9 +141,6 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
                         v.twoFingerTapAction = session.twoFingerTapAction
                         v.threeFingerTapAction = session.threeFingerTapAction
                         v.longPressAction = session.longPressAction
-                        // Diary is single-page, so a PAGE_TURN mapping (default) just silently no-ops here
-                        // (onSwipeTurn is never wired) — other mappings (undo/redo/eyedrop) still work.
-                        v.threeFingerDragAction = session.threeFingerDragAction
                         v.eyedropArmed = eyedropArmed
                         v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
                         v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }

@@ -336,7 +336,6 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
     var gesture2Tap by remember { mutableStateOf(session.twoFingerTapAction) }
     var gesture3Tap by remember { mutableStateOf(session.threeFingerTapAction) }
     var gestureLongPress by remember { mutableStateOf(session.longPressAction) }
-    var gesture3Drag by remember { mutableStateOf(session.threeFingerDragAction) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
         .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, start = 20.dp, end = 20.dp)) {
         Text("Setting", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
@@ -380,10 +379,6 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
                 GestureActionRow("세 손가락 탭", gesture3Tap) { gesture3Tap = it; session.threeFingerTapAction = it }
                 Spacer(Modifier.height(16.dp))
                 GestureActionRow("화면 길게 누르기", gestureLongPress) { gestureLongPress = it; session.longPressAction = it }
-                Spacer(Modifier.height(16.dp))
-                // 캔버스 전체화면/잠금 버튼과 별개 — 페이지 넘기기 모드 밖에서도 항상 동작. 기본값은
-                // "페이지 넘기기"(원래 하드코딩돼 있던 동작)지만 이제 다른 동작으로 바꾸거나 끌 수 있음.
-                GestureActionRow("세 손가락 드래그", gesture3Drag) { gesture3Drag = it; session.threeFingerDragAction = it }
             }
         }
         Spacer(Modifier.height(18.dp))
@@ -513,7 +508,6 @@ private fun gestureActionLabel(a: GestureAction) = when (a) {
     GestureAction.UNDO -> "뒤로가기"
     GestureAction.REDO -> "앞으로가기"
     GestureAction.EYEDROP -> "색상 스포이드"
-    GestureAction.PAGE_TURN -> "페이지 넘기기"
 }
 
 /** One gesture's mapping: a label plus a chip row of the four possible actions. */

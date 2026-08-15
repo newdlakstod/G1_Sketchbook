@@ -187,14 +187,12 @@ fun SharedBookScreen(
         v.twoFingerTapAction = session.twoFingerTapAction
         v.threeFingerTapAction = session.threeFingerTapAction
         v.longPressAction = session.longPressAction
-        v.threeFingerDragAction = session.threeFingerDragAction
         v.eyedropArmed = eyedropArmed
         v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
         v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
         v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
         v.onPageDragProgress = { p -> onPageDragProgress(p) }
         v.onPageDragEnd = { commit -> onPageDragEnd(commit) }
-        v.onSwipeTurn = { dir -> goTo(page + dir) }
         v.onStrokeEnd = {
             val pg = page
             v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
@@ -202,36 +200,46 @@ fun SharedBookScreen(
         }
     }
     com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
-    BackHandler { if (fullscreen) fullscreen = false else { saveLocal(); onBack() } }
+    BackHandler {
+        when {
+            pageTurnMode -> { pageTurnMode = false; fullscreen = false }
+            fullscreen -> fullscreen = false
+            else -> { saveLocal(); onBack() }
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .let { if (fullscreen) it else it.systemBarsPadding() },
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clickable { saveLocal(); onBack() }, contentAlignment = Alignment.Center) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "나가기")
-            }
-            Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                Text(book.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-                Text(
-                    if (partner == null) "상대를 기다리는 중… · 코드 $code" else "${partner!!.name} 님과 함께",
-                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                )
-            }
-            // View-mode selector; focus (mine/partner) appears when a canvas is enlarged/soloed.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (mode != ViewMode.EQUAL) {
-                    SegGroup {
-                        SegChip("나", focus == Focus.MINE) { focus = Focus.MINE }
-                        SegChip("상대", focus == Focus.THEIRS) { focus = Focus.THEIRS }
-                    }
-                    Spacer(Modifier.width(6.dp))
+        // 페이지 넘기기 모드에서는 상단 헤더(나가기/제목/보기모드)도 함께 숨김 — 캔버스만 남기고
+        // 우상단 확인 버튼으로만 빠져나갈 수 있음.
+        if (!pageTurnMode) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(40.dp).clickable { saveLocal(); onBack() }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "나가기")
                 }
-                SegGroup {
-                    SegChip("분할", mode == ViewMode.EQUAL) { mode = ViewMode.EQUAL }
-                    SegChip("크게", mode == ViewMode.LARGE) { mode = ViewMode.LARGE }
-                    SegChip("하나", mode == ViewMode.SOLO) { mode = ViewMode.SOLO }
+                Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                    Text(book.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                    Text(
+                        if (partner == null) "상대를 기다리는 중… · 코드 $code" else "${partner!!.name} 님과 함께",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                    )
+                }
+                // View-mode selector; focus (mine/partner) appears when a canvas is enlarged/soloed.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (mode != ViewMode.EQUAL) {
+                        SegGroup {
+                            SegChip("나", focus == Focus.MINE) { focus = Focus.MINE }
+                            SegChip("상대", focus == Focus.THEIRS) { focus = Focus.THEIRS }
+                        }
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    SegGroup {
+                        SegChip("분할", mode == ViewMode.EQUAL) { mode = ViewMode.EQUAL }
+                        SegChip("크게", mode == ViewMode.LARGE) { mode = ViewMode.LARGE }
+                        SegChip("하나", mode == ViewMode.SOLO) { mode = ViewMode.SOLO }
+                    }
                 }
             }
         }
@@ -256,6 +264,17 @@ fun SharedBookScreen(
                         )
                         eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
                         com.g1.sketchbook.sketchbook.PageTurnOverlay(turnSnapshot, turnProgress.value)
+                        // 페이지 넘기기 모드의 유일한 탈출구 — 헤더/툴바가 숨겨져 있는 동안 이 버튼이 대신함.
+                        // (별도 Box로 감싸 — PaneFrame이 이미 이 content를 Box 안에서 호출하지만, 여러
+                        // 겹의 movableContent 람다를 거치므로 정렬 modifier의 receiver를 여기서 직접 확보.)
+                        if (pageTurnMode) {
+                            Box(Modifier.fillMaxSize()) {
+                                com.g1.sketchbook.brush.PageTurnConfirmButton(
+                                    onConfirm = { pageTurnMode = false; fullscreen = false },
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 8.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -308,22 +327,24 @@ fun SharedBookScreen(
             }
         }
 
-        BrushControls(
-            brush, color, sizeDp, opacity, erasing,
-            onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
-            onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
-            onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
-            onUndo = { view?.undo() }, onRedo = { view?.redo() },
-            onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
-            onRotate = { view?.rotate() },
-            onOpenPages = { pagesOpen = true },
-            favorites = favorites,
-            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
-            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
-            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
-            locked = locked, onToggleLock = { locked = !locked },
-            pageTurnMode = pageTurnMode, onTogglePageTurnMode = { pageTurnMode = !pageTurnMode },
-        )
+        if (!pageTurnMode) {
+            BrushControls(
+                brush, color, sizeDp, opacity, erasing,
+                onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
+                onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
+                onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
+                onUndo = { view?.undo() }, onRedo = { view?.redo() },
+                onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
+                onRotate = { view?.rotate() },
+                onOpenPages = { pagesOpen = true },
+                favorites = favorites,
+                onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+                eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
+                fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+                locked = locked, onToggleLock = { locked = !locked },
+                pageTurnMode = pageTurnMode, onTogglePageTurnMode = { pageTurnMode = true; fullscreen = true },
+            )
+        }
     }
     if (pagesOpen) {
         com.g1.sketchbook.sketchbook.PagePanel(sbRepo, book.id, page, pageCount,

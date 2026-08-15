@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
@@ -288,6 +289,23 @@ fun EyedropFloatingPreview(colorArgb: Int, xPx: Float, yPx: Float, modifier: Mod
             .background(Color(colorArgb))
             .border(3.dp, Color.White, CircleShape),
     )
+}
+
+/** 페이지 넘기기 모드의 유일한 탈출구 — 툴바가 숨겨진 전체화면 위에 떠 있는 "확인" 버튼. 원하는
+ *  페이지에 도착한 뒤 이걸 눌러야 다시 그림 그리기 모드(툴바 표시)로 돌아간다. Caller places it via
+ *  `.align(Alignment.TopEnd)` inside its own Box. */
+@Composable
+fun PageTurnConfirmButton(onConfirm: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary, shadowElevation = 10.dp,
+        modifier = modifier.bounceClick(onClick = onConfirm),
+    ) {
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Check, "확인", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("확인", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        }
+    }
 }
 
 /** Width (and, unless erasing, opacity) sliders for ONE specific brush — opened by tapping that

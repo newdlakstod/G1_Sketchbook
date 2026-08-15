@@ -23,7 +23,7 @@ import kotlin.random.Random
 enum class BrushType { PEN, PENCIL, CRAYON, WATER }
 
 /** Action a gesture can trigger — mapped per-gesture in Settings, off (NONE) by default. */
-enum class GestureAction { NONE, UNDO, REDO, EYEDROP, PAGE_TURN }
+enum class GestureAction { NONE, UNDO, REDO, EYEDROP }
 
 /**
  * Fixed-resolution canvas: strokes are drawn into bitmaps sized to the sketchbook's own pixel
@@ -52,13 +52,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var twoFingerTapAction = GestureAction.NONE
     var threeFingerTapAction = GestureAction.NONE
     var longPressAction = GestureAction.NONE
-    /** What a 3-finger drag-then-release does (defaults to page-turning, its original hardcoded
-     *  behaviour) — fired once on release, direction from the overall drag, not a live preview. */
-    var threeFingerDragAction = GestureAction.PAGE_TURN
-    /** Fires once for a discrete swipe-triggered page turn (3-finger drag, or a tap gesture mapped
-     *  to PAGE_TURN): -1/1 = direction. No live preview — the caller just turns the page outright,
-     *  same as tapping a chevron in PagePanel. */
-    var onSwipeTurn: ((Int) -> Unit)? = null
     /** "페이지 넘기기 모드" — while true, ALL touch input is dedicated to a single-finger left/right
      *  swipe that live-follows the finger via [onPageDragProgress]/[onPageDragEnd] below; drawing and
      *  pinch zoom/pan are both fully disabled. Turning pages while zoomed used to shift the pinch/pan
@@ -122,13 +115,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var multiStartDist = 0f
     private var multiMoved = false
     private var multiTapFired = false
-
-    // Three-finger horizontal drag — distinct from the 3-finger TAP gesture above. Unlike the
-    // page-turn-mode swipe, this is a discrete trigger: on release, past-slop movement fires
-    // threeFingerDragAction ONCE (direction only, no live preview) — see runGesture().
-    private var threeDragActive = false
-    private var threeDragStartX = 0f
-    private var lastDragProgress = 0f
 
     // Long-press detection — a stroke always starts on ACTION_DOWN (so a plain tap still draws a
     // dot); if the finger sits still past LONG_PRESS_MS without lifting, we undo that tentative dot
@@ -393,19 +379,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     multiDownTime = now; multiDownCount = 2; multiMoved = false; multiTapFired = false
                 } else if (e.pointerCount == 3) {
                     multiDownTime = now; multiDownCount = 3; multiMoved = false; multiTapFired = false
-                    threeDragActive = false; threeDragStartX = avgX(e); lastDragProgress = 0f
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (pinching && e.pointerCount >= 3) {
-                    // Three(+)-finger horizontal drag: track direction only (no live preview — the
-                    // mapped action fires once on release, below) — takes over from pinch/pan once a
-                    // 3rd finger is down.
-                    val mx = avgX(e)
-                    val dx = mx - threeDragStartX
-                    if (!threeDragActive && kotlin.math.abs(dx) > tapSlopPx) { threeDragActive = true; multiMoved = true }
-                    if (threeDragActive) lastDragProgress = (-dx / width.toFloat()).coerceIn(-1f, 1f)   // drag left -> positive (next)
-                } else if (pinching && e.pointerCount == 2) {
+                if (pinching) {
+                    // Pinch/pan math always reads the first two pointers (spacing/midX/midY use
+                    // index 0/1), regardless of whether a 3rd finger is also down — a 3rd finger
+                    // only matters for the TAP gesture above, not for the transform here.
                     val d = spacing(e); val mx = midX(e); val my = midY(e)
                     if (!multiMoved && (hypot(mx - multiStartMidX, my - multiStartMidY) > tapSlopPx ||
                             kotlin.math.abs(d - multiStartDist) > tapSlopPx)) multiMoved = true
@@ -432,11 +412,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 }
             }
             MotionEvent.ACTION_POINTER_UP -> {
-                if (threeDragActive && e.pointerCount == 3) {
-                    threeDragActive = false
-                    val commit = when { lastDragProgress > 0.25f -> 1; lastDragProgress < -0.25f -> -1; else -> 0 }
-                    if (commit != 0) runGesture(threeFingerDragAction, multiStartMidX, multiStartMidY, commit)
-                }
                 if (!multiMoved && !multiTapFired && multiDownCount > 0 && multiDownCount == e.pointerCount &&
                     (now - multiDownTime) < TAP_WINDOW_MS) {
                     val action = when (multiDownCount) { 2 -> twoFingerTapAction; 3 -> threeFingerTapAction; else -> GestureAction.NONE }
@@ -447,11 +422,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 if (e.pointerCount <= 2) { pinching = false; prevDist = 0f }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (threeDragActive) {
-                    threeDragActive = false
-                    val commit = when { lastDragProgress > 0.25f -> 1; lastDragProgress < -0.25f -> -1; else -> 0 }
-                    if (commit != 0) runGesture(threeFingerDragAction, multiStartMidX, multiStartMidY, commit)
-                }
                 if (longPressPending) { longPressPending = false; removeCallbacks(longPressRunnable) }
                 if (strokeStarted) endStroke()
                 pinching = false; prevDist = 0f; multiDownCount = 0
@@ -463,7 +433,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun spacing(e: MotionEvent): Float = hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1))
     private fun midX(e: MotionEvent): Float = (e.getX(0) + e.getX(1)) / 2f
     private fun midY(e: MotionEvent): Float = (e.getY(0) + e.getY(1)) / 2f
-    private fun avgX(e: MotionEvent): Float { var s = 0f; for (i in 0 until e.pointerCount) s += e.getX(i); return s / e.pointerCount }
 
     /** Undo the in-progress stroke without recording it (used when a pinch takes over). */
     private fun discardStroke() {
@@ -474,12 +443,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     /** [dir] is only meaningful for PAGE_TURN (a tap gesture has no direction, so it defaults to
      *  advancing forward); other actions ignore it. */
-    private fun runGesture(action: GestureAction, sx: Float, sy: Float, dir: Int = 0) {
+    private fun runGesture(action: GestureAction, sx: Float, sy: Float) {
         when (action) {
             GestureAction.UNDO -> undo()
             GestureAction.REDO -> redo()
             GestureAction.EYEDROP -> pickColorAt(sx, sy)?.let { c -> color = c; onEyedrop?.invoke(c) }
-            GestureAction.PAGE_TURN -> onSwipeTurn?.invoke(if (dir != 0) dir else 1)
             GestureAction.NONE -> {}
         }
     }
