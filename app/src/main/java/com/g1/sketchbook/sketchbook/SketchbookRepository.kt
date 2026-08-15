@@ -82,7 +82,9 @@ class SketchbookRepository(private val context: Context) {
 
     fun create(name: String, sizeKey: String, bgKey: String, shared: Boolean = false, code: String? = null): Sketchbook {
         val fallback = if (shared) "공유 스케치북" else "우리 스케치북"
-        val sb = Sketchbook(newId(), name.ifBlank { fallback }, sizeKey, bgKey, System.currentTimeMillis(), 1,
+        // A sketchbook is a fixed MAX_PAGES-page notebook from the start (like a physical one) —
+        // pages aren't added/removed later, just navigated. Blank pages are lazy (no file until drawn on).
+        val sb = Sketchbook(newId(), name.ifBlank { fallback }, sizeKey, bgKey, System.currentTimeMillis(), MAX_PAGES,
             fav = false, shared = shared, code = code)
         save(list() + sb)
         File(root, sb.id).mkdirs()
@@ -110,6 +112,16 @@ class SketchbookRepository(private val context: Context) {
     fun loadPage(id: String, index: Int): Bitmap? {
         val f = pageFile(id, index)
         return if (f.exists()) BitmapFactory.decodeFile(f.absolutePath) else null
+    }
+
+    /** Downsampled page image for the page-list panel — cheap to decode 15 of at once. */
+    fun loadPageThumb(id: String, index: Int, reqPx: Int = 160): Bitmap? {
+        val f = pageFile(id, index); if (!f.exists()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(f.absolutePath, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= reqPx) sample *= 2
+        return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
     fun savePage(id: String, index: Int, bmp: Bitmap) {

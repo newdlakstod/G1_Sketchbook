@@ -299,6 +299,16 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     /** Just the strokes (no paper) — the right thing to persist for a page you'll reload into the editor. */
     fun exportContent(): Bitmap? = contentBmp?.copy(Bitmap.Config.ARGB_8888, false)
 
+    /** Exactly what's currently on screen (paper+strokes, at the current pan/zoom/rotation), at the
+     *  view's own pixel size — used as the outgoing snapshot for the page-turn transition so the
+     *  animated overlay always matches whatever the user was actually looking at. */
+    fun captureScreenBitmap(): Bitmap? {
+        if (width <= 0 || height <= 0) return null
+        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        draw(Canvas(bmp))
+        return bmp
+    }
+
     // ---- touch (one finger draws, two fingers pinch-zoom/pan) ----
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!drawEnabled) return false

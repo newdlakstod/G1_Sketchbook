@@ -550,24 +550,20 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     var page by remember { mutableIntStateOf(0) }
-    var pageCount by remember { mutableIntStateOf(book.pageCount) }
+    val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
+    var pagesOpen by remember { mutableStateOf(false) }
+    var pageTransition by remember { mutableStateOf<PageTurn?>(null) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
     // switch can't read the file before an async write finishes (that race dropped recent strokes).
     fun saveCurrent() { val v = view ?: return; val pg = page; val b = v.exportContent() ?: return; repo.savePage(book.id, pg, b) }
-    fun goTo(p: Int) { saveCurrent(); page = p; view?.loadContent(repo.loadPage(book.id, p)) }
-    fun addPage() { if (pageCount < MAX_PAGES) { saveCurrent(); pageCount++; repo.setPageCount(book.id, pageCount); page = pageCount - 1; view?.loadContent(null) } }
-    fun deletePage() {
-        if (pageCount <= 1) return
-        for (i in page until pageCount - 1) {
-            val next = repo.loadPage(book.id, i + 1)
-            if (next != null) repo.savePage(book.id, i, next) else repo.pageFile(book.id, i).delete()
-        }
-        repo.pageFile(book.id, pageCount - 1).delete()
-        pageCount--; repo.setPageCount(book.id, pageCount)
-        if (page > pageCount - 1) page = pageCount - 1
-        view?.loadContent(repo.loadPage(book.id, page))
+    fun goTo(p: Int) {
+        if (p == page) return
+        // Snapshot exactly what's on screen right now (current zoom/pan/rotation included) so the
+        // outgoing page-turn animation always matches what the user was actually looking at.
+        view?.captureScreenBitmap()?.let { pageTransition = PageTurn(it, if (p > page) 1f else -1f) }
+        saveCurrent(); page = p; view?.loadContent(repo.loadPage(book.id, p))
     }
 
     BackHandler { saveCurrent(); onBack() }
@@ -598,6 +594,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
+            PageTurnOverlay(pageTransition) { pageTransition = null }
         }
         BrushControls(
             brush, color, sizeDp, opacity, erasing,
@@ -605,15 +602,15 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
             onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
             onUndo = { view?.undo() }, onRedo = { view?.redo() }, onClear = { view?.clearCanvas(); saveCurrent() },
-            onBack = { saveCurrent(); onBack() }, onRotate = { view?.rotate() },
-            pageLabel = "${page + 1}/$pageCount",
-            onPrevPage = { if (page > 0) goTo(page - 1) },
-            onNextPage = { if (page < pageCount - 1) goTo(page + 1) },
-            onAddPage = { addPage() }, onDeletePage = { deletePage() },
+            onRotate = { view?.rotate() },
+            onOpenPages = { pagesOpen = true },
             favorites = favorites,
             onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
         )
+    }
+    if (pagesOpen) {
+        PagePanel(repo, book.id, page, pageCount, onSelect = { p -> goTo(p); pagesOpen = false }, onDismiss = { pagesOpen = false })
     }
 }
 

@@ -26,12 +26,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -86,7 +83,7 @@ private val HueWheel = listOf(
     Color(0xFF0000FF), Color(0xFFFF00FF), Color(0xFFFF0000),
 )
 
-/** Single-row floating dock. Optional leading controls (back / page nav / rotate) show when provided. */
+/** Single-row floating dock. Optional leading controls (back / pages / rotate) show when provided. */
 @Composable
 fun BrushControls(
     brush: BrushType, color: Long, sizeDp: Float, opacity: Float, erasing: Boolean,
@@ -94,11 +91,9 @@ fun BrushControls(
     onToggleErase: () -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onClear: () -> Unit,
     onBack: (() -> Unit)? = null,
     onRotate: (() -> Unit)? = null,
-    pageLabel: String? = null,
-    onPrevPage: (() -> Unit)? = null,
-    onNextPage: (() -> Unit)? = null,
-    onAddPage: (() -> Unit)? = null,
-    onDeletePage: (() -> Unit)? = null,
+    /** Opens the page list/turn panel — a single dedicated entry point (system back already exits,
+     *  so there's no separate "나가기" button here anymore for screens that pass this). */
+    onOpenPages: (() -> Unit)? = null,
     favorites: List<Long> = BrushPalette.take(5),
     onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
     eyedropArmed: Boolean = false,
@@ -138,15 +133,10 @@ fun BrushControls(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
-            if (pageLabel != null) {
-                IconBtn(Icons.Filled.ChevronLeft, "이전 페이지") { onPrevPage?.invoke() }
-                Text(pageLabel, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                IconBtn(Icons.Filled.ChevronRight, "다음 페이지") { onNextPage?.invoke() }
-                IconBtn(Icons.Filled.Add, "페이지 추가") { onAddPage?.invoke() }
-                IconBtn(Icons.Filled.Remove, "페이지 삭제") { onDeletePage?.invoke() }
-            }
+            // Page turning/thumbnail list/selection all live behind one button now — see PagePanel.
+            onOpenPages?.let { IconBtn(Icons.Filled.Layers, "페이지", onClick = it) }
             onRotate?.let { IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전", onClick = it) }
-            if (onBack != null || pageLabel != null || onRotate != null) VDivider()
+            if (onBack != null || onOpenPages != null || onRotate != null) VDivider()
 
             // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
             // width/opacity panel (anchored + labelled per brush, not a single shared control).

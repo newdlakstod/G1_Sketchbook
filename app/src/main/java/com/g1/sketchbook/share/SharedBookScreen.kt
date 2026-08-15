@@ -57,7 +57,6 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
-import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.bgDrawable
 import com.g1.sketchbook.ui.theme.Dimens
@@ -109,7 +108,9 @@ fun SharedBookScreen(
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     var page by remember { mutableIntStateOf(0) }
-    var pageCount by remember { mutableIntStateOf(book.pageCount) }
+    val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
+    var pagesOpen by remember { mutableStateOf(false) }
+    var pageTransition by remember { mutableStateOf<com.g1.sketchbook.sketchbook.PageTurn?>(null) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var partner by remember { mutableStateOf<ShareRepository.Slot?>(null) }
@@ -134,23 +135,10 @@ fun SharedBookScreen(
         val v = view ?: return; val pg = page; val b = v.exportContent() ?: return
         sbRepo.savePage(book.id, pg, b)
     }
-    fun goTo(p: Int) { saveLocal(); page = p; view?.loadContent(sbRepo.loadPage(book.id, p)); pushMine() }
-    fun addPage() {
-        if (pageCount < MAX_PAGES) {
-            saveLocal(); pageCount++; sbRepo.setPageCount(book.id, pageCount); page = pageCount - 1
-            view?.loadContent(null); pushMine()
-        }
-    }
-    fun deletePage() {
-        if (pageCount <= 1) return
-        for (i in page until pageCount - 1) {
-            val next = sbRepo.loadPage(book.id, i + 1)
-            if (next != null) sbRepo.savePage(book.id, i, next) else sbRepo.pageFile(book.id, i).delete()
-        }
-        sbRepo.pageFile(book.id, pageCount - 1).delete()
-        pageCount--; sbRepo.setPageCount(book.id, pageCount)
-        if (page > pageCount - 1) page = pageCount - 1
-        view?.loadContent(sbRepo.loadPage(book.id, page)); pushMine()
+    fun goTo(p: Int) {
+        if (p == page) return
+        view?.captureScreenBitmap()?.let { pageTransition = com.g1.sketchbook.sketchbook.PageTurn(it, if (p > page) 1f else -1f) }
+        saveLocal(); page = p; view?.loadContent(sbRepo.loadPage(book.id, p)); pushMine()
     }
 
     // Share my current page as soon as the canvas is ready.
@@ -225,6 +213,7 @@ fun SharedBookScreen(
                             update = { /* brush state is applied via LaunchedEffect (movableContent-safe) */ },
                         )
                         eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
+                        com.g1.sketchbook.sketchbook.PageTurnOverlay(pageTransition) { pageTransition = null }
                     }
                 }
             }
@@ -284,15 +273,16 @@ fun SharedBookScreen(
             onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
             onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
-            onBack = { saveLocal(); onBack() }, onRotate = { view?.rotate() },
-            pageLabel = "${page + 1}/$pageCount",
-            onPrevPage = { if (page > 0) goTo(page - 1) },
-            onNextPage = { if (page < pageCount - 1) goTo(page + 1) },
-            onAddPage = { addPage() }, onDeletePage = { deletePage() },
+            onRotate = { view?.rotate() },
+            onOpenPages = { pagesOpen = true },
             favorites = favorites,
             onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
         )
+    }
+    if (pagesOpen) {
+        com.g1.sketchbook.sketchbook.PagePanel(sbRepo, book.id, page, pageCount,
+            onSelect = { p -> goTo(p); pagesOpen = false }, onDismiss = { pagesOpen = false })
     }
 }
 
