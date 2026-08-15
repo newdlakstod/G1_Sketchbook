@@ -3,10 +3,13 @@ package com.g1.sketchbook.brush
 import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -179,16 +182,22 @@ fun BrushControls(
             VDivider()
 
             // 5 favourites: tap to pick; tap the already-selected one again to open a colour wheel for it.
-            // Visual swatch stays 28dp; the tappable area is expanded to the 48dp accessibility minimum.
+            // Touch area is the 48dp accessibility minimum, but the ripple itself is scoped to the
+            // visible 28dp swatch (shared InteractionSource: outer box detects the tap with no
+            // indication of its own, inner box — clipped to the swatch's own circle — draws it).
             favorites.forEachIndexed { i, c ->
                 val on = !erasing && c == color
+                val interaction = remember { MutableInteractionSource() }
                 Box {
                     Box(
-                        Modifier.size(48.dp).clip(CircleShape)
-                            .clickable(onClickLabel = "즐겨찾기 색상 ${i + 1}") { if (on) editFavAt = i else onColor(c) },
+                        Modifier.size(48.dp)
+                            .clickable(interactionSource = interaction, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") {
+                                if (on) editFavAt = i else onColor(c)
+                            },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Box(Modifier.size(28.dp).clip(CircleShape).background(Color(c))
+                        Box(Modifier.size(28.dp).clip(CircleShape).indication(interaction, LocalIndication.current)
+                            .background(Color(c))
                             .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape))
                     }
                     if (editFavAt == i) Popup(AboveAnchor(gap), { editFavAt = -1 }, PopupProperties(focusable = true)) {
@@ -198,11 +207,15 @@ fun BrushControls(
             }
             // Color wheel: opens a hue/saturation/value picker for any custom colour.
             Box {
+                val wheelInteraction = remember { MutableInteractionSource() }
                 Box(
-                    Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = "사용자 지정 색상 고르기") { colorWheelOpen = !colorWheelOpen },
+                    Modifier.size(48.dp)
+                        .clickable(interactionSource = wheelInteraction, indication = null, onClickLabel = "사용자 지정 색상 고르기") {
+                            colorWheelOpen = !colorWheelOpen
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(Modifier.size(28.dp).clip(CircleShape)
+                    Box(Modifier.size(28.dp).clip(CircleShape).indication(wheelInteraction, LocalIndication.current)
                         .background(Brush.sweepGradient(HueWheel))
                         .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
                 }

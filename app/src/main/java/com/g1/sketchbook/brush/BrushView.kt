@@ -60,6 +60,12 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var eyedropArmed = false
     private var eyedropDragging = false
 
+    /** Fires continuously while dragging 3 fingers left/right to turn pages: -1..1, sign = direction
+     *  (positive = toward next), magnitude = how far through the turn the drag currently is. */
+    var onPageDragProgress: ((Float) -> Unit)? = null
+    /** Fires once the fingers lift: -1/1 to commit a page turn in that direction, 0 to cancel/snap back. */
+    var onPageDragEnd: ((Int) -> Unit)? = null
+
     private var cw = 0; private var ch = 0
     private var contentBmp: Bitmap? = null
     private var content: Canvas? = null
@@ -96,6 +102,12 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var multiMoved = false
     private var multiTapFired = false
 
+    // Three-finger horizontal drag = interactive page turn (distinct from the 3-finger TAP gesture
+    // above, and takes priority over pinch/pan once 3+ fingers are down — pinch stays 2-finger only).
+    private var threeDragActive = false
+    private var threeDragStartX = 0f
+    private var lastDragProgress = 0f
+
     // Long-press detection — a stroke always starts on ACTION_DOWN (so a plain tap still draws a
     // dot); if the finger sits still past LONG_PRESS_MS without lifting, we undo that tentative dot
     // and fire the mapped gesture instead. Also a no-op while longPressAction is NONE.
@@ -124,7 +136,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val compositeP = Paint()
     private val paperPaint = Paint(Paint.FILTER_BITMAP_FLAG)   // smooth, full-quality paper scaling
     private val paperM = Matrix()                              // places/rotates the paper texture to cover the page
-    private val pageShadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val pageEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = 1f * resources.displayMetrics.density; color = 0x2E000000
+    }
     private val pageRect = RectF()
     private val path = Path()
     private val rnd = Random(7)
@@ -228,11 +242,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     override fun onDraw(c: Canvas) {
         val cb = contentBmp ?: return
-        // A soft drop shadow behind the page (screen space) makes the drawable paper obvious against
-        // the surrounding workspace — otherwise the letterbox margins look drawable but silently
-        // ignore touches. Drawn before the paper/content so it only peeks out around the edges.
-        pageRect.set(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(pageRect)
-        drawPageShadow(c, pageRect)
         c.save(); c.concat(disp)
         // Cover-fit paper can overshoot the page rect on one axis; clip so it never spills onto the
         // surrounding zoomed-out workspace (only the canvas-sized area should ever show the texture).
@@ -240,27 +249,10 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         drawPaper(c)
         c.drawBitmap(cb, 0f, 0f, null)
         c.restore()
-    }
-
-    /** Cheap layered-rect approximation of a soft drop shadow (no BlurMaskFilter, which needs a
-     *  software layer to render under hardware acceleration) — light source from the upper-left.
-     *  Many thin layers with a quadratic alpha falloff so the steps blend into a smooth-looking
-     *  gradient instead of a few visibly banded rings (3 layers read as "3 flat tiers", not a shadow).
-     *  Kept deliberately faint — a hint that the page is "lifted", not a heavy card shadow. */
-    private val shadowDensity = resources.displayMetrics.density
-    private fun drawPageShadow(c: Canvas, r: RectF) {
-        val d = shadowDensity
-        val dx = 3f * d; val dy = 7f * d
-        val maxSpread = 16f * d
-        val steps = 18
-        val peakAlpha = 36
-        for (i in steps downTo 1) {
-            val t = i.toFloat() / steps                          // 1 at the outer edge, →0 near the page
-            val s = maxSpread * t
-            val alpha = (peakAlpha * (1f - t) * (1f - t)).toInt().coerceIn(0, 255)
-            pageShadow.color = alpha shl 24
-            c.drawRoundRect(r.left - s + dx, r.top - s + dy, r.right + s + dx, r.bottom + s + dy, 14f, 14f, pageShadow)
-        }
+        // A thin, faint outline (no shadow) so the drawable paper edge is obvious against the
+        // surrounding workspace — otherwise the letterbox margins look drawable but silently ignore touches.
+        pageRect.set(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(pageRect)
+        c.drawRect(pageRect, pageEdge)
     }
 
     fun clearCanvas() { pushUndo(); redo.clear(); content?.drawColor(0, PorterDuff.Mode.CLEAR); invalidate() }
@@ -356,10 +348,22 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     multiDownTime = now; multiDownCount = 2; multiMoved = false; multiTapFired = false
                 } else if (e.pointerCount == 3) {
                     multiDownTime = now; multiDownCount = 3; multiMoved = false; multiTapFired = false
+                    threeDragActive = false; threeDragStartX = avgX(e); lastDragProgress = 0f
                 }
             }
             MotionEvent.ACTION_MOVE -> {
-                if (pinching && e.pointerCount >= 2) {
+                if (pinching && e.pointerCount >= 3) {
+                    // Three(+)-finger horizontal drag: interactive page turn, following the fingers —
+                    // takes over from pinch/pan once a 3rd finger is down.
+                    val mx = avgX(e)
+                    val dx = mx - threeDragStartX
+                    if (!threeDragActive && kotlin.math.abs(dx) > tapSlopPx) { threeDragActive = true; multiMoved = true }
+                    if (threeDragActive) {
+                        val progress = (-dx / width.toFloat()).coerceIn(-1f, 1f)   // drag left -> positive (next)
+                        lastDragProgress = progress
+                        onPageDragProgress?.invoke(progress)
+                    }
+                } else if (pinching && e.pointerCount == 2) {
                     val d = spacing(e); val mx = midX(e); val my = midY(e)
                     if (!multiMoved && (hypot(mx - multiStartMidX, my - multiStartMidY) > tapSlopPx ||
                             kotlin.math.abs(d - multiStartDist) > tapSlopPx)) multiMoved = true
@@ -384,6 +388,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 }
             }
             MotionEvent.ACTION_POINTER_UP -> {
+                if (threeDragActive && e.pointerCount == 3) {
+                    threeDragActive = false
+                    val commit = when { lastDragProgress > 0.25f -> 1; lastDragProgress < -0.25f -> -1; else -> 0 }
+                    onPageDragEnd?.invoke(commit)
+                }
                 if (!multiMoved && !multiTapFired && multiDownCount > 0 && multiDownCount == e.pointerCount &&
                     (now - multiDownTime) < TAP_WINDOW_MS) {
                     val action = when (multiDownCount) { 2 -> twoFingerTapAction; 3 -> threeFingerTapAction; else -> GestureAction.NONE }
@@ -394,6 +403,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 if (e.pointerCount <= 2) { pinching = false; prevDist = 0f }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (threeDragActive) {
+                    threeDragActive = false
+                    val commit = when { lastDragProgress > 0.25f -> 1; lastDragProgress < -0.25f -> -1; else -> 0 }
+                    onPageDragEnd?.invoke(commit)
+                }
                 if (longPressPending) { longPressPending = false; removeCallbacks(longPressRunnable) }
                 if (strokeStarted) endStroke()
                 pinching = false; prevDist = 0f; multiDownCount = 0
@@ -405,6 +419,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun spacing(e: MotionEvent): Float = hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1))
     private fun midX(e: MotionEvent): Float = (e.getX(0) + e.getX(1)) / 2f
     private fun midY(e: MotionEvent): Float = (e.getY(0) + e.getY(1)) / 2f
+    private fun avgX(e: MotionEvent): Float { var s = 0f; for (i in 0 until e.pointerCount) s += e.getX(i); return s / e.pointerCount }
 
     /** Undo the in-progress stroke without recording it (used when a pinch takes over). */
     private fun discardStroke() {

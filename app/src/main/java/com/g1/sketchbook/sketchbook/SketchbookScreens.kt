@@ -1,7 +1,11 @@
 package com.g1.sketchbook.sketchbook
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -552,18 +556,47 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var page by remember { mutableIntStateOf(0) }
     val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
     var pagesOpen by remember { mutableStateOf(false) }
-    var pageTransition by remember { mutableStateOf<PageTurn?>(null) }
+    // Page-turn visuals: turnSnapshot is the outgoing page's exact on-screen capture; turnProgress
+    // (-1..1) drives PageTurnOverlay for BOTH the discrete (chevron/thumbnail) and the interactive
+    // 3-finger-drag turn — snapTo for live drag-following, animateTo for the auto/settle animations.
+    var turnSnapshot by remember { mutableStateOf<Bitmap?>(null) }
+    val turnProgress = remember { Animatable(0f) }
+    var dragBaseSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
     // switch can't read the file before an async write finishes (that race dropped recent strokes).
     fun saveCurrent() { val v = view ?: return; val pg = page; val b = v.exportContent() ?: return; repo.savePage(book.id, pg, b) }
     fun goTo(p: Int) {
-        if (p == page) return
+        if (p == page || p !in 0 until pageCount) return
+        val dir = if (p > page) 1f else -1f
         // Snapshot exactly what's on screen right now (current zoom/pan/rotation included) so the
         // outgoing page-turn animation always matches what the user was actually looking at.
-        view?.captureScreenBitmap()?.let { pageTransition = PageTurn(it, if (p > page) 1f else -1f) }
+        val snap = view?.captureScreenBitmap()
         saveCurrent(); page = p; view?.loadContent(repo.loadPage(book.id, p))
+        if (snap != null) {
+            turnSnapshot = snap
+            scope.launch { turnProgress.playPageTurn(dir); turnSnapshot = null }
+        }
+    }
+    // Interactive 3-finger drag: follows the fingers live, then either finishes the turn (commit) or
+    // springs back to rest (cancel) on release.
+    fun onPageDragProgress(p: Float) {
+        if (dragBaseSnapshot == null) { dragBaseSnapshot = view?.captureScreenBitmap(); turnSnapshot = dragBaseSnapshot }
+        scope.launch { turnProgress.snapTo(p) }
+    }
+    fun onPageDragEnd(commit: Int) {
+        dragBaseSnapshot = null
+        val target = page + commit
+        if (commit == 0 || target !in 0 until pageCount) {
+            scope.launch { turnProgress.animateTo(0f, tween(220, easing = FastOutSlowInEasing)); turnSnapshot = null }
+        } else {
+            scope.launch {
+                turnProgress.animateTo(commit.toFloat(), tween(160, easing = FastOutSlowInEasing))
+                saveCurrent(); page = target; view?.loadContent(repo.loadPage(book.id, target))
+                turnSnapshot = null; turnProgress.snapTo(0f)
+            }
+        }
     }
 
     BackHandler { saveCurrent(); onBack() }
@@ -590,11 +623,13 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
                     v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
                     v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
+                    v.onPageDragProgress = { p -> onPageDragProgress(p) }
+                    v.onPageDragEnd = { commit -> onPageDragEnd(commit) }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
-            PageTurnOverlay(pageTransition) { pageTransition = null }
+            PageTurnOverlay(turnSnapshot, turnProgress.value)
         }
         BrushControls(
             brush, color, sizeDp, opacity, erasing,

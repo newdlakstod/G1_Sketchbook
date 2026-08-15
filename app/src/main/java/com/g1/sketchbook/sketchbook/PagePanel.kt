@@ -2,6 +2,7 @@ package com.g1.sketchbook.sketchbook
 
 import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -42,9 +43,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,29 +56,41 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Outgoing-page snapshot for the page-turn transition, plus which way it should slide off
- *  (1 = turning forward/next, -1 = turning backward/prev). */
-data class PageTurn(val bitmap: Bitmap, val dir: Float)
-
-/** Slides the outgoing page's exact on-screen snapshot off in the swipe direction while fading it,
- *  revealing the already-updated new page underneath — a light "page turn" feel without needing a
- *  literal paper-curl render. Matches whatever zoom/pan/rotation was on screen since the snapshot is
- *  captured live from the view, not re-rendered at a fixed scale. */
+/**
+ * Renders the outgoing page's exact on-screen snapshot as a paper-like flip: rotates in 3D around
+ * its hinge edge (the edge it's turning toward) with a touch of perspective, darkening as it turns
+ * away from the light — an "analog" page-turn feel without a literal mesh/curl render. Drives both
+ * the discrete (chevron/thumbnail) and interactive (3-finger drag) turns; [progress] is -1..1 where
+ * 0 = at rest (nothing drawn) and ±1 = fully turned. Matches whatever zoom/pan/rotation was on
+ * screen since the snapshot is captured live from the view, not re-rendered at a fixed scale.
+ */
 @Composable
-fun PageTurnOverlay(turn: PageTurn?, onFinished: () -> Unit) {
-    if (turn == null) return
-    val anim = remember(turn) { Animatable(0f) }
-    LaunchedEffect(turn) {
-        anim.animateTo(1f, tween(260, easing = FastOutSlowInEasing))
-        onFinished()
-    }
-    Image(
-        turn.bitmap.asImageBitmap(), null, contentScale = ContentScale.FillBounds,
-        modifier = Modifier.fillMaxSize().graphicsLayer {
-            translationX = turn.dir * anim.value * size.width
-            alpha = 1f - anim.value * 0.25f
+fun PageTurnOverlay(snapshot: Bitmap?, progress: Float) {
+    if (snapshot == null || progress == 0f) return
+    val density = LocalDensity.current.density
+    val t = kotlin.math.abs(progress).coerceIn(0f, 1f)
+    val dir = if (progress > 0f) 1f else -1f
+    Box(
+        Modifier.fillMaxSize().graphicsLayer {
+            cameraDistance = 14f * density
+            transformOrigin = TransformOrigin(if (dir > 0f) 0f else 1f, 0.5f)
+            rotationY = -dir * t * 105f
+            translationX = dir * t * size.width * 0.10f
+            alpha = 1f - t * t * 0.85f
         },
-    )
+    ) {
+        Image(snapshot.asImageBitmap(), null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
+        // Shades toward the hinge as it lifts away from the light, selling the paper-turn depth.
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = (t * 0.4f).coerceIn(0f, 0.4f))))
+    }
+}
+
+/** Drives [PageTurnOverlay] for one discrete, auto-animated turn (chevron/thumbnail selection) —
+ *  animates 0 -> dir over a fixed duration, then clears itself. */
+suspend fun Animatable<Float, AnimationVector1D>.playPageTurn(dir: Float) {
+    snapTo(dir * 0.001f)
+    animateTo(dir, tween(280, easing = FastOutSlowInEasing))
+    snapTo(0f)
 }
 
 /**

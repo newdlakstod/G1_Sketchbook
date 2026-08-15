@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,6 +62,7 @@ import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.bgDrawable
+import com.g1.sketchbook.sketchbook.playPageTurn
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -110,7 +114,9 @@ fun SharedBookScreen(
     var page by remember { mutableIntStateOf(0) }
     val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
     var pagesOpen by remember { mutableStateOf(false) }
-    var pageTransition by remember { mutableStateOf<com.g1.sketchbook.sketchbook.PageTurn?>(null) }
+    var turnSnapshot by remember { mutableStateOf<Bitmap?>(null) }
+    val turnProgress = remember { Animatable(0f) }
+    var dragBaseSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var partner by remember { mutableStateOf<ShareRepository.Slot?>(null) }
@@ -136,9 +142,31 @@ fun SharedBookScreen(
         sbRepo.savePage(book.id, pg, b)
     }
     fun goTo(p: Int) {
-        if (p == page) return
-        view?.captureScreenBitmap()?.let { pageTransition = com.g1.sketchbook.sketchbook.PageTurn(it, if (p > page) 1f else -1f) }
+        if (p == page || p !in 0 until pageCount) return
+        val dir = if (p > page) 1f else -1f
+        val snap = view?.captureScreenBitmap()
         saveLocal(); page = p; view?.loadContent(sbRepo.loadPage(book.id, p)); pushMine()
+        if (snap != null) {
+            turnSnapshot = snap
+            scope.launch { turnProgress.playPageTurn(dir); turnSnapshot = null }
+        }
+    }
+    fun onPageDragProgress(p: Float) {
+        if (dragBaseSnapshot == null) { dragBaseSnapshot = view?.captureScreenBitmap(); turnSnapshot = dragBaseSnapshot }
+        scope.launch { turnProgress.snapTo(p) }
+    }
+    fun onPageDragEnd(commit: Int) {
+        dragBaseSnapshot = null
+        val target = page + commit
+        if (commit == 0 || target !in 0 until pageCount) {
+            scope.launch { turnProgress.animateTo(0f, tween(220, easing = FastOutSlowInEasing)); turnSnapshot = null }
+        } else {
+            scope.launch {
+                turnProgress.animateTo(commit.toFloat(), tween(160, easing = FastOutSlowInEasing))
+                saveLocal(); page = target; view?.loadContent(sbRepo.loadPage(book.id, target)); pushMine()
+                turnSnapshot = null; turnProgress.snapTo(0f)
+            }
+        }
     }
 
     // Share my current page as soon as the canvas is ready.
@@ -157,6 +185,8 @@ fun SharedBookScreen(
         v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
         v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
         v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
+        v.onPageDragProgress = { p -> onPageDragProgress(p) }
+        v.onPageDragEnd = { commit -> onPageDragEnd(commit) }
         v.onStrokeEnd = {
             val pg = page
             v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
@@ -213,7 +243,7 @@ fun SharedBookScreen(
                             update = { /* brush state is applied via LaunchedEffect (movableContent-safe) */ },
                         )
                         eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
-                        com.g1.sketchbook.sketchbook.PageTurnOverlay(pageTransition) { pageTransition = null }
+                        com.g1.sketchbook.sketchbook.PageTurnOverlay(turnSnapshot, turnProgress.value)
                     }
                 }
             }
