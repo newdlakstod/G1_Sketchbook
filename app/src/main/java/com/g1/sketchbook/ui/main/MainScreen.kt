@@ -184,7 +184,8 @@ private fun FloatingNavBar(tab: Int, onTab: (Int) -> Unit) {
     val icons = listOf(Icons.Filled.Home, Icons.Filled.Book, Icons.Filled.CalendarMonth, Icons.Filled.Settings)
     val descs = listOf("홈", "스케치북", "일기", "설정")
     Box(
-        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 10.dp).height(86.dp),
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp)
+            .padding(bottom = Dimens.Screen.bottomMargin).height(86.dp),
     ) {
         Surface(
             shape = RoundedCornerShape(34.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp,
