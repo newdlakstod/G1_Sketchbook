@@ -244,17 +244,16 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     /** Cheap layered-rect approximation of a soft drop shadow (no BlurMaskFilter, which needs a
      *  software layer to render under hardware acceleration) — light source from the upper-left.
-     *  Tuned to the same weight as the sketchbook cover shadow (Modifier.shadow(12.dp, ...)) so the
-     *  canvas reads as "the same kind of shadow", just behind a page instead of a book cover.
      *  Many thin layers with a quadratic alpha falloff so the steps blend into a smooth-looking
-     *  gradient instead of a few visibly banded rings (3 layers read as "3 flat tiers", not a shadow). */
+     *  gradient instead of a few visibly banded rings (3 layers read as "3 flat tiers", not a shadow).
+     *  Kept deliberately faint — a hint that the page is "lifted", not a heavy card shadow. */
     private val shadowDensity = resources.displayMetrics.density
     private fun drawPageShadow(c: Canvas, r: RectF) {
         val d = shadowDensity
         val dx = 3f * d; val dy = 7f * d
         val maxSpread = 16f * d
         val steps = 18
-        val peakAlpha = 70
+        val peakAlpha = 36
         for (i in steps downTo 1) {
             val t = i.toFloat() / steps                          // 1 at the outer edge, →0 near the page
             val s = maxSpread * t

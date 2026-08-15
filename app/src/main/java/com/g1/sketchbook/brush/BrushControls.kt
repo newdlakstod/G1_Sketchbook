@@ -184,7 +184,7 @@ fun BrushControls(
                 val on = !erasing && c == color
                 Box {
                     Box(
-                        Modifier.size(48.dp)
+                        Modifier.size(48.dp).clip(CircleShape)
                             .clickable(onClickLabel = "즐겨찾기 색상 ${i + 1}") { if (on) editFavAt = i else onColor(c) },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -199,7 +199,7 @@ fun BrushControls(
             // Color wheel: opens a hue/saturation/value picker for any custom colour.
             Box {
                 Box(
-                    Modifier.size(48.dp).clickable(onClickLabel = "사용자 지정 색상 고르기") { colorWheelOpen = !colorWheelOpen },
+                    Modifier.size(48.dp).clip(CircleShape).clickable(onClickLabel = "사용자 지정 색상 고르기") { colorWheelOpen = !colorWheelOpen },
                     contentAlignment = Alignment.Center,
                 ) {
                     Box(Modifier.size(28.dp).clip(CircleShape)
