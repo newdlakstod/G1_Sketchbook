@@ -17,16 +17,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Icon
@@ -94,9 +93,10 @@ suspend fun Animatable<Float, AnimationVector1D>.playPageTurn(dir: Float) {
 }
 
 /**
- * Page turning + a scrollable vertical list of page thumbnails to jump straight to any page —
- * everything page-related lives behind the toolbar's one "페이지" button instead of a cluster of
- * separate icons.
+ * Page turning + a grid of page thumbnails (checkerboard layout — 3 columns × 5 rows for the fixed
+ * 15 pages) to jump straight to any page — everything page-related lives behind the toolbar's one
+ * "페이지" button instead of a cluster of separate icons. Each cell shows just its page number below
+ * the thumbnail.
  */
 @Composable
 fun PagePanel(
@@ -130,9 +130,13 @@ fun PagePanel(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     items(pageCount) { i ->
-                        PageRow(repo, bookId, i, i == currentPage) { onSelect(i) }
+                        PageGridItem(repo, bookId, i, i == currentPage) { onSelect(i) }
                     }
                 }
             }
@@ -141,24 +145,22 @@ fun PagePanel(
 }
 
 @Composable
-private fun PageRow(repo: SketchbookRepository, bookId: String, index: Int, selected: Boolean, onClick: () -> Unit) {
+private fun PageGridItem(repo: SketchbookRepository, bookId: String, index: Int, selected: Boolean, onClick: () -> Unit) {
     var thumb by remember(bookId, index) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(bookId, index) { thumb = withContext(Dispatchers.IO) { repo.loadPageThumb(bookId, index) } }
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick).padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick)) {
         Box(
-            Modifier.size(width = 52.dp, height = 70.dp).clip(RoundedCornerShape(6.dp))
-                .background(Color.White).border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp)),
+            Modifier.fillMaxWidth().aspectRatio(0.74f).clip(RoundedCornerShape(8.dp))
+                .background(Color.White)
+                .border(if (selected) 2.5.dp else 1.dp,
+                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)),
         ) {
             thumb?.let { Image(it.asImageBitmap(), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
         }
-        Spacer(Modifier.width(14.dp))
-        Text("${index + 1}쪽", fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-        Spacer(Modifier.weight(1f))
-        if (selected) Icon(Icons.Filled.Check, "현재 페이지", tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "${index + 1}", fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
