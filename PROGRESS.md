@@ -242,6 +242,8 @@
   4. **온보딩 다크모드 지원**: Splash/Login이 `MaterialTheme` 대신 하드코딩된 세이지그린 배경/잉크 텍스트를 항상 써서 다크모드 사용자도 매번 밝은 화면을 먼저 보던 문제 — `onboardingPalette()`(`OnboardingTitle.kt`)로 라이트/다크 각각의 브랜드 톤(라이트: 기존 세이지그린, 다크: 어두운 올리브 + 밝은 잉크)을 분기.
   5. **색상 스와치 접근성 라벨 추가**: 즐겨찾기 색상·색상휠 스와치에 스크린리더용 `onClickLabel`("즐겨찾기 색상 N", "사용자 지정 색상 고르기") 추가(브러시 아이콘엔 이미 있던 패턴을 색상 스와치에도 동일 적용).
 
+- **브러시 설정 패널 진짜 원인 발견·수정** (v1.63.1, 2026-08-15): v1.61.0·v1.62.0에서 두 차례 다르게 고쳤는데도 "브러쉬 눌러서 설정값 조절하는 기능 전혀 안됨" 재보고 — 이번엔 `ui/Interactions.kt`의 공용 `bounceClick` 모디파이어 자체에 있던 stale-closure 버그가 근본 원인으로 확인됨. `Modifier.pointerInput(enabled) { detectTapGestures(onTap = { onClick() }) }`에서 `enabled`(항상 `true`)가 안 바뀌면 코루틴이 재시작되지 않아, `onTap`이 **최초 컴포지션 시점의 `onClick` 클로저를 영원히 재사용**함. `BrushBtnWithPanel`의 `onClick = { if (selected) setPanelOpen(!panelOpen) else onClick() }`처럼 매 리컴포지션마다 값이 바뀌는 `panelOpen`(`State` 아닌 평범한 Boolean 파라미터)을 캡처하는 콜백은 항상 "최초 값"만 보고 토글해서 사실상 안 열림 — 반면 `view?.undo()`처럼 `State`(`by remember`) 객체만 참조하는 콜백은 클로저가 stale해도 매번 최신 값을 읽어서 우연히 정상 동작했던 것. `rememberUpdatedState(onClick)`로 감싸 매 리컴포지션의 최신 콜백을 항상 참조하도록 수정 — `bounceClick`을 쓰는 모든 곳(브러시 패널 포함)에 공통 적용되는 근본 수정.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -24,13 +25,20 @@ fun Modifier.bounceClick(enabled: Boolean = true, onClick: () -> Unit): Modifier
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
         label = "bounce",
     )
+    // pointerInput(enabled) only restarts its coroutine when `enabled` changes — since that's almost
+    // always a fixed `true`, the SAME onTap closure keeps running for the modifier's whole lifetime.
+    // Capturing `onClick` directly would freeze it at whatever it was on first composition (stale —
+    // e.g. `{ if (selected) open() else onClick() }` where `selected` is a plain per-recomposition
+    // value keeps re-evaluating that first, frozen `selected`). rememberUpdatedState keeps the
+    // callback current without needing pointerInput to restart.
+    val currentOnClick = rememberUpdatedState(onClick)
     this
         .graphicsLayer { scaleX = scale; scaleY = scale }
         .pointerInput(enabled) {
             if (!enabled) return@pointerInput
             detectTapGestures(
                 onPress = { pressed = true; tryAwaitRelease(); pressed = false },
-                onTap = { onClick() },
+                onTap = { currentOnClick.value() },
             )
         }
 }
