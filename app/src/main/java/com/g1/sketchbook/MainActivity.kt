@@ -12,7 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.g1.sketchbook.ui.LoginScreen
-import com.g1.sketchbook.ui.NicknameScreen
+import com.g1.sketchbook.ui.NicknameDialog
 import com.g1.sketchbook.ui.RootViewModel
 import com.g1.sketchbook.ui.SplashScreen
 import com.g1.sketchbook.ui.main.MainScreen
@@ -34,7 +34,10 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
         when {
             splash -> SplashScreen(onEnter = { splash = false })
             state.user == null -> LoginScreen(busy = state.busy, error = state.error, onSignIn = vm::signIn)
-            state.needsNickname -> NicknameScreen(onSave = vm::saveNickname)
+            state.needsNickname -> {
+                LoginScreen(busy = false, error = null, onSignIn = {})
+                NicknameDialog(onCancel = vm::signOut, onConfirm = vm::saveNickname)
+            }
             state.openBookId != null -> com.g1.sketchbook.sketchbook.SketchbookCanvasScreen(
                 bookId = state.openBookId!!, myUid = state.uid ?: "", myName = state.nickname ?: "나",
                 onBack = vm::closeBook,
