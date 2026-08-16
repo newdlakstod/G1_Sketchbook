@@ -31,14 +31,19 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon
 
+      - name: Rename APK with version tag
+        run: |
+          TAG="${GITHUB_REF_NAME:-dev}"
+          cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/daymory-${TAG}.apk"
+
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: g1-sketchbook-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/daymory-*.apk
 
       - name: Attach APK to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: app/build/outputs/apk/debug/daymory-*.apk
