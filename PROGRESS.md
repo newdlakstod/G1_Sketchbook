@@ -4,6 +4,7 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **Shared sketchbook cover component** (2026-08-17): Added `SketchbookCover.kt` and routed both the Home carousel and sketchbook list through it. All existing/new covers now default to `#FFBF2A`; solid-color covers receive a 20% black spine overlay, optional image covers receive a 70% black spine overlay, and the cover duck plus `Theme.kt` rotating `CoverColors` palette were removed. Added Korean tuning comments and `scripts/verify_sketchbook_cover.ps1`.
 - **Phase 0 — 브러시 엔진** (v1.7.x): `brush/BrushView.kt` (bitmap 백엔드 스탬프 엔진), `brush/BrushPlaygroundScreen.kt`.
   - 볼펜(레이어 합성, 불투명도 균일) · 연필(디스크 그레인, 직접 누적) · 크레파스(큰 입자 1.5×, 성김) · 수채화(Tyler-Hobbs 다각형, multiply 대신 레이어 합성).
   - 브러시별 폭 배율: 볼펜1× 연필1.5× 크레파스3× 수채화6× (`scaleFor()`).
@@ -397,6 +398,7 @@
   `compileDebugKotlin testDebugUnitTest`를 검증했다.
 
 ## Next (Phase 2~4)
+- **Cover editor (deferred)**: Add persisted per-book cover color or image selection when the color-wheel/image-picker UI is implemented; the shared renderer already accepts `coverColor` and optional `coverImage`.
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
 - **Phase 3 — 그림일기 + 달력**: 개인 전용, 사용자당 1개, 날짜별 1장, 자정 잠금(이미지화). 달력(가로 4:3 / 세로 상단달력+하단일기), 이미지 저장.
@@ -404,6 +406,7 @@
   - 남은 후보: 화면 디테일 다듬기, 공유 페이지 동기화 옵션(같은 페이지 함께 넘기기), 저장/내보내기 등.
 
 ## Decisions
+- Sketchbook cover rendering belongs to the shared `SketchbookCover` composable, not `Theme.kt`. A black overlay derives the spine from any selected color, while image covers use a fixed 70% black spine for consistent contrast.
 - Android Studio Preview는 별도 디자인 복사본이 아니라 실제 앱 Composable을 렌더링한다.
   디자인 수정은 각 실제 화면 `kt`에서 하고, `preview/*Previews.kt`는 표시할 화면 상태와 샘플
   데이터 선택에만 사용한다. Preview 중에는 로컬 저장소/Firebase 접속을 하지 않는다.
