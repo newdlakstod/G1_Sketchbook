@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>daymory 목업 도구</title>
+<style>
+  @font-face { font-family: 'Cavorting'; src: url('fonts/cavorting.ttf'); }
+  @font-face { font-family: 'Pretendard'; src: url('fonts/pretendard_regular.otf'); font-weight: 400; }
+  @font-face { font-family: 'Pretendard'; src: url('fonts/pretendard_medium.otf'); font-weight: 500; }
+  @font-face { font-family: 'Pretendard'; src: url('fonts/pretendard_bold.otf'); font-weight: 700; }
+  @font-face { font-family: 'BodoniMTBlack'; src: url('fonts/bodoni_mt_black.ttf'); }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: 'Pretendard', sans-serif; background: #e9e9e4; color: #20201c;
+    display: flex; height: 100vh; overflow: hidden;
+  }
+
+  /* ---- left: controls ---- */
+  #panel {
+    width: 340px; flex-shrink: 0; background: #fff; border-right: 1px solid #ddd;
+    padding: 16px; overflow-y: auto;
+  }
+  #panel h1 { font-size: 16px; margin: 0 0 4px; }
+  #panel .hint { font-size: 11px; color: #777; margin-bottom: 14px; line-height: 1.5; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .tabs button {
+    flex: 1 1 auto; padding: 7px 4px; font-size: 12px; border: 1px solid #ccc; background: #f5f5f0;
+    border-radius: 6px; cursor: pointer;
+  }
+  .tabs button.active { background: #008484; color: #fff; border-color: #008484; }
+  .field-row { margin-bottom: 8px; }
+  .field-row label { display: flex; justify-content: space-between; font-size: 12px; color: #444; }
+  .field-row input[type=number] {
+    width: 70px; font-size: 12px; padding: 3px 5px; border: 1px solid #ccc; border-radius: 4px;
+  }
+  .field-row input[type=range] { width: 100%; }
+  fieldset { border: 1px solid #ddd; border-radius: 8px; margin: 0 0 14px; padding: 10px; }
+  legend { font-size: 12px; font-weight: 700; color: #008484; padding: 0 4px; }
+  #widthInput { width: 70px; }
+  #codeOut {
+    width: 100%; height: 260px; font-family: 'Consolas', monospace; font-size: 11px;
+    padding: 8px; border: 1px solid #ccc; border-radius: 6px; white-space: pre; overflow: auto;
+    background: #1e1e1e; color: #d4d4d4;
+  }
+  #copyBtn, #resetBtn {
+    margin-top: 6px; padding: 8px 12px; font-size: 12px; border-radius: 6px; border: none;
+    cursor: pointer; margin-right: 6px;
+  }
+  #copyBtn { background: #008484; color: #fff; }
+  #resetBtn { background: #eee; color: #333; }
+
+  /* ---- right: stage ---- */
+  #stage { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 40px; }
+  #frame {
+    position: relative; background: #f5f1e6; border: 1px solid #999; box-shadow: 0 8px 30px rgba(0,0,0,.25);
+    overflow: hidden; flex-shrink: 0;
+  }
+
+  .guide { position: absolute; left: 0; right: 0; border-top: 1px dashed #e0433f; pointer-events: none; }
+  .guide .tag {
+    position: absolute; right: 4px; top: -16px; background: #e0433f; color: #fff; font-size: 9px;
+    padding: 1px 4px; border-radius: 3px; pointer-events: none;
+  }
+  .handle-h {
+    position: absolute; left: 0; right: 0; height: 10px; margin-top: -5px; cursor: ns-resize; z-index: 20;
+  }
+  .handle-h:hover, .handle-h.dragging { background: rgba(224,67,63,.15); }
+  .handle-v {
+    position: absolute; top: 0; bottom: 0; width: 10px; margin-left: -5px; cursor: ew-resize; z-index: 20;
+  }
+  .handle-v:hover, .handle-v.dragging { background: rgba(224,67,63,.15); }
+  .handle-corner {
+    position: absolute; width: 14px; height: 14px; background: #008484; border: 2px solid #fff;
+    border-radius: 50%; cursor: nwse-resize; z-index: 30; box-shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+
+  .region-label {
+    position: absolute; left: 4px; font-size: 9px; color: #e0433f; background: #fff; padding: 0 3px;
+    border-radius: 3px; pointer-events: none; z-index: 15;
+  }
+
+  .header-row { position: absolute; left: 0; right: 0; display: flex; align-items: center; }
+  .avatar-dot { width: 24px; height: 24px; border-radius: 50%; background: #ddd; flex-shrink: 0; }
+  .wordmark { font-family: 'BodoniMTBlack'; color: #008484; text-align: center; flex: 1; }
+  .tagline { position: absolute; left: 0; right: 0; text-align: center; font-family: 'Cavorting'; color: #008484; }
+
+  .navbar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; background: #f5f1e6; border-top: 1px solid #ddd; }
+  .navitem { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .navitem .ic { width: 20px; height: 20px; border-radius: 4px; background: #999; }
+  .navitem.active .ic { background: #008484; }
+  .navitem span { font-size: 9px; color: #999; margin-top: 3px; }
+  .navitem.active span { color: #008484; font-weight: 700; }
+
+  .cover-card {
+    position: absolute; border-radius: 4px 14px 14px 4px; display: flex; flex-direction: column;
+    align-items: center; box-shadow: 0 6px 14px rgba(0,0,0,.3);
+  }
+  .cover-card .swatch { flex: 1; width: 100%; border-radius: inherit; }
+  .cover-card .title { font-weight: 600; margin-top: 6px; }
+  .cover-card .date { color: #888; }
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <h1>daymory 목업 도구</h1>
+  <div class="hint">
+    빨간 점선 손잡이를 드래그해서 여백/크기를 조정하세요. 왼쪽 아래 코드 상자에 Dimens.kt 형식으로
+    실시간 반영됩니다 — 마음에 들면 "복사"한 뒤 Claude한테 "이 값으로 적용해줘"라고 붙여넣으면 됩니다.
+    (이 도구 자체가 앱을 직접 수정하진 않습니다.)
+  </div>
+
+  <div class="field-row">
+    <label>화면 폭(dp) <span id="widthVal">360</span></label>
+    <input id="widthInput" type="number" value="360" min="280" max="500" step="1" />
+  </div>
+
+  <div class="tabs">
+    <button data-tab="home" class="active">Home</button>
+    <button data-tab="list">List</button>
+    <button data-tab="share">share</button>
+    <button data-tab="diary">Diary</button>
+    <button data-tab="other">Other</button>
+  </div>
+
+  <fieldset>
+    <legend>공통 템플릿 (Dimens.Screen)</legend>
+    <div id="commonFields"></div>
+  </fieldset>
+
+  <fieldset id="homeFieldset">
+    <legend>홈 캐러셀 (Dimens.Home)</legend>
+    <div id="homeFields"></div>
+  </fieldset>
+
+  <fieldset id="diaryFieldset" style="display:none">
+    <legend>달력 (Dimens.Calendar)</legend>
+    <div id="diaryFields"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Dimens.kt 코드로 보기</legend>
+    <textarea id="codeOut" readonly></textarea>
+    <button id="copyBtn">📋 복사</button>
+    <button id="resetBtn">현재 앱 값으로 리셋</button>
+  </fieldset>
+</div>
+
+<div id="stage">
+  <div id="frame"></div>
+</div>
+
+<script>
+// ---- 앱의 현재 Dimens.kt 값 (v2.2.0 기준) — "현재 앱 값으로 리셋"에서 이 값으로 돌아갑니다.
+const DEFAULTS = {
+  topMargin: 60, bottomMargin: 45, titleSp: 61, titleGap: 40, contentGap: 60,
+  sideMargin: 45, navItemSize: 60, navBarPadding: 10,
+  carouselCenterW: 182, carouselCenterH: 275, carouselSideW: 145, carouselSideH: 218,
+  coverTitleCenterSp: 14, coverDateCenterSp: 12, coverTitleSideSp: 12, coverDateSideSp: 10,
+  yearMonthSp: 78, calTopTitleGap: 16, calTitleGap: 24,
+  screenWidth: 360,
+};
+let s = Object.assign({}, DEFAULTS);
+let tab = 'home';
+const TAGLINE = { home: 'Draw your time', list: 'Sketchbook list', share: 'Draw together',
+                  diary: 'A piece of today', other: 'Setting' };
+const NAV = [
+  { label: 'Home', key: 'home' }, { label: 'List', key: 'list' }, { label: 'share', key: 'share' },
+  { label: 'Diary', key: 'diary' }, { label: 'Other', key: 'other' },
+];
+const COVER_COLORS = ['#F4611E', '#8EC5C4', '#0C5A54', '#EE82AB', '#F9C112', '#DD0404', '#F8EEDD'];
+
+const frame = document.getElementById('frame');
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// ---- generic drag helpers ----
+// onDelta receives the INCREMENTAL movement since the previous frame (not since drag start) —
+// callers just do `s.field = clamp(s.field + dy, ...)` and it accumulates correctly across many
+// pointermove events, instead of compounding against a fixed start offset every frame.
+function dragVertical(handle, onDelta) {
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handle.classList.add('dragging');
+    let lastY = e.clientY;
+    function move(ev) { const dy = ev.clientY - lastY; lastY = ev.clientY; onDelta(dy); render(); }
+    function up() {
+      handle.classList.remove('dragging');
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+}
+function dragHorizontal(handle, onDelta) {
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handle.classList.add('dragging');
+    let lastX = e.clientX;
+    function move(ev) { const dx = ev.clientX - lastX; lastX = ev.clientX; onDelta(dx); render(); }
+    function up() {
+      handle.classList.remove('dragging');
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+}
+
+function el(tag, cls, style) {
+  const e = document.createElement('div');
+  if (cls) e.className = cls;
+  if (style) Object.assign(e.style, style);
+  return e;
+}
+
+function buildHandleH(y, label, onDrag) {
+  const h = el('div', 'handle-h', { top: y + 'px' });
+  const guide = el('div', 'guide', { top: y + 'px' });
+  const tagEl = el('div', 'tag'); tagEl.textContent = label; guide.appendChild(tagEl);
+  frame.appendChild(guide); frame.appendChild(h);
+  let startVal;
+  h.addEventListener('pointerdown', () => { startVal = null; });
+  dragVertical(h, (dy) => onDrag(dy));
+}
+function buildHandleV(x, onDrag) {
+  const h = el('div', 'handle-v', { left: x + 'px' });
+  frame.appendChild(h);
+  dragHorizontal(h, (dx) => onDrag(dx));
+}
+
+// ---- main render ----
+function render() {
+  s.screenWidth = clamp(parseInt(document.getElementById('widthInput').value) || 360, 280, 500);
+  document.getElementById('widthVal').textContent = s.screenWidth;
+
+  const navBarHeight = s.navBarPadding * 2 + 24 + 3 + 12; // icon + gap + label line, approx
+  const height = Math.round(s.screenWidth * 2.05); // 대략적인 세로 비율(참고용, 스크롤 가능)
+
+  frame.style.width = s.screenWidth + 'px';
+  frame.style.height = height + 'px';
+  frame.innerHTML = '';
+
+  let y = 0;
+  // top margin
+  buildHandleH(s.topMargin, 'topMargin ' + s.topMargin + 'dp', (dy) => { s.topMargin = clamp(s.topMargin + dy, 0, 200); });
+  y = s.topMargin;
+
+  // header row
+  const header = el('header-row header-row', null, { top: y + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px', height: '28px' });
+  header.className = 'header-row';
+  const avatar = el('avatar-dot'); avatar.className = 'avatar-dot';
+  const word = el('wordmark'); word.className = 'wordmark'; word.textContent = 'daymory'; word.style.fontSize = '18px';
+  const spacer = el(null); spacer.style.width = '24px';
+  header.appendChild(avatar); header.appendChild(word); header.appendChild(spacer);
+  frame.appendChild(header);
+  y += 28;
+
+  // titleGap
+  buildHandleH(y + s.titleGap, 'titleGap ' + s.titleGap + 'dp', (dy) => { s.titleGap = clamp(s.titleGap + dy, 0, 150); });
+  y += s.titleGap;
+
+  // tagline
+  const tagline = el('tagline'); tagline.className = 'tagline';
+  tagline.style.top = y + 'px';
+  tagline.style.fontSize = (s.titleSp * 0.55) + 'px'; // 화면 표시용 축소 비율(참고치, 실제 sp 아님)
+  tagline.textContent = TAGLINE[tab];
+  frame.appendChild(tagline);
+  y += Math.round(s.titleSp * 0.6);
+
+  // contentGap
+  buildHandleH(y + s.contentGap, 'contentGap ' + s.contentGap + 'dp', (dy) => { s.contentGap = clamp(s.contentGap + dy, 0, 200); });
+  y += s.contentGap;
+
+  // side margins
+  buildHandleV(s.sideMargin, (dx) => { s.sideMargin = clamp(s.sideMargin + dx, 0, 100); });
+  buildHandleV(s.screenWidth - s.sideMargin, (dx) => { s.sideMargin = clamp(s.sideMargin - dx, 0, 100); });
+  const leftLbl = el('region-label'); leftLbl.className = 'region-label';
+  leftLbl.textContent = 'sideMargin ' + s.sideMargin + 'dp';
+  leftLbl.style.top = (y + 4) + 'px'; leftLbl.style.left = '4px';
+  frame.appendChild(leftLbl);
+
+  // body content per tab
+  const bodyTop = y;
+  const bodyBottom = height - s.bottomMargin - navBarHeight;
+  if (tab === 'home') {
+    renderHomeCarousel(bodyTop, bodyBottom);
+  } else if (tab === 'diary') {
+    renderDiaryBody(bodyTop, bodyBottom);
+  } else {
+    renderGenericGrid(bodyTop, bodyBottom);
+  }
+
+  // bottom margin handle (above nav bar)
+  buildHandleH(height - s.bottomMargin - navBarHeight, 'bottomMargin ' + s.bottomMargin + 'dp', (dy) => {
+    s.bottomMargin = clamp(s.bottomMargin - dy, 0, 150);
+  });
+
+  // nav bar
+  const navbar = el('navbar'); navbar.className = 'navbar';
+  navbar.style.height = navBarHeight + 'px';
+  navbar.style.paddingTop = s.navBarPadding + 'px';
+  navbar.style.paddingBottom = s.navBarPadding + 'px';
+  NAV.forEach(n => {
+    const item = el('navitem'); item.className = 'navitem' + (n.key === tab ? ' active' : '');
+    const ic = el('ic'); ic.className = 'ic';
+    const label = document.createElement('span'); label.textContent = n.label;
+    item.appendChild(ic); item.appendChild(label);
+    navbar.appendChild(item);
+  });
+  frame.appendChild(navbar);
+  const navHandle = el('handle-h', null, { top: (height - navBarHeight) + 'px' });
+  navHandle.className = 'handle-h';
+  frame.appendChild(navHandle);
+  dragVertical(navHandle, (dy) => { s.navBarPadding = clamp(s.navBarPadding - Math.round(dy / 2), 0, 40); });
+  const navLbl = el('region-label'); navLbl.className = 'region-label';
+  navLbl.textContent = 'navBar total ' + navBarHeight + 'dp (padding ' + s.navBarPadding + 'dp)';
+  navLbl.style.top = (height - navBarHeight - 14) + 'px'; navLbl.style.left = '4px';
+  frame.appendChild(navLbl);
+
+  syncFieldInputs();
+  updateCode();
+}
+
+function renderHomeCarousel(top, bottom) {
+  const areaH = bottom - top;
+  const cy = top + areaH / 2;
+  const cx = s.screenWidth / 2;
+
+  // side card (left, peek)
+  drawCover(cx - s.carouselCenterW / 2 - 20 - s.carouselSideW / 2, cy - s.carouselSideH / 2,
+    s.carouselSideW, s.carouselSideH, 1, 0.5, 'side');
+  // side card (right, peek)
+  drawCover(cx + s.carouselCenterW / 2 + 20 - s.carouselSideW / 2, cy - s.carouselSideH / 2,
+    s.carouselSideW, s.carouselSideH, 2, 0.5, 'side');
+  // center card (resizable)
+  const centerBox = drawCover(cx - s.carouselCenterW / 2, cy - s.carouselCenterH / 2,
+    s.carouselCenterW, s.carouselCenterH, 0, 1, 'center');
+
+  const corner = el('handle-corner'); corner.className = 'handle-corner';
+  corner.style.left = (cx + s.carouselCenterW / 2 - 7) + 'px';
+  corner.style.top = (cy + s.carouselCenterH / 2 - 7) + 'px';
+  frame.appendChild(corner);
+  corner.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY, startW = s.carouselCenterW, startH = s.carouselCenterH;
+    function move(ev) {
+      s.carouselCenterW = clamp(startW + (ev.clientX - startX), 60, 300);
+      s.carouselCenterH = clamp(startH + (ev.clientY - startY), 60, 450);
+      render();
+    }
+    function up() { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  });
+}
+
+function drawCover(x, y, w, h, colorIdx, alpha, kind) {
+  const card = el('cover-card'); card.className = 'cover-card';
+  card.style.left = x + 'px'; card.style.top = y + 'px'; card.style.width = w + 'px'; card.style.height = h + 'px';
+  card.style.opacity = alpha;
+  const swatch = el('swatch'); swatch.className = 'swatch';
+  swatch.style.background = COVER_COLORS[colorIdx % COVER_COLORS.length];
+  card.appendChild(swatch);
+  const title = document.createElement('div'); title.className = 'title';
+  title.textContent = 'Title';
+  title.style.fontSize = (kind === 'center' ? s.coverTitleCenterSp : s.coverTitleSideSp) + 'px';
+  const date = document.createElement('div'); date.className = 'date';
+  date.textContent = '2026.08.16';
+  date.style.fontSize = (kind === 'center' ? s.coverDateCenterSp : s.coverDateSideSp) + 'px';
+  card.appendChild(title); card.appendChild(date);
+  frame.appendChild(card);
+  return card;
+}
+
+function renderDiaryBody(top, bottom) {
+  const box = el(null, null, { position: 'absolute', top: top + 'px', left: s.sideMargin + 'px',
+    right: s.sideMargin + 'px', textAlign: 'center' });
+  const ymHandle = el('handle-h', null, { top: (top + s.calTopTitleGap) + 'px' });
+  ymHandle.className = 'handle-h';
+  frame.appendChild(ymHandle);
+  dragVertical(ymHandle, (dy) => { s.calTopTitleGap = clamp(s.calTopTitleGap + dy, 0, 80); });
+
+  const ym = document.createElement('div');
+  ym.textContent = '2026.01';
+  ym.style.fontFamily = 'Cavorting';
+  ym.style.fontSize = (s.yearMonthSp * 0.55) + 'px';
+  ym.style.color = '#20201c';
+  ym.style.marginTop = (s.calTopTitleGap) + 'px';
+  box.appendChild(ym);
+  frame.appendChild(box);
+
+  const lbl = el('region-label'); lbl.className = 'region-label';
+  lbl.textContent = 'yearMonthSp ' + s.yearMonthSp + 'sp';
+  lbl.style.top = (top + s.calTopTitleGap - 14) + 'px'; lbl.style.left = '4px';
+  frame.appendChild(lbl);
+
+  const grid = el(null, null, {
+    position: 'absolute', top: (top + s.calTopTitleGap + 60 + s.calTitleGap) + 'px',
+    left: s.sideMargin + 'px', right: s.sideMargin + 'px', bottom: (frame.offsetHeight - bottom) + 'px',
+    border: '1px dashed #ccc', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: '#999', fontSize: '11px',
+  });
+  grid.textContent = '달력 그리드 영역';
+  frame.appendChild(grid);
+}
+
+function renderGenericGrid(top, bottom) {
+  const grid = el(null, null, {
+    position: 'absolute', top: top + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px',
+    bottom: (frame.offsetHeight - bottom) + 'px', display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', alignContent: 'start',
+  });
+  for (let i = 0; i < 6; i++) {
+    const cell = el(null, null, { aspectRatio: (182 / 275), background: COVER_COLORS[i % COVER_COLORS.length],
+      borderRadius: '4px 10px 10px 4px' });
+    grid.appendChild(cell);
+  }
+  frame.appendChild(grid);
+}
+
+// ---- side panel fields (number inputs mirroring drag state, for fine-tuning) ----
+const COMMON_FIELDS = [
+  ['topMargin', 'topMargin (dp)'], ['titleGap', 'titleGap (dp)'], ['titleSp', 'titleSp (sp)'],
+  ['contentGap', 'contentGap (dp)'], ['sideMargin', 'sideMargin (dp)'], ['bottomMargin', 'bottomMargin (dp)'],
+  ['navItemSize', 'navItemSize (dp)'], ['navBarPadding', 'navBarPadding (dp)'],
+];
+const HOME_FIELDS = [
+  ['carouselCenterW', '가운데 W (dp)'], ['carouselCenterH', '가운데 H (dp)'],
+  ['carouselSideW', '옆 W (dp)'], ['carouselSideH', '옆 H (dp)'],
+  ['coverTitleCenterSp', '가운데 제목 (sp)'], ['coverDateCenterSp', '가운데 날짜 (sp)'],
+  ['coverTitleSideSp', '옆 제목 (sp)'], ['coverDateSideSp', '옆 날짜 (sp)'],
+];
+const DIARY_FIELDS = [
+  ['yearMonthSp', 'yearMonthSp (sp)'], ['calTopTitleGap', 'topTitleGap (dp)'], ['calTitleGap', 'titleGap (dp)'],
+];
+
+function buildFieldInputs(container, fields) {
+  container.innerHTML = '';
+  fields.forEach(([key, label]) => {
+    const row = el('field-row'); row.className = 'field-row';
+    const l = document.createElement('label');
+    const span = document.createElement('span'); span.textContent = label;
+    const input = document.createElement('input');
+    input.type = 'number'; input.dataset.key = key; input.value = s[key];
+    input.addEventListener('input', () => { s[key] = parseFloat(input.value) || 0; render(); });
+    l.appendChild(span);
+    row.appendChild(l); row.appendChild(input);
+    container.appendChild(row);
+  });
+}
+function syncFieldInputs() {
+  document.querySelectorAll('#panel input[data-key]').forEach(inp => {
+    if (document.activeElement !== inp) inp.value = s[inp.dataset.key];
+  });
+}
+
+function updateCode() {
+  const c = `object Screen {
+    val topMargin = ${s.topMargin}.dp
+    val bottomMargin = ${s.bottomMargin}.dp
+    val titleSp = ${s.titleSp}.sp
+    val titleGap = ${s.titleGap}.dp
+    val contentGap = ${s.contentGap}.dp
+    val sideMargin = ${s.sideMargin}.dp
+    val navItemSize = ${s.navItemSize}.dp
+    val navBarPadding = ${s.navBarPadding}.dp
+}
+
+object Home {
+    val carouselCenterW = ${s.carouselCenterW}.dp
+    val carouselCenterH = ${s.carouselCenterH}.dp
+    val carouselSideW = ${s.carouselSideW}.dp
+    val carouselSideH = ${s.carouselSideH}.dp
+    val coverTitleCenterSp = ${s.coverTitleCenterSp}.sp
+    val coverDateCenterSp = ${s.coverDateCenterSp}.sp
+    val coverTitleSideSp = ${s.coverTitleSideSp}.sp
+    val coverDateSideSp = ${s.coverDateSideSp}.sp
+}
+
+object Calendar {
+    val yearMonthSp = ${s.yearMonthSp}.sp
+    val topTitleGap = ${s.calTopTitleGap}.dp
+    val titleGap = ${s.calTitleGap}.dp
+}`;
+  document.getElementById('codeOut').value = c;
+}
+
+// ---- wiring ----
+document.querySelectorAll('.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    tab = btn.dataset.tab;
+    document.getElementById('homeFieldset').style.display = tab === 'home' ? '' : 'none';
+    document.getElementById('diaryFieldset').style.display = tab === 'diary' ? '' : 'none';
+    render();
+  });
+});
+document.getElementById('widthInput').addEventListener('input', render);
+document.getElementById('copyBtn').addEventListener('click', () => {
+  const out = document.getElementById('codeOut');
+  out.select();
+  navigator.clipboard.writeText(out.value).then(() => {
+    document.getElementById('copyBtn').textContent = '복사됨 ✓';
+    setTimeout(() => { document.getElementById('copyBtn').textContent = '📋 복사'; }, 1200);
+  });
+});
+document.getElementById('resetBtn').addEventListener('click', () => {
+  s = Object.assign({}, DEFAULTS);
+  document.getElementById('widthInput').value = s.screenWidth;
+  render();
+});
+
+buildFieldInputs(document.getElementById('commonFields'), COMMON_FIELDS);
+buildFieldInputs(document.getElementById('homeFields'), HOME_FIELDS);
+buildFieldInputs(document.getElementById('diaryFields'), DIARY_FIELDS);
+render();
+</script>
+</body>
+</html>
