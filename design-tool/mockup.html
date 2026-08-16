@@ -308,11 +308,11 @@ function render() {
   // tagline
   const tagline = el('tagline'); tagline.className = 'tagline';
   tagline.style.top = y + 'px';
-  tagline.style.fontSize = (s.titleSp * 0.55) + 'px'; // 화면 표시용 축소 비율(참고치, 실제 sp 아님)
+  tagline.style.fontSize = s.titleSp + 'px'; // 1sp = 1px (margin/dp와 동일 축척 — 실제 화면과 비례 일치)
   tagline.textContent = TAGLINE[tab] + ' ';
   attachFontHandle(tagline, 'titleSp', 20, 100);
   frame.appendChild(tagline);
-  y += Math.round(s.titleSp * 0.6);
+  y += tagline.offsetHeight; // 실제 렌더된 줄 높이를 그대로 씀(임의 배율 추정 대신)
 
   // contentGap
   buildHandleH(y + s.contentGap, 'contentGap ' + s.contentGap + 'dp', (dy) => { s.contentGap = clamp(s.contentGap + dy, 0, 200); });
@@ -433,12 +433,13 @@ function renderDiaryBody(top, bottom) {
   const ym = document.createElement('div');
   ym.textContent = '2026.01';
   ym.style.fontFamily = 'Cavorting';
-  ym.style.fontSize = (s.yearMonthSp * 0.55) + 'px';
+  ym.style.fontSize = s.yearMonthSp + 'px'; // 1sp = 1px (margin/dp와 동일 축척)
   ym.style.color = '#20201c';
   ym.style.marginTop = (s.calTopTitleGap) + 'px';
   attachFontHandle(ym, 'yearMonthSp', 30, 120);
   box.appendChild(ym);
   frame.appendChild(box);
+  const ymBottom = top + s.calTopTitleGap + ym.offsetHeight; // 실제 렌더된 줄 높이 사용
 
   const lbl = el('region-label'); lbl.className = 'region-label';
   lbl.textContent = 'yearMonthSp ' + s.yearMonthSp + 'sp';
@@ -446,7 +447,7 @@ function renderDiaryBody(top, bottom) {
   frame.appendChild(lbl);
 
   const grid = el(null, null, {
-    position: 'absolute', top: (top + s.calTopTitleGap + 60 + s.calTitleGap) + 'px',
+    position: 'absolute', top: (ymBottom + s.calTitleGap) + 'px',
     left: s.sideMargin + 'px', right: s.sideMargin + 'px', bottom: (frame.offsetHeight - bottom) + 'px',
     border: '1px dashed #ccc', display: 'flex', alignItems: 'center', justifyContent: 'center',
     color: '#999', fontSize: '11px',
