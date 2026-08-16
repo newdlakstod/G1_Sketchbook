@@ -377,6 +377,17 @@
   `.offset(x = 0.dp, y = 0.dp)`와 한국어 조절 주석을 추가했다. x 양수는 오른쪽, y 양수는
   아래쪽이며 Splash/Login/Loading/Error 네 화면에 함께 적용된다.
 
+- **온보딩 전용 라이트·다크 색상 반전** (2026-08-17): 전역 `Theme.kt`는 바꾸지 않고 공용
+  `OnboardingLayout` 안에서만 색상을 선택하도록 수정했다. 라이트는 Ivory 배경과
+  `DaymoryTeal` 요소, 다크는 `DaymoryTeal` 배경과 Ivory 요소를 사용한다. 제목·부제·오리
+  tint·로딩·오류·버튼 배경이 같은 전경색을 쓰고 버튼 글자는 배경색을 사용한다. 수정 위치에
+  한국어 주석을 추가했고 `compileDebugKotlin testDebugUnitTest`로 검증했다.
+- **메인 탭 공용 레이아웃 분리** (2026-08-17): 새 `ui/main/MainTabLayout.kt`에 세로 화면 하단
+  탭바, 가로 화면 사이드 탭바, `daymory` 헤더, 화면 제목과 공통 여백을 모았다. Home,
+  개인·공유 Sketchbook, Diary, Settings는 `MainTabPage`에 고유 본문과 액션만 전달한다.
+  Sketchbook의 중첩 `Scaffold`를 제거했고 기존 Preview 5개와 화면별 데이터/콜백은 유지했다.
+  공통 위치 조절부에 한국어 주석을 추가하고 전체 디버그 Kotlin 빌드로 검증했다.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
