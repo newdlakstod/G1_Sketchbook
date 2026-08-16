@@ -39,9 +39,7 @@
   #widthInput, #heightInput, #presetName { width: 70px; }
   .preset { font-size: 10px; padding: 4px 6px; border: 1px solid #ccc; background: #f5f5f0; border-radius: 4px; cursor: pointer; }
   .preset:hover { background: #e6f4f4; border-color: #008484; }
-  .preset-x {
-    margin-left: 3px; color: #a33; font-weight: 700; cursor: pointer;
-  }
+  .preset-x { margin-left: 3px; color: #a33; font-weight: 700; cursor: pointer; }
   #codeOut {
     width: 100%; height: 220px; font-family: 'Consolas', monospace; font-size: 11px;
     padding: 8px; border: 1px solid #ccc; border-radius: 6px; white-space: pre; overflow: auto;
@@ -57,6 +55,31 @@
   .color-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 12px; }
   .color-row input[type=color] { width: 34px; height: 24px; border: 1px solid #ccc; border-radius: 4px; padding: 0; cursor: pointer; }
 
+  .guide-btn-row { display: flex; gap: 6px; }
+  .guide-btn-row button {
+    flex: 1; padding: 8px 4px; font-size: 11px; border: 1px solid #2a6fdb; background: #eaf1fc;
+    color: #1a4faa; border-radius: 6px; cursor: pointer;
+  }
+  .guide-btn-row button:hover { background: #d8e6fb; }
+
+  /* ---- inspector (선택한 항목) ---- */
+  #inspectorFieldset legend { color: #2a6fdb; }
+  #inspectorBody .insp-title { font-size: 12px; font-weight: 700; margin-bottom: 8px; color: #20201c; }
+  #inspectorBody select {
+    width: 100%; font-size: 12px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; margin-top: 2px;
+  }
+  .insp-row { margin-bottom: 8px; }
+  .insp-row label { display: block; font-size: 11px; color: #555; margin-bottom: 2px; }
+  .insp-row input[type=number] {
+    width: 100%; font-size: 12px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px;
+  }
+  .insp-row input[type=color] { width: 100%; height: 26px; border: 1px solid #ccc; border-radius: 4px; padding: 0; cursor: pointer; }
+  .insp-btn {
+    font-size: 11px; padding: 6px 8px; border: 1px solid #ccc; background: #f5f5f0; border-radius: 4px;
+    cursor: pointer; margin-right: 6px;
+  }
+  .insp-btn.danger { border-color: #c33; color: #c33; background: #fdefef; }
+
   /* ---- right: stage ---- */
   #stage { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 40px; }
   #frame {
@@ -66,6 +89,8 @@
 
   .guide-h { position: absolute; left: 0; right: 0; border-top: 1px dashed #e0433f; pointer-events: none; }
   .guide-v { position: absolute; top: 0; bottom: 0; border-left: 1px dashed #e0433f; pointer-events: none; }
+  .guide-custom { border-color: #2a6fdb; }
+  .guide-h.selected, .guide-v.selected { border-width: 2px; }
   .handle-h {
     position: absolute; left: 0; right: 0; height: 10px; margin-top: -5px; cursor: ns-resize; z-index: 20;
   }
@@ -77,22 +102,6 @@
   .handle-corner {
     position: absolute; width: 14px; height: 14px; background: #008484; border: 2px solid #fff;
     border-radius: 50%; cursor: nwse-resize; z-index: 30; box-shadow: 0 1px 3px rgba(0,0,0,.4);
-  }
-
-  /* 드래그 손잡이 옆에 붙는, 숫자를 직접 타이핑할 수 있는 작은 입력칸(가로 여백용) */
-  .tag-input {
-    position: absolute; top: -18px; right: 4px; z-index: 25; width: 46px; font-size: 9px;
-    background: #e0433f; color: #fff; border: none; border-radius: 3px; padding: 1px 3px;
-    text-align: right; font-family: inherit;
-  }
-  .tag-input.vertical { top: 4px; left: 4px; right: auto; writing-mode: horizontal-tb; }
-  .tag-input::placeholder { color: #ffd; }
-
-  /* 폰트 크기 전용 — 값 옆 작은 뱃지, 클릭해서 타이핑 */
-  .size-badge {
-    display: inline-block; width: 34px; margin-left: 5px; padding: 0 3px; font-size: 9px; line-height: 14px;
-    background: #008484; color: #fff; border: none; border-radius: 3px; vertical-align: middle;
-    font-family: 'Pretendard', sans-serif; text-align: center;
   }
 
   .region-label {
@@ -123,6 +132,21 @@
   .cover-card .swatch { flex: 1; width: 100%; border-radius: inherit; }
   .cover-card .title { font-weight: 600; margin-top: 6px; }
   .cover-card .date { color: #888; }
+
+  /* 실제 코드에 있는 버튼/아이콘의 자리를 나타내는 목업 요소 — 드래그로 위치 보정, 클릭하면
+     좌측 인스펙터에 위치/색상 입력칸이 뜬다. */
+  .mockup-btn {
+    position: absolute; display: flex; align-items: center; justify-content: center;
+    cursor: grab; user-select: none; font-size: 13px; color: #fff; z-index: 22;
+    box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  }
+  .mockup-btn.pill { border-radius: 999px; font-size: 10px; padding: 0 8px; white-space: nowrap; }
+  .mockup-btn:active { cursor: grabbing; }
+  .mockup-btn.selected { outline: 2px solid #2a6fdb; outline-offset: 2px; }
+  .placeholder-card {
+    position: absolute; border: 1px dashed #ccc; border-radius: 8px; display: flex;
+    align-items: center; justify-content: center; color: #999; font-size: 10px; text-align: center;
+  }
 </style>
 </head>
 <body>
@@ -130,10 +154,24 @@
 <div id="panel">
   <h1>daymory 목업 도구</h1>
   <div class="hint">
-    빨간 점선 손잡이를 드래그하거나, 옆에 붙은 빨간/초록 숫자칸을 클릭해서 직접 타이핑해도 됩니다.
-    텍스트(문구)는 화면에서 직접 클릭해서 바로 고칠 수 있어요. 왼쪽 아래 코드 상자를 "복사"한 뒤
-    Claude한테 "이 값으로 적용해줘"라고 붙여넣으면 앱에 반영됩니다.
+    화면에서 안내선(점선)·버튼·글자를 <b>클릭</b>하면 바로 아래 "선택한 항목"에 관련 치수/색상/폰트가
+    뜹니다. 안내선과 버튼은 <b>드래그</b>로도 옮길 수 있어요. 글자는 클릭해서 바로 타이핑하면 문구가
+    바뀝니다. 다 고친 뒤 왼쪽 아래 코드 상자를 "복사"해서 Claude한테 "이 값으로 적용해줘"라고
+    붙여넣으면 앱에 반영됩니다.
   </div>
+
+  <fieldset id="inspectorFieldset">
+    <legend>선택한 항목</legend>
+    <div id="inspectorBody"><div class="hint">안내선, 버튼, 글자 등을 화면에서 클릭하면 여기에 표시됩니다.</div></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>안내선 추가</legend>
+    <div class="guide-btn-row">
+      <button type="button" id="addGuideH">가로 안내선 추가</button>
+      <button type="button" id="addGuideV">세로 안내선 추가</button>
+    </div>
+  </fieldset>
 
   <fieldset>
     <legend>캔버스(기기 화면) 크기</legend>
@@ -178,21 +216,6 @@
   </div>
 
   <fieldset>
-    <legend>공통 템플릿 (Dimens.Screen)</legend>
-    <div id="commonFields"></div>
-  </fieldset>
-
-  <fieldset id="homeFieldset">
-    <legend>홈 캐러셀 (Dimens.Home)</legend>
-    <div id="homeFields"></div>
-  </fieldset>
-
-  <fieldset id="diaryFieldset" style="display:none">
-    <legend>달력 (Dimens.Calendar)</legend>
-    <div id="diaryFields"></div>
-  </fieldset>
-
-  <fieldset>
     <legend>Dimens.kt 코드로 보기</legend>
     <textarea id="codeOut" readonly></textarea>
     <button id="copyBtn">📋 복사</button>
@@ -221,19 +244,35 @@ const DEFAULTS = {
     diary: 'A piece of today', other: 'Setting',
     wordmark: 'daymory', coverTitle: 'Title', coverDate: '2026.08.16', calYearMonth: '2026.01',
   },
+  // 실제 코드에 있는 버튼들의 위치 보정(dx,dy px)과 개별 색상(null=기본값 사용) — id는 아래
+  // drawIconButton() 호출부의 첫 인자와 1:1로 대응.
+  buttons: {},
+  // 글자별 개별 폰트/색상 override — null이면 원래(기본) 값 사용.
+  textStyle: {},
+  // 사용자가 "안내선 추가"로 만든 참고용 안내선. {id, axis:'h'|'v', pos}
+  customGuides: [],
 };
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
 let s = deepClone(DEFAULTS);
 let tab = 'home';
+let selected = null; // { type: 'guide'|'guide-custom'|'button'|'text', ... }
 const NAV = [
   { label: 'Home', key: 'home' }, { label: 'List', key: 'list' }, { label: 'share', key: 'share' },
   { label: 'Diary', key: 'diary' }, { label: 'Other', key: 'other' },
 ];
 const PRESET_STORE_KEY = 'daymory_mockup_screen_presets';
+const FONT_OPTIONS = [
+  { key: 'auto', label: '기본(자동)', css: null },
+  { key: 'pretendard', label: 'Pretendard', css: "'Pretendard', sans-serif" },
+  { key: 'cavorting', label: 'Cavorting', css: "'Cavorting'" },
+  { key: 'bodoni', label: 'Bodoni MT Black', css: "'BodoniMTBlack'" },
+];
 
 const frame = document.getElementById('frame');
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function btnState(id) { return s.buttons[id] || (s.buttons[id] = { dx: 0, dy: 0, color: null }); }
+function textState(key) { return s.textStyle[key] || (s.textStyle[key] = { color: null, font: null }); }
 
 // ---- generic drag helpers ----
 // onDelta receives the INCREMENTAL movement since the previous frame (not since drag start) —
@@ -269,6 +308,24 @@ function dragHorizontal(handle, onDelta) {
     window.addEventListener('pointerup', up);
   });
 }
+// 버튼처럼 x/y 둘 다 자유롭게 옮기는 경우용(2축 동시 드래그).
+function dragFree(handle, onDelta) {
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    let lastX = e.clientX, lastY = e.clientY;
+    function move(ev) {
+      const dx = ev.clientX - lastX, dy = ev.clientY - lastY;
+      lastX = ev.clientX; lastY = ev.clientY;
+      onDelta(dx, dy); render();
+    }
+    function up() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+}
 
 function el(tag, cls, style) {
   const e = document.createElement('div');
@@ -277,63 +334,97 @@ function el(tag, cls, style) {
   return e;
 }
 
-/** 숫자를 직접 타이핑할 수 있는 작은 입력칸 — 드래그 손잡이 옆에 붙는다. */
-function makeTagInput(key, unit, min, max, vertical) {
-  const input = document.createElement('input');
-  input.className = 'tag-input' + (vertical ? ' vertical' : '');
-  input.type = 'number';
-  input.value = Math.round(s[key] * 10) / 10;
-  input.title = key + ' (' + unit + ') — 직접 입력';
-  input.addEventListener('pointerdown', (e) => e.stopPropagation());
-  input.addEventListener('input', () => {
-    const v = parseFloat(input.value);
-    if (!isNaN(v)) s[key] = clamp(v, min, max);
-  });
-  input.addEventListener('blur', render);
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { render(); input.blur(); } });
-  return input;
+// ---- selection / inspector ----
+function select(info) { selected = info; renderInspector(); }
+function isSelected(info) {
+  if (!selected || selected.type !== info.type) return false;
+  const a = selected.id ?? selected.key, b = info.id ?? info.key;
+  return a === b;
 }
+function attachSelect(node, info) {
+  node.addEventListener('click', (e) => { e.stopPropagation(); select(info); });
+  if (isSelected(info)) node.classList.add('selected');
+}
+document.getElementById('stage').addEventListener('click', () => { selected = null; renderInspector(); });
 
-function buildHandleH(y, key, unit, min, max, onDrag) {
+function buildHandleH(y, key, unit, min, max, onDrag, label) {
+  const info = { type: 'guide', key, unit, min, max, label: label || key };
   const h = el('div', 'handle-h', { top: y + 'px' });
   const guide = el('div', 'guide-h', { top: y + 'px' });
-  guide.appendChild(makeTagInput(key, unit, min, max, false));
   frame.appendChild(guide); frame.appendChild(h);
+  attachSelect(h, info);
+  if (isSelected(info)) guide.classList.add('selected');
   dragVertical(h, onDrag);
 }
-function buildHandleV(x, key, unit, min, max, onDrag) {
+function buildHandleV(x, key, unit, min, max, onDrag, label) {
+  const info = { type: 'guide', key, unit, min, max, label: label || key };
   const h = el('div', 'handle-v', { left: x + 'px' });
   const guide = el('div', 'guide-v', { left: x + 'px' });
-  guide.appendChild(makeTagInput(key, unit, min, max, true));
   frame.appendChild(guide); frame.appendChild(h);
+  attachSelect(h, info);
+  if (isSelected(info)) guide.classList.add('selected');
   dragHorizontal(h, onDrag);
 }
+function buildCustomGuide(g) {
+  const label = (g.axis === 'h' ? '가로' : '세로') + ' 안내선(사용자 추가)';
+  const info = { type: 'guide-custom', id: g.id, axis: g.axis, label };
+  if (g.axis === 'h') {
+    const h = el('div', 'handle-h', { top: g.pos + 'px' });
+    const guide = el('div', 'guide-h guide-custom', { top: g.pos + 'px' });
+    frame.appendChild(guide); frame.appendChild(h);
+    attachSelect(h, info);
+    if (isSelected(info)) guide.classList.add('selected');
+    dragVertical(h, (dy) => { g.pos = clamp(g.pos + dy, 0, frame.offsetHeight || s.screenHeight); });
+  } else {
+    const h = el('div', 'handle-v', { left: g.pos + 'px' });
+    const guide = el('div', 'guide-v guide-custom', { left: g.pos + 'px' });
+    frame.appendChild(guide); frame.appendChild(h);
+    attachSelect(h, info);
+    if (isSelected(info)) guide.classList.add('selected');
+    dragHorizontal(h, (dx) => { g.pos = clamp(g.pos + dx, 0, s.screenWidth); });
+  }
+}
 
-/** 폰트 크기 옆에 붙는 작은 숫자 입력칸 — 드래그 대신 클릭해서 타이핑. */
-function attachSizeBadge(textEl, key, min, max) {
-  const badge = document.createElement('input');
-  badge.className = 'size-badge';
-  badge.type = 'number';
-  badge.value = Math.round(s[key] * 10) / 10;
-  badge.addEventListener('pointerdown', (e) => e.stopPropagation());
-  badge.addEventListener('click', (e) => e.stopPropagation());
-  badge.addEventListener('input', () => {
-    const v = parseFloat(badge.value);
-    if (!isNaN(v)) s[key] = clamp(v, min, max);
+/** 실제 코드에 있는 버튼 하나를 목업에 그린다. id는 저장/코드출력 참조용 고유 키.
+ *  x,y는 "기본(자연스러운) 위치"이고 실제 표시 위치는 여기에 버튼별 dx/dy 보정을 더한 값. */
+function drawIconButton(id, x, y, w, h, glyph, label, shape, filled) {
+  const st = btnState(id);
+  const b = el(null, 'mockup-btn' + (shape === 'pill' ? ' pill' : ''), {
+    left: (x + st.dx) + 'px', top: (y + st.dy) + 'px',
   });
-  badge.addEventListener('blur', render);
-  badge.addEventListener('keydown', (e) => { if (e.key === 'Enter') { render(); badge.blur(); } });
-  textEl.appendChild(badge);
+  if (shape === 'pill') {
+    b.style.width = w + 'px'; b.style.height = h + 'px';
+  } else {
+    b.style.width = w + 'px'; b.style.height = h + 'px'; b.style.borderRadius = '50%';
+  }
+  b.style.background = st.color || (filled ? s.tealColor : '#9a9a92');
+  b.textContent = glyph;
+  b.title = label + ' — 드래그로 위치 보정, 클릭하면 좌측에 세부 설정';
+  frame.appendChild(b);
+  const info = { type: 'button', id, label };
+  attachSelect(b, info);
+  if (isSelected(info)) b.classList.add('selected');
+  dragFree(b, (dx, dy) => { st.dx += dx; st.dy += dy; });
+  return b;
 }
 
 /** 화면에 보이는 문구를 클릭해서 직접 고칠 수 있게 만든다 — s.texts[key]에 저장, 굳이 매
- *  키입력마다 전체 render()를 다시 하지 않아서(포커스/커서 유지) 타이핑이 끊기지 않는다. */
-function makeEditableText(node, textKey) {
+ *  키입력마다 전체 render()를 다시 하지 않아서(포커스/커서 유지) 타이핑이 끊기지 않는다.
+ *  기본 폰트/색상은 defaultFont/defaultColor(현재 앱 코드 기준)이고, s.textStyle[key]에
+ *  개별 override가 있으면 그 값을 우선 적용한다. */
+function makeEditableText(node, textKey, defaultFontCss, defaultColor) {
+  const st = textState(textKey);
   node.contentEditable = 'true';
   node.spellcheck = false;
   node.textContent = s.texts[textKey];
+  node.style.fontFamily = st.font ? FONT_OPTIONS.find(f => f.key === st.font).css : defaultFontCss;
+  node.style.color = st.color || defaultColor;
   node.addEventListener('input', () => { s.texts[textKey] = node.textContent; });
   node.addEventListener('pointerdown', (e) => e.stopPropagation());
+  node.addEventListener('click', (e) => e.stopPropagation());
+  const info = { type: 'text', key: textKey, label: '글자: ' + textKey, defaultFontCss, defaultColor };
+  node.addEventListener('focus', () => select(info));
+  if (isSelected(info)) node.classList.add('selected');
 }
 
 // ---- main render ----
@@ -357,9 +448,8 @@ function render() {
   // header row
   const header = el(null, 'header-row', { top: y + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px', height: '28px' });
   const avatar = el(null, 'avatar-dot');
-  const word = el(null, 'wordmark', { fontSize: s.wordmarkSp + 'px', color: s.tealColor });
-  makeEditableText(word, 'wordmark');
-  attachSizeBadge(word, 'wordmarkSp', 10, 40);
+  const word = el(null, 'wordmark', { fontSize: s.wordmarkSp + 'px' });
+  makeEditableText(word, 'wordmark', "'BodoniMTBlack'", s.tealColor);
   const spacer = el(null, null, { width: '24px' });
   header.appendChild(avatar); header.appendChild(word); header.appendChild(spacer);
   frame.appendChild(header);
@@ -370,17 +460,19 @@ function render() {
   y += s.titleGap;
 
   // tagline
-  const tagline = el(null, 'tagline', { top: y + 'px', fontSize: s.titleSp + 'px', color: s.tealColor });
-  makeEditableText(tagline, tab);
-  attachSizeBadge(tagline, 'titleSp', 20, 100);
+  const tagline = el(null, 'tagline', { top: y + 'px', fontSize: s.titleSp + 'px' });
+  makeEditableText(tagline, tab, "'Cavorting'", s.tealColor);
   frame.appendChild(tagline);
   y += tagline.offsetHeight; // 실제 렌더된 줄 높이를 그대로 씀(임의 배율 추정 대신)
+
+  // 헤더 우측 액션 버튼(탭마다 다름) — daymory 워드마크 오른쪽 자리에 얹는다.
+  renderHeaderActions();
 
   // contentGap
   buildHandleH(y + s.contentGap, 'contentGap', 'dp', 0, 200, (dy) => { s.contentGap = clamp(s.contentGap + dy, 0, 200); });
   y += s.contentGap;
 
-  // side margins (양쪽 다 세로 안내선 + 입력칸)
+  // side margins (양쪽 다 세로 안내선)
   buildHandleV(s.sideMargin, 'sideMargin', 'dp', 0, 100, (dx) => { s.sideMargin = clamp(s.sideMargin + dx, 0, 100); });
   buildHandleV(s.screenWidth - s.sideMargin, 'sideMargin', 'dp', 0, 100, (dx) => { s.sideMargin = clamp(s.sideMargin - dx, 0, 100); });
 
@@ -389,10 +481,12 @@ function render() {
   const bodyBottom = height - s.bottomMargin - navBarHeight;
   if (tab === 'home') {
     renderHomeCarousel(bodyTop, bodyBottom);
+  } else if (tab === 'list' || tab === 'share') {
+    renderListShareBody(bodyTop, bodyBottom, tab === 'share');
   } else if (tab === 'diary') {
     renderDiaryBody(bodyTop, bodyBottom);
   } else {
-    renderGenericGrid(bodyTop, bodyBottom);
+    renderOtherBody(bodyTop, bodyBottom);
   }
 
   // bottom margin handle (above nav bar)
@@ -423,13 +517,45 @@ function render() {
   navLbl.textContent = 'navBar 총 ' + navBarHeight + 'dp';
   frame.appendChild(navLbl);
 
-  syncFieldInputs();
+  // 사용자가 추가한 안내선
+  s.customGuides.forEach(buildCustomGuide);
+
+  syncColorInputs();
   updateCode();
+  // 인스펙터의 입력칸에 지금 포커스가 있는 동안은 다시 그리지 않는다(타이핑 중 커서 유지) —
+  // 캔버스에서 드래그로 값이 바뀐 경우엔 인스펙터도 최신값으로 갱신되어야 하므로 그 외엔 항상 갱신.
+  if (!document.getElementById('inspectorBody').contains(document.activeElement)) {
+    renderInspector();
+  }
+}
+
+/** 탭 헤더의 daymory 오른쪽 자리에 얹는 액션 버튼들 — 실제 TabHeader(actions) 슬롯과 대응. */
+function renderHeaderActions() {
+  const rightX = s.screenWidth - s.sideMargin;
+  const y = s.topMargin;
+  if (tab === 'home') {
+    drawIconButton('home.toggle', rightX - 32, y - 2, 32, 32, '⇄', '개인/공유 노트 전환', 'circle', false);
+  } else if (tab === 'share') {
+    drawIconButton('share.newShared', rightX - 32 * 2 - 6, y - 2, 32, 32, '👥', '공유 스케치북 만들기', 'circle', false);
+    drawIconButton('share.join', rightX - 32, y - 2, 32, 32, '↪', '공유 스케치북 참여', 'circle', false);
+  }
 }
 
 function renderHomeCarousel(top, bottom) {
-  const areaH = bottom - top;
-  const cy = top + areaH / 2;
+  // 태그라인 아래 3개 액션 아이콘(새 노트/공유/참여) — 실제 코드: Row(Center), 간격 14dp.
+  const btnSize = 56, gap = 14;
+  const totalW = btnSize * 3 + gap * 2;
+  let bx = s.screenWidth / 2 - totalW / 2;
+  const rowY = top;
+  drawIconButton('home.add', bx, rowY, btnSize, btnSize, '+', '새 노트 추가', 'circle', true);
+  bx += btnSize + gap;
+  drawIconButton('home.share', bx, rowY, btnSize, btnSize, '👥', '공유 스케치북 만들기', 'circle', true);
+  bx += btnSize + gap;
+  drawIconButton('home.join', bx, rowY, btnSize, btnSize, '↪', '공유 스케치북 참여', 'circle', true);
+
+  const carouselTop = rowY + btnSize + 28; // 실제 코드: Spacer(28dp) 이후 캐러셀
+  const areaH = bottom - carouselTop;
+  const cy = carouselTop + areaH / 2;
   const cx = s.screenWidth / 2;
 
   drawCover(cx - s.carouselCenterW / 2 - 20 - s.carouselSideW / 2, cy - s.carouselSideH / 2,
@@ -465,10 +591,8 @@ function drawCover(x, y, w, h, colorIdx, alpha, kind) {
   const date = document.createElement('div'); date.className = 'date';
   date.style.fontSize = (kind === 'center' ? s.coverDateCenterSp : s.coverDateSideSp) + 'px';
   if (kind === 'center') {
-    makeEditableText(title, 'coverTitle');
-    makeEditableText(date, 'coverDate');
-    attachSizeBadge(title, 'coverTitleCenterSp', 8, 30);
-    attachSizeBadge(date, 'coverDateCenterSp', 6, 24);
+    makeEditableText(title, 'coverTitle', null, '#20201c');
+    makeEditableText(date, 'coverDate', null, '#888888');
   } else {
     title.textContent = s.texts.coverTitle;
     date.textContent = s.texts.coverDate;
@@ -476,6 +600,34 @@ function drawCover(x, y, w, h, colorIdx, alpha, kind) {
   card.appendChild(title); card.appendChild(date);
   frame.appendChild(card);
   return card;
+}
+
+/** List/Share 탭 — 실제로는 같은 SketchbookListScreen 컴포넌트: 필터(개인/공유받음) + 정렬 메뉴 +
+ *  카드 그리드(카드마다 즐겨찾기★/삭제✕). shared=true면 헤더에 만들기/참여 아이콘도 추가로 뜬다
+ *  (그건 renderHeaderActions에서 그림 — 여긴 탭 본문만). */
+function renderListShareBody(top, bottom, shared) {
+  drawIconButton('list.filterPersonal', s.sideMargin, top, 40, 40, '🧍', '개인', 'circle', !shared);
+  drawIconButton('list.filterShared', s.sideMargin + 48, top, 40, 40, '👥', '공유받음', 'circle', shared);
+  drawIconButton('list.menu', s.screenWidth - s.sideMargin - 40, top, 40, 40, '☰', '목록 배열(3/4/5열)', 'circle', false);
+
+  const gridTop = top + 40 + 14;
+  const grid = el(null, null, {
+    position: 'absolute', top: gridTop + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px',
+    bottom: (frame.offsetHeight - bottom) + 'px', display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', alignContent: 'start',
+  });
+  const cellW = (s.screenWidth - s.sideMargin * 2 - 20) / 3;
+  const cellH = cellW / (182 / 275);
+  for (let i = 0; i < 6; i++) {
+    const cell = el(null, null, { position: 'relative', aspectRatio: (182 / 275),
+      background: s.coverColors[i % s.coverColors.length], borderRadius: '4px 10px 10px 4px' });
+    grid.appendChild(cell);
+  }
+  frame.appendChild(grid);
+  // 카드마다 있는 즐겨찾기★/삭제✕ 아이콘 — 대표로 첫 번째 카드 위치에 그려서 보정할 수 있게 함
+  // (모든 카드가 같은 상대 위치를 공유하므로 하나만 옮기면 전체에 적용된다고 보면 됨).
+  drawIconButton('cover.fav', s.sideMargin + 2, gridTop + 2, 24, 24, '★', '즐겨찾기(카드 좌상단)', 'circle', false);
+  drawIconButton('cover.delete', s.sideMargin + cellW - 26, gridTop + 2, 24, 24, '✕', '삭제(카드 우상단)', 'circle', false);
 }
 
 function renderDiaryBody(top, bottom) {
@@ -486,15 +638,20 @@ function renderDiaryBody(top, bottom) {
   });
 
   const ym = document.createElement('div');
-  ym.style.fontFamily = 'Cavorting';
   ym.style.fontSize = s.yearMonthSp + 'px'; // 1sp = 1px (margin/dp와 동일 축척)
-  ym.style.color = s.tealColor;
   ym.style.marginTop = (s.calTopTitleGap) + 'px';
-  makeEditableText(ym, 'calYearMonth');
-  attachSizeBadge(ym, 'yearMonthSp', 30, 120);
+  makeEditableText(ym, 'calYearMonth', "'Cavorting'", s.tealColor);
+  ym.style.color = textState('calYearMonth').color || '#20201c'; // 실제 코드: onSurface(틸 아님)
   box.appendChild(ym);
   frame.appendChild(box);
-  const ymBottom = top + s.calTopTitleGap + ym.offsetHeight; // 실제 렌더된 줄 높이 사용
+  const ymTop = top + s.calTopTitleGap;
+  const ymBottom = ymTop + ym.offsetHeight; // 실제 렌더된 줄 높이 사용
+  const ymMid = (ymTop + ymBottom) / 2;
+
+  // 이전/다음 달 화살표(연월 좌우) + 오늘 일기 편집 연필(연월 우상단)
+  drawIconButton('diary.prev', s.sideMargin, ymMid - 16, 32, 32, '‹', '이전 달', 'circle', false);
+  drawIconButton('diary.next', s.screenWidth - s.sideMargin - 32, ymMid - 16, 32, 32, '›', '다음 달', 'circle', false);
+  drawIconButton('diary.edit', s.screenWidth - s.sideMargin - 35, ymTop - 4, 35, 35, '✎', '오늘 일기 그리기', 'circle', false);
 
   buildHandleH(ymBottom + s.calTitleGap, 'calTitleGap', 'dp', 0, 80, (dy) => {
     s.calTitleGap = clamp(s.calTitleGap + dy, 0, 80);
@@ -510,58 +667,123 @@ function renderDiaryBody(top, bottom) {
   frame.appendChild(grid);
 }
 
-function renderGenericGrid(top, bottom) {
-  const grid = el(null, null, {
-    position: 'absolute', top: top + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px',
-    bottom: (frame.offsetHeight - bottom) + 'px', display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', alignContent: 'start',
+/** Other(설정) 탭 — 프로필 카드(아바타+별명 수정 연필), 테마 3칩, 로그아웃/미리보기 버튼.
+ *  제스처 카드(3행×4칩)는 낱개로 드래그할 만큼 배치가 민감하지 않아 자리만 표시. */
+function renderOtherBody(top, bottom) {
+  const w = s.screenWidth - s.sideMargin * 2;
+  let y = top;
+
+  const profileCard = el(null, 'placeholder-card', { left: s.sideMargin + 'px', top: y + 'px', width: w + 'px', height: '84px' });
+  profileCard.textContent = '프로필 카드 (아바타 · 별명)';
+  frame.appendChild(profileCard);
+  drawIconButton('other.avatarEdit', s.sideMargin + w - 36, y + 26, 26, 26, '✎', '별명 수정', 'circle', false);
+  y += 84 + 18;
+
+  drawIconButton('other.themeSystem', s.sideMargin, y, 60, 30, '시스템', '화면 테마: 시스템', 'pill', true);
+  drawIconButton('other.themeLight', s.sideMargin + 66, y, 60, 30, '라이트', '화면 테마: 라이트', 'pill', false);
+  drawIconButton('other.themeDark', s.sideMargin + 132, y, 60, 30, '다크', '화면 테마: 다크', 'pill', false);
+  y += 30 + 18;
+
+  const gestureCard = el(null, 'placeholder-card', { left: s.sideMargin + 'px', top: y + 'px', width: w + 'px', height: '150px' });
+  gestureCard.textContent = '제스처 카드 (두 손가락 탭 / 세 손가락 탭 / 길게 누르기 — 각 4개 칩)';
+  frame.appendChild(gestureCard);
+  y += 150 + 18;
+
+  const infoCard = el(null, 'placeholder-card', { left: s.sideMargin + 'px', top: y + 'px', width: w + 'px', height: '54px' });
+  infoCard.textContent = '정보 카드 (버전 표시)';
+  frame.appendChild(infoCard);
+  y += 54 + 24;
+
+  drawIconButton('other.devPreview', s.sideMargin, y, w, 44, '폰트 · 사이즈 미리보기', '개발자 미리보기 버튼', 'pill', false);
+  y += 44 + 14;
+  drawIconButton('other.logout', s.sideMargin, y, w, 44, '로그아웃', '로그아웃 버튼', 'pill', false);
+}
+
+// ---- inspector rendering ----
+function inspRow(labelText, inputEl) {
+  const row = el(null, 'insp-row');
+  const label = document.createElement('label'); label.textContent = labelText;
+  row.appendChild(label); row.appendChild(inputEl);
+  return row;
+}
+function numberInput(value, min, max, onInput) {
+  const input = document.createElement('input');
+  input.type = 'number'; input.value = Math.round(value * 10) / 10;
+  input.addEventListener('input', () => {
+    const v = parseFloat(input.value);
+    if (!isNaN(v)) onInput(clamp(v, min, max));
   });
-  for (let i = 0; i < 6; i++) {
-    const cell = el(null, null, { aspectRatio: (182 / 275), background: s.coverColors[i % s.coverColors.length],
-      borderRadius: '4px 10px 10px 4px' });
-    grid.appendChild(cell);
+  input.addEventListener('blur', () => renderInspector());
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+  return input;
+}
+function colorInput(value, onInput) {
+  const input = document.createElement('input');
+  input.type = 'color'; input.value = value;
+  input.addEventListener('input', () => onInput(input.value));
+  return input;
+}
+function actionButtons(list) {
+  const row = el(null, null, { marginTop: '4px' });
+  list.forEach(([label, fn, danger]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'insp-btn' + (danger ? ' danger' : ''); btn.textContent = label;
+    btn.addEventListener('click', fn);
+    row.appendChild(btn);
+  });
+  return row;
+}
+
+function renderInspector() {
+  const box = document.getElementById('inspectorBody');
+  box.innerHTML = '';
+  if (!selected) { box.innerHTML = '<div class="hint">안내선, 버튼, 글자 등을 화면에서 클릭하면 여기에 표시됩니다.</div>'; return; }
+
+  const title = document.createElement('div'); title.className = 'insp-title'; title.textContent = selected.label;
+  box.appendChild(title);
+
+  if (selected.type === 'guide') {
+    const { key, unit, min, max } = selected;
+    box.appendChild(inspRow(key + ' (' + unit + ')', numberInput(s[key], min, max, (v) => { s[key] = v; render(); })));
+  } else if (selected.type === 'guide-custom') {
+    const g = s.customGuides.find(x => x.id === selected.id);
+    if (!g) { selected = null; renderInspector(); return; }
+    const max = g.axis === 'h' ? 2000 : 2000;
+    box.appendChild(inspRow('위치 (' + (g.axis === 'h' ? 'top' : 'left') + ', px)',
+      numberInput(g.pos, 0, max, (v) => { g.pos = v; render(); })));
+    box.appendChild(actionButtons([['삭제', () => {
+      s.customGuides = s.customGuides.filter(x => x.id !== g.id); selected = null; render();
+    }, true]]));
+  } else if (selected.type === 'button') {
+    const st = btnState(selected.id);
+    box.appendChild(inspRow('가로 위치 보정 (dx, px)', numberInput(st.dx, -300, 300, (v) => { st.dx = v; render(); })));
+    box.appendChild(inspRow('세로 위치 보정 (dy, px)', numberInput(st.dy, -300, 300, (v) => { st.dy = v; render(); })));
+    box.appendChild(inspRow('색상', colorInput(st.color || s.tealColor, (v) => { st.color = v; render(); })));
+    box.appendChild(actionButtons([['기본값으로', () => { st.dx = 0; st.dy = 0; st.color = null; render(); }]]));
+  } else if (selected.type === 'text') {
+    const key = selected.key;
+    const st = textState(key);
+    const sizeKeyMap = { wordmark: 'wordmarkSp', home: 'titleSp', list: 'titleSp', share: 'titleSp', diary: 'titleSp', other: 'titleSp',
+      coverTitle: 'coverTitleCenterSp', coverDate: 'coverDateCenterSp', calYearMonth: 'yearMonthSp' };
+    const sizeKey = sizeKeyMap[key];
+    if (sizeKey) {
+      box.appendChild(inspRow('글자 크기 (sp)', numberInput(s[sizeKey], 6, 120, (v) => { s[sizeKey] = v; render(); })));
+    }
+    const select = document.createElement('select');
+    FONT_OPTIONS.forEach(f => {
+      const opt = document.createElement('option'); opt.value = f.key; opt.textContent = f.label;
+      if ((st.font || 'auto') === f.key) opt.selected = true;
+      select.appendChild(opt);
+    });
+    select.addEventListener('change', () => { st.font = select.value === 'auto' ? null : select.value; render(); });
+    box.appendChild(inspRow('폰트', select));
+    box.appendChild(inspRow('색상', colorInput(st.color || selected.defaultColor || '#20201c', (v) => { st.color = v; render(); })));
+    box.appendChild(actionButtons([['기본값으로', () => { st.font = null; st.color = null; render(); }]]));
+    box.appendChild(el(null, 'hint', {})).textContent = '문구는 화면에서 직접 클릭해 수정하세요.';
   }
-  frame.appendChild(grid);
 }
 
-// ---- side panel numeric fields (mirror the same state, for fine-tuning without hunting on canvas) ----
-const COMMON_FIELDS = [
-  ['topMargin', 'topMargin (dp)'], ['titleGap', 'titleGap (dp)'], ['titleSp', 'titleSp (sp)'],
-  ['contentGap', 'contentGap (dp)'], ['sideMargin', 'sideMargin (dp)'], ['bottomMargin', 'bottomMargin (dp)'],
-  ['navItemSize', 'navItemSize (dp)'], ['navBarPadding', 'navBarPadding (dp)'],
-  ['wordmarkSp', 'wordmark "daymory" (sp)'],
-];
-const HOME_FIELDS = [
-  ['carouselCenterW', '가운데 W (dp)'], ['carouselCenterH', '가운데 H (dp)'],
-  ['carouselSideW', '옆 W (dp)'], ['carouselSideH', '옆 H (dp)'],
-  ['coverTitleCenterSp', '가운데 제목 (sp)'], ['coverDateCenterSp', '가운데 날짜 (sp)'],
-  ['coverTitleSideSp', '옆 제목 (sp)'], ['coverDateSideSp', '옆 날짜 (sp)'],
-];
-const DIARY_FIELDS = [
-  ['yearMonthSp', 'yearMonthSp (sp)'], ['calTopTitleGap', 'topTitleGap (dp)'], ['calTitleGap', 'titleGap (dp)'],
-];
-
-function buildFieldInputs(container, fields) {
-  container.innerHTML = '';
-  fields.forEach(([key, label]) => {
-    const row = el(null, 'field-row');
-    const l = document.createElement('label');
-    const span = document.createElement('span'); span.textContent = label;
-    const input = document.createElement('input');
-    input.type = 'number'; input.dataset.key = key; input.value = s[key];
-    input.addEventListener('input', () => { s[key] = parseFloat(input.value) || 0; render(); });
-    l.appendChild(span);
-    row.appendChild(l); row.appendChild(input);
-    container.appendChild(row);
-  });
-}
-function syncFieldInputs() {
-  document.querySelectorAll('#panel input[data-key]').forEach(inp => {
-    if (document.activeElement !== inp) inp.value = s[inp.dataset.key];
-  });
-}
-
-// ---- color pickers ----
+// ---- color pickers (전역: 표지색/틸/배경) ----
 function buildColorFields() {
   const container = document.getElementById('coverColorList');
   container.innerHTML = '';
@@ -575,8 +797,23 @@ function buildColorFields() {
     container.appendChild(row);
   });
 }
+function syncColorInputs() {
+  const teal = document.getElementById('tealColorInput'), bg = document.getElementById('bgColorInput');
+  if (document.activeElement !== teal) teal.value = s.tealColor;
+  if (document.activeElement !== bg) bg.value = s.bgColor;
+}
 document.getElementById('tealColorInput').addEventListener('input', (e) => { s.tealColor = e.target.value; render(); });
 document.getElementById('bgColorInput').addEventListener('input', (e) => { s.bgColor = e.target.value; render(); });
+
+// ---- 안내선 추가 ----
+document.getElementById('addGuideH').addEventListener('click', () => {
+  s.customGuides.push({ id: 'g' + Date.now() + Math.floor(Math.random() * 1000), axis: 'h', pos: Math.round(s.screenHeight / 2) });
+  render();
+});
+document.getElementById('addGuideV').addEventListener('click', () => {
+  s.customGuides.push({ id: 'g' + Date.now() + Math.floor(Math.random() * 1000), axis: 'v', pos: Math.round(s.screenWidth / 2) });
+  render();
+});
 
 // ---- screen-size presets (saved to localStorage) ----
 function loadSavedPresets() {
@@ -626,7 +863,7 @@ document.getElementById('savePresetBtn').addEventListener('click', () => {
 });
 
 function updateCode() {
-  const c = `object Screen {
+  let c = `object Screen {
     val topMargin = ${s.topMargin}.dp
     val bottomMargin = ${s.bottomMargin}.dp
     val titleSp = ${s.titleSp}.sp
@@ -666,6 +903,35 @@ ${s.coverColors.map(c => '    Color(0xFF' + c.replace('#', '').toUpperCase() + '
 // ---- 화면 문구(참고 — Dimens.kt가 아니라 각 화면 Kotlin 파일의 Text(...) 문자열을 바꿔야 함) ----
 // 탭 태그라인: ${JSON.stringify(s.texts).replace(/,/g, ', ')}
 `;
+
+  const btnLines = Object.entries(s.buttons)
+    .filter(([, st]) => st.dx || st.dy || st.color)
+    .map(([id, st]) => `// ${id}: dx=${st.dx}px, dy=${st.dy}px${st.color ? ', color=' + st.color : ''}`);
+  if (btnLines.length) {
+    c += `
+// ---- 버튼 위치/색상 조정(참고 — Compose는 절대좌표가 아니라 Row/Column 흐름이라, dx/dy는
+//      "기본 위치에서 이만큼 옮기고 싶다"는 지시로 해석해서 spacing/order/padding을 조정해야 함) ----
+${btnLines.join('\n')}
+`;
+  }
+
+  const textLines = Object.entries(s.textStyle)
+    .filter(([, st]) => st.font || st.color)
+    .map(([key, st]) => `// ${key}: ${st.font ? 'font=' + st.font + ' ' : ''}${st.color ? 'color=' + st.color : ''}`.trim());
+  if (textLines.length) {
+    c += `
+// ---- 글자별 개별 폰트/색상(참고) ----
+${textLines.join('\n')}
+`;
+  }
+
+  if (s.customGuides.length) {
+    c += `
+// ---- 사용자 추가 안내선(참고 — 이름 없는 임시 측정선) ----
+${s.customGuides.map((g, i) => `// ${g.axis === 'h' ? '가로' : '세로'} 안내선 ${i + 1}: ${Math.round(g.pos)}px (${g.axis === 'h' ? 'top' : 'left'} 기준)`).join('\n')}
+`;
+  }
+
   document.getElementById('codeOut').value = c;
 }
 
@@ -675,8 +941,7 @@ document.querySelectorAll('.tabs button').forEach(btn => {
     document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     tab = btn.dataset.tab;
-    document.getElementById('homeFieldset').style.display = tab === 'home' ? '' : 'none';
-    document.getElementById('diaryFieldset').style.display = tab === 'diary' ? '' : 'none';
+    selected = null;
     render();
   });
 });
@@ -692,17 +957,13 @@ document.getElementById('copyBtn').addEventListener('click', () => {
 });
 document.getElementById('resetBtn').addEventListener('click', () => {
   s = deepClone(DEFAULTS);
+  selected = null;
   document.getElementById('widthInput').value = s.screenWidth;
   document.getElementById('heightInput').value = s.screenHeight;
-  document.getElementById('tealColorInput').value = s.tealColor;
-  document.getElementById('bgColorInput').value = s.bgColor;
   buildColorFields();
   render();
 });
 
-buildFieldInputs(document.getElementById('commonFields'), COMMON_FIELDS);
-buildFieldInputs(document.getElementById('homeFields'), HOME_FIELDS);
-buildFieldInputs(document.getElementById('diaryFields'), DIARY_FIELDS);
 buildColorFields();
 renderPresetList();
 render();
