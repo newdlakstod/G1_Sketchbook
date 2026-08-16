@@ -37,7 +37,15 @@
   .field-row input[type=range] { width: 100%; }
   fieldset { border: 1px solid #ddd; border-radius: 8px; margin: 0 0 14px; padding: 10px; }
   legend { font-size: 12px; font-weight: 700; color: #008484; padding: 0 4px; }
-  #widthInput { width: 70px; }
+  #widthInput, #heightInput { width: 70px; }
+  .preset { font-size: 10px; padding: 4px 6px; border: 1px solid #ccc; background: #f5f5f0; border-radius: 4px; cursor: pointer; }
+  .preset:hover { background: #e6f4f4; border-color: #008484; }
+  .font-handle {
+    display: inline-block; margin-left: 5px; padding: 0 4px; font-size: 9px; line-height: 14px;
+    background: #008484; color: #fff; border-radius: 3px; cursor: ew-resize; vertical-align: middle;
+    user-select: none; -webkit-user-select: none;
+  }
+  .font-handle:hover, .font-handle.dragging { background: #005f5f; }
   #codeOut {
     width: 100%; height: 260px; font-family: 'Consolas', monospace; font-size: 11px;
     padding: 8px; border: 1px solid #ccc; border-radius: 6px; white-space: pre; overflow: auto;
@@ -111,10 +119,29 @@
     (이 도구 자체가 앱을 직접 수정하진 않습니다.)
   </div>
 
-  <div class="field-row">
-    <label>화면 폭(dp) <span id="widthVal">360</span></label>
-    <input id="widthInput" type="number" value="360" min="280" max="500" step="1" />
-  </div>
+  <fieldset>
+    <legend>캔버스(기기 화면) 크기</legend>
+    <div class="field-row">
+      <label>폭(dp)</label>
+      <input id="widthInput" type="number" value="360" min="200" max="900" step="1" />
+    </div>
+    <div class="field-row">
+      <label>높이(dp)</label>
+      <input id="heightInput" type="number" value="740" min="400" max="1400" step="1" />
+    </div>
+    <div class="hint" style="margin-bottom:6px;">
+      정확한 값은 기기를 PC에 연결하고 <code>adb shell wm size</code> / <code>wm density</code>로
+      확인한 뒤 여기 그대로 입력하세요(px÷dpi×160=dp).
+    </div>
+    <div class="hint" style="margin-bottom:6px; color:#a33;">
+      아래는 일반적인 폰 화면 예시일 뿐 폴드8 실측값이 아닙니다 — adb로 잰 값을 직접 입력하는 게 정확합니다.
+    </div>
+    <div class="preset-row" style="display:flex;gap:4px;flex-wrap:wrap;">
+      <button type="button" class="preset" data-w="360" data-h="740">360×740</button>
+      <button type="button" class="preset" data-w="393" data-h="851">393×851</button>
+      <button type="button" class="preset" data-w="412" data-h="915">412×915</button>
+    </div>
+  </fieldset>
 
   <div class="tabs">
     <button data-tab="home" class="active">Home</button>
@@ -159,7 +186,8 @@ const DEFAULTS = {
   carouselCenterW: 182, carouselCenterH: 275, carouselSideW: 145, carouselSideH: 218,
   coverTitleCenterSp: 14, coverDateCenterSp: 12, coverTitleSideSp: 12, coverDateSideSp: 10,
   yearMonthSp: 78, calTopTitleGap: 16, calTitleGap: 24,
-  screenWidth: 360,
+  wordmarkSp: 20,
+  screenWidth: 360, screenHeight: 740,
 };
 let s = Object.assign({}, DEFAULTS);
 let tab = 'home';
@@ -232,13 +260,26 @@ function buildHandleV(x, onDrag) {
   dragHorizontal(h, (dx) => onDrag(dx));
 }
 
+/** Small "Aa" tag appended after a text element — drag it sideways to resize that text's font
+ *  size directly (PPT 텍스트 상자 크기 조절과 비슷한 느낌), instead of only using the side-panel
+ *  number input. 3px of drag ≈ 1sp so it doesn't feel too twitchy. */
+function attachFontHandle(textEl, key, min, max) {
+  const handle = document.createElement('span');
+  handle.className = 'font-handle';
+  handle.textContent = 'Aa';
+  handle.title = key + ' 드래그로 크기 조절';
+  textEl.appendChild(handle);
+  handle.addEventListener('pointerdown', (e) => e.stopPropagation());
+  dragHorizontal(handle, (dx) => { s[key] = clamp(s[key] + dx / 3, min, max); });
+}
+
 // ---- main render ----
 function render() {
-  s.screenWidth = clamp(parseInt(document.getElementById('widthInput').value) || 360, 280, 500);
-  document.getElementById('widthVal').textContent = s.screenWidth;
+  s.screenWidth = clamp(parseInt(document.getElementById('widthInput').value) || 360, 200, 900);
+  s.screenHeight = clamp(parseInt(document.getElementById('heightInput').value) || 740, 400, 1400);
 
   const navBarHeight = s.navBarPadding * 2 + 24 + 3 + 12; // icon + gap + label line, approx
-  const height = Math.round(s.screenWidth * 2.05); // 대략적인 세로 비율(참고용, 스크롤 가능)
+  const height = s.screenHeight;
 
   frame.style.width = s.screenWidth + 'px';
   frame.style.height = height + 'px';
@@ -253,7 +294,8 @@ function render() {
   const header = el('header-row header-row', null, { top: y + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px', height: '28px' });
   header.className = 'header-row';
   const avatar = el('avatar-dot'); avatar.className = 'avatar-dot';
-  const word = el('wordmark'); word.className = 'wordmark'; word.textContent = 'daymory'; word.style.fontSize = '18px';
+  const word = el('wordmark'); word.className = 'wordmark'; word.textContent = 'daymory'; word.style.fontSize = s.wordmarkSp + 'px';
+  attachFontHandle(word, 'wordmarkSp', 10, 40);
   const spacer = el(null); spacer.style.width = '24px';
   header.appendChild(avatar); header.appendChild(word); header.appendChild(spacer);
   frame.appendChild(header);
@@ -267,7 +309,8 @@ function render() {
   const tagline = el('tagline'); tagline.className = 'tagline';
   tagline.style.top = y + 'px';
   tagline.style.fontSize = (s.titleSp * 0.55) + 'px'; // 화면 표시용 축소 비율(참고치, 실제 sp 아님)
-  tagline.textContent = TAGLINE[tab];
+  tagline.textContent = TAGLINE[tab] + ' ';
+  attachFontHandle(tagline, 'titleSp', 20, 100);
   frame.appendChild(tagline);
   y += Math.round(s.titleSp * 0.6);
 
@@ -370,6 +413,10 @@ function drawCover(x, y, w, h, colorIdx, alpha, kind) {
   const date = document.createElement('div'); date.className = 'date';
   date.textContent = '2026.08.16';
   date.style.fontSize = (kind === 'center' ? s.coverDateCenterSp : s.coverDateSideSp) + 'px';
+  if (kind === 'center') {
+    attachFontHandle(title, 'coverTitleCenterSp', 8, 30);
+    attachFontHandle(date, 'coverDateCenterSp', 6, 24);
+  }
   card.appendChild(title); card.appendChild(date);
   frame.appendChild(card);
   return card;
@@ -389,6 +436,7 @@ function renderDiaryBody(top, bottom) {
   ym.style.fontSize = (s.yearMonthSp * 0.55) + 'px';
   ym.style.color = '#20201c';
   ym.style.marginTop = (s.calTopTitleGap) + 'px';
+  attachFontHandle(ym, 'yearMonthSp', 30, 120);
   box.appendChild(ym);
   frame.appendChild(box);
 
@@ -426,6 +474,7 @@ const COMMON_FIELDS = [
   ['topMargin', 'topMargin (dp)'], ['titleGap', 'titleGap (dp)'], ['titleSp', 'titleSp (sp)'],
   ['contentGap', 'contentGap (dp)'], ['sideMargin', 'sideMargin (dp)'], ['bottomMargin', 'bottomMargin (dp)'],
   ['navItemSize', 'navItemSize (dp)'], ['navBarPadding', 'navBarPadding (dp)'],
+  ['wordmarkSp', 'wordmark "daymory" (sp)'],
 ];
 const HOME_FIELDS = [
   ['carouselCenterW', '가운데 W (dp)'], ['carouselCenterH', '가운데 H (dp)'],
@@ -468,6 +517,8 @@ function updateCode() {
     val navItemSize = ${s.navItemSize}.dp
     val navBarPadding = ${s.navBarPadding}.dp
 }
+// TabHeader의 "daymory" 워드마크는 아직 Dimens.kt에 없고 MainScreen.kt에 20.sp로 하드코딩돼
+// 있음 — 이 값(${s.wordmarkSp}sp)으로 바꾸려면 Dimens.Screen.wordmarkSp를 새로 추가해야 함.
 
 object Home {
     val carouselCenterW = ${s.carouselCenterW}.dp
@@ -500,6 +551,14 @@ document.querySelectorAll('.tabs button').forEach(btn => {
   });
 });
 document.getElementById('widthInput').addEventListener('input', render);
+document.getElementById('heightInput').addEventListener('input', render);
+document.querySelectorAll('.preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.getElementById('widthInput').value = btn.dataset.w;
+    document.getElementById('heightInput').value = btn.dataset.h;
+    render();
+  });
+});
 document.getElementById('copyBtn').addEventListener('click', () => {
   const out = document.getElementById('codeOut');
   out.select();
@@ -511,6 +570,7 @@ document.getElementById('copyBtn').addEventListener('click', () => {
 document.getElementById('resetBtn').addEventListener('click', () => {
   s = Object.assign({}, DEFAULTS);
   document.getElementById('widthInput').value = s.screenWidth;
+  document.getElementById('heightInput').value = s.screenHeight;
   render();
 });
 
