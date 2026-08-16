@@ -367,6 +367,10 @@
   로딩/오류 유무와 관계없이 daymory·오리·부제·버튼 좌표가 동일하다. `OnboardingTitle`은
   `titleSp` 입력값을 먼저 적용하고 화면 폭을 넘을 때만 55% 한도까지 축소한다. Loading/Error
   Preview도 각각 분리했다.
+- **온보딩 라이트·다크 전체 반전** (2026-08-17): 온보딩 배경을 MainScreen과 동일한
+  `colorScheme.background`로 통일하고, 제목·부제·오리 tint·로딩·버튼 배경은
+  `onBackground`, 버튼 글자는 `background`를 사용하도록 변경했다. 기존 세이지 전용 팔레트는
+  제거했고 오류 문구는 테마 `error`를 유지한다. 라이트/다크 Splash·Login Preview 추가.
 
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.

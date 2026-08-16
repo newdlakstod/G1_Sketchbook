@@ -35,7 +35,17 @@ private fun LoginErrorPreview() = PreviewTheme {
 @Composable
 private fun NicknamePreview() = PreviewTheme { NicknameScreen(onSave = {}) }
 
+@Preview(name = "06 Splash - dark", showBackground = true, widthDp = PREVIEW_WIDTH, heightDp = PREVIEW_HEIGHT)
 @Composable
-private fun PreviewTheme(content: @Composable () -> Unit) {
-    DaymoryTheme(mode = ThemeMode.LIGHT, content = content)
+private fun SplashDarkPreview() = PreviewTheme(mode = ThemeMode.DARK) { SplashScreen(onEnter = {}) }
+
+@Preview(name = "07 Login - dark", showBackground = true, widthDp = PREVIEW_WIDTH, heightDp = PREVIEW_HEIGHT)
+@Composable
+private fun LoginDarkPreview() = PreviewTheme(mode = ThemeMode.DARK) {
+    LoginScreen(busy = false, error = null, onSignIn = {})
+}
+
+@Composable
+private fun PreviewTheme(mode: ThemeMode = ThemeMode.LIGHT, content: @Composable () -> Unit) {
+    DaymoryTheme(mode = mode, content = content)
 }
