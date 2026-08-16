@@ -34,20 +34,16 @@
   .field-row input[type=number] {
     width: 70px; font-size: 12px; padding: 3px 5px; border: 1px solid #ccc; border-radius: 4px;
   }
-  .field-row input[type=range] { width: 100%; }
   fieldset { border: 1px solid #ddd; border-radius: 8px; margin: 0 0 14px; padding: 10px; }
   legend { font-size: 12px; font-weight: 700; color: #008484; padding: 0 4px; }
-  #widthInput, #heightInput { width: 70px; }
+  #widthInput, #heightInput, #presetName { width: 70px; }
   .preset { font-size: 10px; padding: 4px 6px; border: 1px solid #ccc; background: #f5f5f0; border-radius: 4px; cursor: pointer; }
   .preset:hover { background: #e6f4f4; border-color: #008484; }
-  .font-handle {
-    display: inline-block; margin-left: 5px; padding: 0 4px; font-size: 9px; line-height: 14px;
-    background: #008484; color: #fff; border-radius: 3px; cursor: ew-resize; vertical-align: middle;
-    user-select: none; -webkit-user-select: none;
+  .preset-x {
+    margin-left: 3px; color: #a33; font-weight: 700; cursor: pointer;
   }
-  .font-handle:hover, .font-handle.dragging { background: #005f5f; }
   #codeOut {
-    width: 100%; height: 260px; font-family: 'Consolas', monospace; font-size: 11px;
+    width: 100%; height: 220px; font-family: 'Consolas', monospace; font-size: 11px;
     padding: 8px; border: 1px solid #ccc; border-radius: 6px; white-space: pre; overflow: auto;
     background: #1e1e1e; color: #d4d4d4;
   }
@@ -58,18 +54,18 @@
   #copyBtn { background: #008484; color: #fff; }
   #resetBtn { background: #eee; color: #333; }
 
+  .color-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 12px; }
+  .color-row input[type=color] { width: 34px; height: 24px; border: 1px solid #ccc; border-radius: 4px; padding: 0; cursor: pointer; }
+
   /* ---- right: stage ---- */
   #stage { flex: 1; overflow: auto; display: flex; align-items: flex-start; justify-content: center; padding: 40px; }
   #frame {
-    position: relative; background: #f5f1e6; border: 1px solid #999; box-shadow: 0 8px 30px rgba(0,0,0,.25);
+    position: relative; border: 1px solid #999; box-shadow: 0 8px 30px rgba(0,0,0,.25);
     overflow: hidden; flex-shrink: 0;
   }
 
-  .guide { position: absolute; left: 0; right: 0; border-top: 1px dashed #e0433f; pointer-events: none; }
-  .guide .tag {
-    position: absolute; right: 4px; top: -16px; background: #e0433f; color: #fff; font-size: 9px;
-    padding: 1px 4px; border-radius: 3px; pointer-events: none;
-  }
+  .guide-h { position: absolute; left: 0; right: 0; border-top: 1px dashed #e0433f; pointer-events: none; }
+  .guide-v { position: absolute; top: 0; bottom: 0; border-left: 1px dashed #e0433f; pointer-events: none; }
   .handle-h {
     position: absolute; left: 0; right: 0; height: 10px; margin-top: -5px; cursor: ns-resize; z-index: 20;
   }
@@ -83,22 +79,42 @@
     border-radius: 50%; cursor: nwse-resize; z-index: 30; box-shadow: 0 1px 3px rgba(0,0,0,.4);
   }
 
+  /* 드래그 손잡이 옆에 붙는, 숫자를 직접 타이핑할 수 있는 작은 입력칸(가로 여백용) */
+  .tag-input {
+    position: absolute; top: -18px; right: 4px; z-index: 25; width: 46px; font-size: 9px;
+    background: #e0433f; color: #fff; border: none; border-radius: 3px; padding: 1px 3px;
+    text-align: right; font-family: inherit;
+  }
+  .tag-input.vertical { top: 4px; left: 4px; right: auto; writing-mode: horizontal-tb; }
+  .tag-input::placeholder { color: #ffd; }
+
+  /* 폰트 크기 전용 — 값 옆 작은 뱃지, 클릭해서 타이핑 */
+  .size-badge {
+    display: inline-block; width: 34px; margin-left: 5px; padding: 0 3px; font-size: 9px; line-height: 14px;
+    background: #008484; color: #fff; border: none; border-radius: 3px; vertical-align: middle;
+    font-family: 'Pretendard', sans-serif; text-align: center;
+  }
+
   .region-label {
     position: absolute; left: 4px; font-size: 9px; color: #e0433f; background: #fff; padding: 0 3px;
     border-radius: 3px; pointer-events: none; z-index: 15;
   }
 
+  /* 직접 편집 가능한 텍스트(문구) 요소 공통 표시 — 점선 밑줄로 "클릭해서 수정 가능"임을 암시 */
+  [contenteditable="true"] { outline: none; cursor: text; border-bottom: 1px dashed transparent; }
+  [contenteditable="true"]:hover, [contenteditable="true"]:focus { border-bottom-color: currentColor; }
+
   .header-row { position: absolute; left: 0; right: 0; display: flex; align-items: center; }
   .avatar-dot { width: 24px; height: 24px; border-radius: 50%; background: #ddd; flex-shrink: 0; }
-  .wordmark { font-family: 'BodoniMTBlack'; color: #008484; text-align: center; flex: 1; }
-  .tagline { position: absolute; left: 0; right: 0; text-align: center; font-family: 'Cavorting'; color: #008484; }
+  .wordmark { font-family: 'BodoniMTBlack'; text-align: center; flex: 1; }
+  .tagline { position: absolute; left: 0; right: 0; text-align: center; font-family: 'Cavorting'; }
 
-  .navbar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; background: #f5f1e6; border-top: 1px solid #ddd; }
+  .navbar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; border-top: 1px solid #ddd; }
   .navitem { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .navitem .ic { width: 20px; height: 20px; border-radius: 4px; background: #999; }
   .navitem.active .ic { background: #008484; }
   .navitem span { font-size: 9px; color: #999; margin-top: 3px; }
-  .navitem.active span { color: #008484; font-weight: 700; }
+  .navitem.active span { font-weight: 700; }
 
   .cover-card {
     position: absolute; border-radius: 4px 14px 14px 4px; display: flex; flex-direction: column;
@@ -114,9 +130,9 @@
 <div id="panel">
   <h1>daymory 목업 도구</h1>
   <div class="hint">
-    빨간 점선 손잡이를 드래그해서 여백/크기를 조정하세요. 왼쪽 아래 코드 상자에 Dimens.kt 형식으로
-    실시간 반영됩니다 — 마음에 들면 "복사"한 뒤 Claude한테 "이 값으로 적용해줘"라고 붙여넣으면 됩니다.
-    (이 도구 자체가 앱을 직접 수정하진 않습니다.)
+    빨간 점선 손잡이를 드래그하거나, 옆에 붙은 빨간/초록 숫자칸을 클릭해서 직접 타이핑해도 됩니다.
+    텍스트(문구)는 화면에서 직접 클릭해서 바로 고칠 수 있어요. 왼쪽 아래 코드 상자를 "복사"한 뒤
+    Claude한테 "이 값으로 적용해줘"라고 붙여넣으면 앱에 반영됩니다.
   </div>
 
   <fieldset>
@@ -133,14 +149,24 @@
       정확한 값은 기기를 PC에 연결하고 <code>adb shell wm size</code> / <code>wm density</code>로
       확인한 뒤 여기 그대로 입력하세요(px÷dpi×160=dp).
     </div>
-    <div class="hint" style="margin-bottom:6px; color:#a33;">
-      아래는 일반적인 폰 화면 예시일 뿐 폴드8 실측값이 아닙니다 — adb로 잰 값을 직접 입력하는 게 정확합니다.
+    <div class="field-row" style="display:flex; gap:4px; align-items:center;">
+      <input id="presetName" type="text" placeholder="이름" />
+      <button type="button" id="savePresetBtn" class="preset" style="flex:1;">현재 크기 저장</button>
     </div>
-    <div class="preset-row" style="display:flex;gap:4px;flex-wrap:wrap;">
-      <button type="button" class="preset" data-w="360" data-h="740">360×740</button>
-      <button type="button" class="preset" data-w="393" data-h="851">393×851</button>
-      <button type="button" class="preset" data-w="412" data-h="915">412×915</button>
+    <div id="presetList" class="preset-row" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>색상</legend>
+    <div class="color-row">
+      <span>브랜드 틸 (daymory 텍스트)</span>
+      <input id="tealColorInput" type="color" value="#008484" />
     </div>
+    <div class="color-row">
+      <span>배경</span>
+      <input id="bgColorInput" type="color" value="#f5f1e6" />
+    </div>
+    <div id="coverColorList"></div>
   </fieldset>
 
   <div class="tabs">
@@ -188,16 +214,22 @@ const DEFAULTS = {
   yearMonthSp: 78, calTopTitleGap: 16, calTitleGap: 24,
   wordmarkSp: 20,
   screenWidth: 360, screenHeight: 740,
+  tealColor: '#008484', bgColor: '#f5f1e6',
+  coverColors: ['#F4611E', '#8EC5C4', '#0C5A54', '#EE82AB', '#F9C112', '#DD0404', '#F8EEDD'],
+  texts: {
+    home: 'Draw your time', list: 'Sketchbook list', share: 'Draw together',
+    diary: 'A piece of today', other: 'Setting',
+    wordmark: 'daymory', coverTitle: 'Title', coverDate: '2026.08.16', calYearMonth: '2026.01',
+  },
 };
-let s = Object.assign({}, DEFAULTS);
+function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
+let s = deepClone(DEFAULTS);
 let tab = 'home';
-const TAGLINE = { home: 'Draw your time', list: 'Sketchbook list', share: 'Draw together',
-                  diary: 'A piece of today', other: 'Setting' };
 const NAV = [
   { label: 'Home', key: 'home' }, { label: 'List', key: 'list' }, { label: 'share', key: 'share' },
   { label: 'Diary', key: 'diary' }, { label: 'Other', key: 'other' },
 ];
-const COVER_COLORS = ['#F4611E', '#8EC5C4', '#0C5A54', '#EE82AB', '#F9C112', '#DD0404', '#F8EEDD'];
+const PRESET_STORE_KEY = 'daymory_mockup_screen_presets';
 
 const frame = document.getElementById('frame');
 
@@ -245,32 +277,63 @@ function el(tag, cls, style) {
   return e;
 }
 
-function buildHandleH(y, label, onDrag) {
-  const h = el('div', 'handle-h', { top: y + 'px' });
-  const guide = el('div', 'guide', { top: y + 'px' });
-  const tagEl = el('div', 'tag'); tagEl.textContent = label; guide.appendChild(tagEl);
-  frame.appendChild(guide); frame.appendChild(h);
-  let startVal;
-  h.addEventListener('pointerdown', () => { startVal = null; });
-  dragVertical(h, (dy) => onDrag(dy));
-}
-function buildHandleV(x, onDrag) {
-  const h = el('div', 'handle-v', { left: x + 'px' });
-  frame.appendChild(h);
-  dragHorizontal(h, (dx) => onDrag(dx));
+/** 숫자를 직접 타이핑할 수 있는 작은 입력칸 — 드래그 손잡이 옆에 붙는다. */
+function makeTagInput(key, unit, min, max, vertical) {
+  const input = document.createElement('input');
+  input.className = 'tag-input' + (vertical ? ' vertical' : '');
+  input.type = 'number';
+  input.value = Math.round(s[key] * 10) / 10;
+  input.title = key + ' (' + unit + ') — 직접 입력';
+  input.addEventListener('pointerdown', (e) => e.stopPropagation());
+  input.addEventListener('input', () => {
+    const v = parseFloat(input.value);
+    if (!isNaN(v)) s[key] = clamp(v, min, max);
+  });
+  input.addEventListener('blur', render);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { render(); input.blur(); } });
+  return input;
 }
 
-/** Small "Aa" tag appended after a text element — drag it sideways to resize that text's font
- *  size directly (PPT 텍스트 상자 크기 조절과 비슷한 느낌), instead of only using the side-panel
- *  number input. 3px of drag ≈ 1sp so it doesn't feel too twitchy. */
-function attachFontHandle(textEl, key, min, max) {
-  const handle = document.createElement('span');
-  handle.className = 'font-handle';
-  handle.textContent = 'Aa';
-  handle.title = key + ' 드래그로 크기 조절';
-  textEl.appendChild(handle);
-  handle.addEventListener('pointerdown', (e) => e.stopPropagation());
-  dragHorizontal(handle, (dx) => { s[key] = clamp(s[key] + dx / 3, min, max); });
+function buildHandleH(y, key, unit, min, max, onDrag) {
+  const h = el('div', 'handle-h', { top: y + 'px' });
+  const guide = el('div', 'guide-h', { top: y + 'px' });
+  guide.appendChild(makeTagInput(key, unit, min, max, false));
+  frame.appendChild(guide); frame.appendChild(h);
+  dragVertical(h, onDrag);
+}
+function buildHandleV(x, key, unit, min, max, onDrag) {
+  const h = el('div', 'handle-v', { left: x + 'px' });
+  const guide = el('div', 'guide-v', { left: x + 'px' });
+  guide.appendChild(makeTagInput(key, unit, min, max, true));
+  frame.appendChild(guide); frame.appendChild(h);
+  dragHorizontal(h, onDrag);
+}
+
+/** 폰트 크기 옆에 붙는 작은 숫자 입력칸 — 드래그 대신 클릭해서 타이핑. */
+function attachSizeBadge(textEl, key, min, max) {
+  const badge = document.createElement('input');
+  badge.className = 'size-badge';
+  badge.type = 'number';
+  badge.value = Math.round(s[key] * 10) / 10;
+  badge.addEventListener('pointerdown', (e) => e.stopPropagation());
+  badge.addEventListener('click', (e) => e.stopPropagation());
+  badge.addEventListener('input', () => {
+    const v = parseFloat(badge.value);
+    if (!isNaN(v)) s[key] = clamp(v, min, max);
+  });
+  badge.addEventListener('blur', render);
+  badge.addEventListener('keydown', (e) => { if (e.key === 'Enter') { render(); badge.blur(); } });
+  textEl.appendChild(badge);
+}
+
+/** 화면에 보이는 문구를 클릭해서 직접 고칠 수 있게 만든다 — s.texts[key]에 저장, 굳이 매
+ *  키입력마다 전체 render()를 다시 하지 않아서(포커스/커서 유지) 타이핑이 끊기지 않는다. */
+function makeEditableText(node, textKey) {
+  node.contentEditable = 'true';
+  node.spellcheck = false;
+  node.textContent = s.texts[textKey];
+  node.addEventListener('input', () => { s.texts[textKey] = node.textContent; });
+  node.addEventListener('pointerdown', (e) => e.stopPropagation());
 }
 
 // ---- main render ----
@@ -283,48 +346,43 @@ function render() {
 
   frame.style.width = s.screenWidth + 'px';
   frame.style.height = height + 'px';
+  frame.style.background = s.bgColor;
   frame.innerHTML = '';
 
   let y = 0;
   // top margin
-  buildHandleH(s.topMargin, 'topMargin ' + s.topMargin + 'dp', (dy) => { s.topMargin = clamp(s.topMargin + dy, 0, 200); });
+  buildHandleH(s.topMargin, 'topMargin', 'dp', 0, 200, (dy) => { s.topMargin = clamp(s.topMargin + dy, 0, 200); });
   y = s.topMargin;
 
   // header row
-  const header = el('header-row header-row', null, { top: y + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px', height: '28px' });
-  header.className = 'header-row';
-  const avatar = el('avatar-dot'); avatar.className = 'avatar-dot';
-  const word = el('wordmark'); word.className = 'wordmark'; word.textContent = 'daymory'; word.style.fontSize = s.wordmarkSp + 'px';
-  attachFontHandle(word, 'wordmarkSp', 10, 40);
-  const spacer = el(null); spacer.style.width = '24px';
+  const header = el(null, 'header-row', { top: y + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px', height: '28px' });
+  const avatar = el(null, 'avatar-dot');
+  const word = el(null, 'wordmark', { fontSize: s.wordmarkSp + 'px', color: s.tealColor });
+  makeEditableText(word, 'wordmark');
+  attachSizeBadge(word, 'wordmarkSp', 10, 40);
+  const spacer = el(null, null, { width: '24px' });
   header.appendChild(avatar); header.appendChild(word); header.appendChild(spacer);
   frame.appendChild(header);
   y += 28;
 
   // titleGap
-  buildHandleH(y + s.titleGap, 'titleGap ' + s.titleGap + 'dp', (dy) => { s.titleGap = clamp(s.titleGap + dy, 0, 150); });
+  buildHandleH(y + s.titleGap, 'titleGap', 'dp', 0, 150, (dy) => { s.titleGap = clamp(s.titleGap + dy, 0, 150); });
   y += s.titleGap;
 
   // tagline
-  const tagline = el('tagline'); tagline.className = 'tagline';
-  tagline.style.top = y + 'px';
-  tagline.style.fontSize = s.titleSp + 'px'; // 1sp = 1px (margin/dp와 동일 축척 — 실제 화면과 비례 일치)
-  tagline.textContent = TAGLINE[tab] + ' ';
-  attachFontHandle(tagline, 'titleSp', 20, 100);
+  const tagline = el(null, 'tagline', { top: y + 'px', fontSize: s.titleSp + 'px', color: s.tealColor });
+  makeEditableText(tagline, tab);
+  attachSizeBadge(tagline, 'titleSp', 20, 100);
   frame.appendChild(tagline);
   y += tagline.offsetHeight; // 실제 렌더된 줄 높이를 그대로 씀(임의 배율 추정 대신)
 
   // contentGap
-  buildHandleH(y + s.contentGap, 'contentGap ' + s.contentGap + 'dp', (dy) => { s.contentGap = clamp(s.contentGap + dy, 0, 200); });
+  buildHandleH(y + s.contentGap, 'contentGap', 'dp', 0, 200, (dy) => { s.contentGap = clamp(s.contentGap + dy, 0, 200); });
   y += s.contentGap;
 
-  // side margins
-  buildHandleV(s.sideMargin, (dx) => { s.sideMargin = clamp(s.sideMargin + dx, 0, 100); });
-  buildHandleV(s.screenWidth - s.sideMargin, (dx) => { s.sideMargin = clamp(s.sideMargin - dx, 0, 100); });
-  const leftLbl = el('region-label'); leftLbl.className = 'region-label';
-  leftLbl.textContent = 'sideMargin ' + s.sideMargin + 'dp';
-  leftLbl.style.top = (y + 4) + 'px'; leftLbl.style.left = '4px';
-  frame.appendChild(leftLbl);
+  // side margins (양쪽 다 세로 안내선 + 입력칸)
+  buildHandleV(s.sideMargin, 'sideMargin', 'dp', 0, 100, (dx) => { s.sideMargin = clamp(s.sideMargin + dx, 0, 100); });
+  buildHandleV(s.screenWidth - s.sideMargin, 'sideMargin', 'dp', 0, 100, (dx) => { s.sideMargin = clamp(s.sideMargin - dx, 0, 100); });
 
   // body content per tab
   const bodyTop = y;
@@ -338,30 +396,31 @@ function render() {
   }
 
   // bottom margin handle (above nav bar)
-  buildHandleH(height - s.bottomMargin - navBarHeight, 'bottomMargin ' + s.bottomMargin + 'dp', (dy) => {
+  buildHandleH(height - s.bottomMargin - navBarHeight, 'bottomMargin', 'dp', 0, 150, (dy) => {
     s.bottomMargin = clamp(s.bottomMargin - dy, 0, 150);
   });
 
   // nav bar
-  const navbar = el('navbar'); navbar.className = 'navbar';
-  navbar.style.height = navBarHeight + 'px';
-  navbar.style.paddingTop = s.navBarPadding + 'px';
-  navbar.style.paddingBottom = s.navBarPadding + 'px';
+  const navbar = el(null, 'navbar', {
+    height: navBarHeight + 'px', paddingTop: s.navBarPadding + 'px', paddingBottom: s.navBarPadding + 'px',
+    background: s.bgColor,
+  });
   NAV.forEach(n => {
-    const item = el('navitem'); item.className = 'navitem' + (n.key === tab ? ' active' : '');
-    const ic = el('ic'); ic.className = 'ic';
+    const item = el(null, 'navitem' + (n.key === tab ? ' active' : ''));
+    if (n.key === tab) item.style.color = s.tealColor;
+    const ic = el(null, 'ic');
+    if (n.key === tab) ic.style.background = s.tealColor;
     const label = document.createElement('span'); label.textContent = n.label;
+    if (n.key === tab) label.style.color = s.tealColor;
     item.appendChild(ic); item.appendChild(label);
     navbar.appendChild(item);
   });
   frame.appendChild(navbar);
-  const navHandle = el('handle-h', null, { top: (height - navBarHeight) + 'px' });
-  navHandle.className = 'handle-h';
-  frame.appendChild(navHandle);
-  dragVertical(navHandle, (dy) => { s.navBarPadding = clamp(s.navBarPadding - Math.round(dy / 2), 0, 40); });
-  const navLbl = el('region-label'); navLbl.className = 'region-label';
-  navLbl.textContent = 'navBar total ' + navBarHeight + 'dp (padding ' + s.navBarPadding + 'dp)';
-  navLbl.style.top = (height - navBarHeight - 14) + 'px'; navLbl.style.left = '4px';
+  buildHandleH(height - navBarHeight, 'navBarPadding', 'dp', 0, 40, (dy) => {
+    s.navBarPadding = clamp(s.navBarPadding - Math.round(dy / 2), 0, 40);
+  });
+  const navLbl = el(null, 'region-label', { top: (height - navBarHeight - 14) + 'px', left: '4px' });
+  navLbl.textContent = 'navBar 총 ' + navBarHeight + 'dp';
   frame.appendChild(navLbl);
 
   syncFieldInputs();
@@ -373,19 +432,16 @@ function renderHomeCarousel(top, bottom) {
   const cy = top + areaH / 2;
   const cx = s.screenWidth / 2;
 
-  // side card (left, peek)
   drawCover(cx - s.carouselCenterW / 2 - 20 - s.carouselSideW / 2, cy - s.carouselSideH / 2,
     s.carouselSideW, s.carouselSideH, 1, 0.5, 'side');
-  // side card (right, peek)
   drawCover(cx + s.carouselCenterW / 2 + 20 - s.carouselSideW / 2, cy - s.carouselSideH / 2,
     s.carouselSideW, s.carouselSideH, 2, 0.5, 'side');
-  // center card (resizable)
-  const centerBox = drawCover(cx - s.carouselCenterW / 2, cy - s.carouselCenterH / 2,
+  drawCover(cx - s.carouselCenterW / 2, cy - s.carouselCenterH / 2,
     s.carouselCenterW, s.carouselCenterH, 0, 1, 'center');
 
-  const corner = el('handle-corner'); corner.className = 'handle-corner';
-  corner.style.left = (cx + s.carouselCenterW / 2 - 7) + 'px';
-  corner.style.top = (cy + s.carouselCenterH / 2 - 7) + 'px';
+  const corner = el(null, 'handle-corner', {
+    left: (cx + s.carouselCenterW / 2 - 7) + 'px', top: (cy + s.carouselCenterH / 2 - 7) + 'px',
+  });
   frame.appendChild(corner);
   corner.addEventListener('pointerdown', (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -401,21 +457,21 @@ function renderHomeCarousel(top, bottom) {
 }
 
 function drawCover(x, y, w, h, colorIdx, alpha, kind) {
-  const card = el('cover-card'); card.className = 'cover-card';
-  card.style.left = x + 'px'; card.style.top = y + 'px'; card.style.width = w + 'px'; card.style.height = h + 'px';
-  card.style.opacity = alpha;
-  const swatch = el('swatch'); swatch.className = 'swatch';
-  swatch.style.background = COVER_COLORS[colorIdx % COVER_COLORS.length];
+  const card = el(null, 'cover-card', { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', opacity: alpha });
+  const swatch = el(null, 'swatch', { background: s.coverColors[colorIdx % s.coverColors.length] });
   card.appendChild(swatch);
   const title = document.createElement('div'); title.className = 'title';
-  title.textContent = 'Title';
   title.style.fontSize = (kind === 'center' ? s.coverTitleCenterSp : s.coverTitleSideSp) + 'px';
   const date = document.createElement('div'); date.className = 'date';
-  date.textContent = '2026.08.16';
   date.style.fontSize = (kind === 'center' ? s.coverDateCenterSp : s.coverDateSideSp) + 'px';
   if (kind === 'center') {
-    attachFontHandle(title, 'coverTitleCenterSp', 8, 30);
-    attachFontHandle(date, 'coverDateCenterSp', 6, 24);
+    makeEditableText(title, 'coverTitle');
+    makeEditableText(date, 'coverDate');
+    attachSizeBadge(title, 'coverTitleCenterSp', 8, 30);
+    attachSizeBadge(date, 'coverDateCenterSp', 6, 24);
+  } else {
+    title.textContent = s.texts.coverTitle;
+    date.textContent = s.texts.coverDate;
   }
   card.appendChild(title); card.appendChild(date);
   frame.appendChild(card);
@@ -425,26 +481,24 @@ function drawCover(x, y, w, h, colorIdx, alpha, kind) {
 function renderDiaryBody(top, bottom) {
   const box = el(null, null, { position: 'absolute', top: top + 'px', left: s.sideMargin + 'px',
     right: s.sideMargin + 'px', textAlign: 'center' });
-  const ymHandle = el('handle-h', null, { top: (top + s.calTopTitleGap) + 'px' });
-  ymHandle.className = 'handle-h';
-  frame.appendChild(ymHandle);
-  dragVertical(ymHandle, (dy) => { s.calTopTitleGap = clamp(s.calTopTitleGap + dy, 0, 80); });
+  buildHandleH(top + s.calTopTitleGap, 'calTopTitleGap', 'dp', 0, 80, (dy) => {
+    s.calTopTitleGap = clamp(s.calTopTitleGap + dy, 0, 80);
+  });
 
   const ym = document.createElement('div');
-  ym.textContent = '2026.01';
   ym.style.fontFamily = 'Cavorting';
   ym.style.fontSize = s.yearMonthSp + 'px'; // 1sp = 1px (margin/dp와 동일 축척)
-  ym.style.color = '#20201c';
+  ym.style.color = s.tealColor;
   ym.style.marginTop = (s.calTopTitleGap) + 'px';
-  attachFontHandle(ym, 'yearMonthSp', 30, 120);
+  makeEditableText(ym, 'calYearMonth');
+  attachSizeBadge(ym, 'yearMonthSp', 30, 120);
   box.appendChild(ym);
   frame.appendChild(box);
   const ymBottom = top + s.calTopTitleGap + ym.offsetHeight; // 실제 렌더된 줄 높이 사용
 
-  const lbl = el('region-label'); lbl.className = 'region-label';
-  lbl.textContent = 'yearMonthSp ' + s.yearMonthSp + 'sp';
-  lbl.style.top = (top + s.calTopTitleGap - 14) + 'px'; lbl.style.left = '4px';
-  frame.appendChild(lbl);
+  buildHandleH(ymBottom + s.calTitleGap, 'calTitleGap', 'dp', 0, 80, (dy) => {
+    s.calTitleGap = clamp(s.calTitleGap + dy, 0, 80);
+  });
 
   const grid = el(null, null, {
     position: 'absolute', top: (ymBottom + s.calTitleGap) + 'px',
@@ -463,14 +517,14 @@ function renderGenericGrid(top, bottom) {
     gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', alignContent: 'start',
   });
   for (let i = 0; i < 6; i++) {
-    const cell = el(null, null, { aspectRatio: (182 / 275), background: COVER_COLORS[i % COVER_COLORS.length],
+    const cell = el(null, null, { aspectRatio: (182 / 275), background: s.coverColors[i % s.coverColors.length],
       borderRadius: '4px 10px 10px 4px' });
     grid.appendChild(cell);
   }
   frame.appendChild(grid);
 }
 
-// ---- side panel fields (number inputs mirroring drag state, for fine-tuning) ----
+// ---- side panel numeric fields (mirror the same state, for fine-tuning without hunting on canvas) ----
 const COMMON_FIELDS = [
   ['topMargin', 'topMargin (dp)'], ['titleGap', 'titleGap (dp)'], ['titleSp', 'titleSp (sp)'],
   ['contentGap', 'contentGap (dp)'], ['sideMargin', 'sideMargin (dp)'], ['bottomMargin', 'bottomMargin (dp)'],
@@ -490,7 +544,7 @@ const DIARY_FIELDS = [
 function buildFieldInputs(container, fields) {
   container.innerHTML = '';
   fields.forEach(([key, label]) => {
-    const row = el('field-row'); row.className = 'field-row';
+    const row = el(null, 'field-row');
     const l = document.createElement('label');
     const span = document.createElement('span'); span.textContent = label;
     const input = document.createElement('input');
@@ -506,6 +560,70 @@ function syncFieldInputs() {
     if (document.activeElement !== inp) inp.value = s[inp.dataset.key];
   });
 }
+
+// ---- color pickers ----
+function buildColorFields() {
+  const container = document.getElementById('coverColorList');
+  container.innerHTML = '';
+  s.coverColors.forEach((c, i) => {
+    const row = el(null, 'color-row');
+    const label = document.createElement('span'); label.textContent = '표지 색상 ' + (i + 1);
+    const input = document.createElement('input');
+    input.type = 'color'; input.value = c;
+    input.addEventListener('input', () => { s.coverColors[i] = input.value; render(); });
+    row.appendChild(label); row.appendChild(input);
+    container.appendChild(row);
+  });
+}
+document.getElementById('tealColorInput').addEventListener('input', (e) => { s.tealColor = e.target.value; render(); });
+document.getElementById('bgColorInput').addEventListener('input', (e) => { s.bgColor = e.target.value; render(); });
+
+// ---- screen-size presets (saved to localStorage) ----
+function loadSavedPresets() {
+  try { return JSON.parse(localStorage.getItem(PRESET_STORE_KEY) || '[]'); } catch (e) { return []; }
+}
+function saveSavedPresets(list) { localStorage.setItem(PRESET_STORE_KEY, JSON.stringify(list)); }
+function renderPresetList() {
+  const container = document.getElementById('presetList');
+  container.innerHTML = '';
+  const generic = [['360×740', 360, 740], ['393×851', 393, 851], ['412×915', 412, 915]];
+  generic.forEach(([label, w, h]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'preset'; btn.textContent = label;
+    btn.addEventListener('click', () => {
+      document.getElementById('widthInput').value = w;
+      document.getElementById('heightInput').value = h;
+      render();
+    });
+    container.appendChild(btn);
+  });
+  loadSavedPresets().forEach((p, i) => {
+    const wrap = document.createElement('span');
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'preset'; btn.textContent = p.name + ' ' + p.w + '×' + p.h;
+    btn.addEventListener('click', () => {
+      document.getElementById('widthInput').value = p.w;
+      document.getElementById('heightInput').value = p.h;
+      render();
+    });
+    const del = document.createElement('span');
+    del.className = 'preset-x'; del.textContent = '×'; del.title = '삭제';
+    del.addEventListener('click', () => {
+      const list = loadSavedPresets(); list.splice(i, 1); saveSavedPresets(list); renderPresetList();
+    });
+    wrap.appendChild(btn); wrap.appendChild(del);
+    container.appendChild(wrap);
+  });
+}
+document.getElementById('savePresetBtn').addEventListener('click', () => {
+  const nameInput = document.getElementById('presetName');
+  const name = nameInput.value.trim() || '내 화면';
+  const list = loadSavedPresets();
+  list.push({ name, w: s.screenWidth, h: s.screenHeight });
+  saveSavedPresets(list);
+  nameInput.value = '';
+  renderPresetList();
+});
 
 function updateCode() {
   const c = `object Screen {
@@ -536,7 +654,18 @@ object Calendar {
     val yearMonthSp = ${s.yearMonthSp}.sp
     val topTitleGap = ${s.calTopTitleGap}.dp
     val titleGap = ${s.calTitleGap}.dp
-}`;
+}
+
+// ---- 색상 ----
+val DaymoryTeal = Color(0xFF${s.tealColor.replace('#', '').toUpperCase()})
+// 배경(참고): ${s.bgColor}
+val CoverColors = listOf(
+${s.coverColors.map(c => '    Color(0xFF' + c.replace('#', '').toUpperCase() + '),').join('\n')}
+)
+
+// ---- 화면 문구(참고 — Dimens.kt가 아니라 각 화면 Kotlin 파일의 Text(...) 문자열을 바꿔야 함) ----
+// 탭 태그라인: ${JSON.stringify(s.texts).replace(/,/g, ', ')}
+`;
   document.getElementById('codeOut').value = c;
 }
 
@@ -553,13 +682,6 @@ document.querySelectorAll('.tabs button').forEach(btn => {
 });
 document.getElementById('widthInput').addEventListener('input', render);
 document.getElementById('heightInput').addEventListener('input', render);
-document.querySelectorAll('.preset').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.getElementById('widthInput').value = btn.dataset.w;
-    document.getElementById('heightInput').value = btn.dataset.h;
-    render();
-  });
-});
 document.getElementById('copyBtn').addEventListener('click', () => {
   const out = document.getElementById('codeOut');
   out.select();
@@ -569,15 +691,20 @@ document.getElementById('copyBtn').addEventListener('click', () => {
   });
 });
 document.getElementById('resetBtn').addEventListener('click', () => {
-  s = Object.assign({}, DEFAULTS);
+  s = deepClone(DEFAULTS);
   document.getElementById('widthInput').value = s.screenWidth;
   document.getElementById('heightInput').value = s.screenHeight;
+  document.getElementById('tealColorInput').value = s.tealColor;
+  document.getElementById('bgColorInput').value = s.bgColor;
+  buildColorFields();
   render();
 });
 
 buildFieldInputs(document.getElementById('commonFields'), COMMON_FIELDS);
 buildFieldInputs(document.getElementById('homeFields'), HOME_FIELDS);
 buildFieldInputs(document.getElementById('diaryFields'), DIARY_FIELDS);
+buildColorFields();
+renderPresetList();
 render();
 </script>
 </body>
