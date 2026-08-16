@@ -590,7 +590,7 @@ function render() {
     header.appendChild(avatar);
   }
   const word = el(null, 'wordmark', { fontSize: s.wordmarkSp + 'px' });
-  makeEditableText(word, 'wordmark', "'BodoniMTBlack'", s.tealColor);
+  makeEditableText(word, 'wordmark', "'BodoniMTBlack'", '#000000'); // 실제 코드: MainScreen.kt TabHeader의 daymory는 검정 고정(틸 아님)
   const spacer = el(null, null, { width: '24px' });
   header.appendChild(word); header.appendChild(spacer);
   frame.appendChild(header);
