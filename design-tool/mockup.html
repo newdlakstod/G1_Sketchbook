@@ -114,7 +114,7 @@
   [contenteditable="true"]:hover, [contenteditable="true"]:focus { border-bottom-color: currentColor; }
 
   .header-row { position: absolute; left: 0; right: 0; display: flex; align-items: center; }
-  .avatar-dot { width: 24px; height: 24px; border-radius: 50%; background: #ddd; flex-shrink: 0; }
+  .avatar-dot { width: 32px; height: 32px; border-radius: 50%; background: #ddd; flex-shrink: 0; }
   .wordmark { font-family: 'BodoniMTBlack'; text-align: center; flex: 1; }
   .tagline { position: absolute; left: 0; right: 0; text-align: center; font-family: 'Cavorting'; }
 
@@ -147,6 +147,11 @@
     position: absolute; border: 1px dashed #ccc; border-radius: 8px; display: flex;
     align-items: center; justify-content: center; color: #999; font-size: 10px; text-align: center;
   }
+  /* 아바타/카드/그리드처럼 이미지·글자가 들어있는 "일반 객체"도 버튼과 똑같이 드래그로 옮기고
+     클릭하면 선택된다 — 버튼 전용 스타일과는 별도로 테두리만 공통 적용. */
+  .selectable-obj { cursor: grab; }
+  .selectable-obj:active { cursor: grabbing; }
+  .selectable-obj.selected { outline: 2px solid #2a6fdb; outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -170,6 +175,17 @@
     <div class="guide-btn-row">
       <button type="button" id="addGuideH">가로 안내선 추가</button>
       <button type="button" id="addGuideV">세로 안내선 추가</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>버튼 추가 / 복원</legend>
+    <div class="guide-btn-row">
+      <button type="button" id="addButtonBtn">새 버튼 추가</button>
+    </div>
+    <div id="hiddenButtonWrap" style="display:none;">
+      <div class="hint" style="margin: 8px 0 4px;">숨긴 버튼 (클릭해서 다시 보이기):</div>
+      <div id="hiddenButtonList"></div>
     </div>
   </fieldset>
 
@@ -244,9 +260,13 @@ const DEFAULTS = {
     diary: 'A piece of today', other: 'Setting',
     wordmark: 'daymory', coverTitle: 'Title', coverDate: '2026.08.16', calYearMonth: '2026.01',
   },
-  // 실제 코드에 있는 버튼들의 위치 보정(dx,dy px)과 개별 색상(null=기본값 사용) — id는 아래
-  // drawIconButton() 호출부의 첫 인자와 1:1로 대응.
-  buttons: {},
+  // 화면에 그려지는 "객체"(버튼/아바타/카드/그리드 등) 전부가 공유하는 위치·크기·색상 override.
+  // id는 그 객체를 그리는 함수 호출부(drawIconButton/drawCover/placeCard 등)의 첫 인자와 1:1로
+  // 대응하고, dx/dy/w/h/color가 null·0이면 원래(기본) 값을 그대로 쓴다. removed=true면 그 버튼은
+  // 안 그려진다("삭제"는 실제로는 숨김 — 좌측 "버튼 추가/복원"에서 다시 꺼낼 수 있음).
+  elements: {},
+  // 사용자가 "새 버튼 추가"로 만든, 실제 코드에는 없는 임의의 버튼. {id,x,y,w,h,glyph,label,shape}
+  customButtons: [],
   // 글자별 개별 폰트/색상 override — null이면 원래(기본) 값 사용.
   textStyle: {},
   // 사용자가 "안내선 추가"로 만든 참고용 안내선. {id, axis:'h'|'v', pos}
@@ -271,7 +291,9 @@ const FONT_OPTIONS = [
 const frame = document.getElementById('frame');
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-function btnState(id) { return s.buttons[id] || (s.buttons[id] = { dx: 0, dy: 0, color: null }); }
+function elState(id) {
+  return s.elements[id] || (s.elements[id] = { dx: 0, dy: 0, w: null, h: null, color: null, removed: false });
+}
 function textState(key) { return s.textStyle[key] || (s.textStyle[key] = { color: null, font: null }); }
 
 // ---- generic drag helpers ----
@@ -386,26 +408,78 @@ function buildCustomGuide(g) {
 }
 
 /** 실제 코드에 있는 버튼 하나를 목업에 그린다. id는 저장/코드출력 참조용 고유 키.
- *  x,y는 "기본(자연스러운) 위치"이고 실제 표시 위치는 여기에 버튼별 dx/dy 보정을 더한 값. */
+ *  x,y,w,h는 "기본(자연스러운) 위치·크기"이고 실제 표시값은 여기에 버튼별 dx/dy/w/h 보정을
+ *  더하거나 대신한 값. "삭제"하면 st.removed=true가 되어 다음 렌더부터 안 그려진다(좌측
+ *  "버튼 추가/복원"에서 다시 꺼낼 수 있음 — 완전히 지우는 게 아니라 숨기는 것). */
 function drawIconButton(id, x, y, w, h, glyph, label, shape, filled) {
-  const st = btnState(id);
+  const st = elState(id);
+  st.naturalW = w; st.naturalH = h; st.naturalLabel = label;
+  if (st.removed) return null;
+  const fw = st.w ?? w, fh = st.h ?? h;
   const b = el(null, 'mockup-btn' + (shape === 'pill' ? ' pill' : ''), {
-    left: (x + st.dx) + 'px', top: (y + st.dy) + 'px',
+    left: (x + st.dx) + 'px', top: (y + st.dy) + 'px', width: fw + 'px', height: fh + 'px',
   });
-  if (shape === 'pill') {
-    b.style.width = w + 'px'; b.style.height = h + 'px';
-  } else {
-    b.style.width = w + 'px'; b.style.height = h + 'px'; b.style.borderRadius = '50%';
-  }
+  if (shape !== 'pill') b.style.borderRadius = '50%';
   b.style.background = st.color || (filled ? s.tealColor : '#9a9a92');
   b.textContent = glyph;
   b.title = label + ' — 드래그로 위치 보정, 클릭하면 좌측에 세부 설정';
   frame.appendChild(b);
-  const info = { type: 'button', id, label };
+  const info = { type: 'button', id, label, custom: false };
   attachSelect(b, info);
   if (isSelected(info)) b.classList.add('selected');
   dragFree(b, (dx, dy) => { st.dx += dx; st.dy += dy; });
   return b;
+}
+
+/** 사용자가 "새 버튼 추가"로 만든, 실제 코드에는 없는 임의의 버튼들을 그린다 — 위치/크기/색상
+ *  보정은 실제 버튼과 같은 elState를 쓰고, 글자(glyph)·이름은 cb 자체에 저장(인스펙터에서 수정). */
+function renderCustomButtons() {
+  s.customButtons.forEach(cb => {
+    const st = elState(cb.id);
+    st.naturalW = cb.w; st.naturalH = cb.h; st.naturalLabel = cb.label;
+    if (st.removed) return;
+    const fw = st.w ?? cb.w, fh = st.h ?? cb.h;
+    const b = el(null, 'mockup-btn' + (cb.shape === 'pill' ? ' pill' : ''), {
+      left: (cb.x + st.dx) + 'px', top: (cb.y + st.dy) + 'px', width: fw + 'px', height: fh + 'px',
+    });
+    if (cb.shape !== 'pill') b.style.borderRadius = '50%';
+    b.style.background = st.color || '#555555';
+    b.textContent = cb.glyph;
+    b.title = cb.label + ' — 사용자 추가 버튼';
+    frame.appendChild(b);
+    const info = { type: 'button', id: cb.id, label: cb.label, custom: true };
+    attachSelect(b, info);
+    if (isSelected(info)) b.classList.add('selected');
+    dragFree(b, (dx, dy) => { st.dx += dx; st.dy += dy; });
+  });
+}
+
+/** 아바타/카드/그리드처럼 위치·크기만 조정하면 되는 "일반 객체" 하나를 selectable+draggable로
+ *  만든다 — domEl은 이미 만들어져 style이 다 채워진 상태로 넘어오고, 이 함수는 위치만 elState의
+ *  dx/dy로 보정해서 다시 씌운다(폭/높이는 호출부에서 이미 st.w/st.h를 반영해 만들었다고 가정). */
+function wireObject(domEl, id, label, x, y) {
+  const st = elState(id);
+  domEl.style.left = (x + st.dx) + 'px';
+  domEl.style.top = (y + st.dy) + 'px';
+  domEl.classList.add('selectable-obj');
+  const info = { type: 'object', id, label };
+  attachSelect(domEl, info);
+  if (isSelected(info)) domEl.classList.add('selected');
+  dragFree(domEl, (dx, dy) => { st.dx += dx; st.dy += dy; });
+  return st;
+}
+
+/** Other 탭의 프로필/제스처/정보 카드처럼 "이름표 붙은 점선 상자"를 그리고 wireObject로
+ *  묶는다. 반환된 bottom은 실제 반영된(override 포함) 높이 기준 — 다음 요소의 y를 이어붙일 때 씀. */
+function placeCard(id, label, x, y, w, h) {
+  const st = elState(id);
+  st.naturalW = w; st.naturalH = h;
+  const fw = st.w ?? w, fh = st.h ?? h;
+  const card = el(null, 'placeholder-card', { width: fw + 'px', height: fh + 'px' });
+  card.textContent = label;
+  frame.appendChild(card);
+  wireObject(card, id, label, x, y);
+  return { st, bottom: y + fh };
 }
 
 /** 화면에 보이는 문구를 클릭해서 직접 고칠 수 있게 만든다 — s.texts[key]에 저장, 굳이 매
@@ -447,7 +521,18 @@ function render() {
 
   // header row
   const header = el(null, 'header-row', { top: y + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px', height: '28px' });
-  const avatar = el(null, 'avatar-dot');
+  const avSt = elState('header.avatar');
+  avSt.naturalW = 32; avSt.naturalH = 32;
+  const avSize = avSt.w ?? 32;
+  const avatar = el(null, 'avatar-dot', {
+    width: avSize + 'px', height: avSize + 'px', position: 'relative',
+    left: avSt.dx + 'px', top: avSt.dy + 'px', background: avSt.color || '#ddd',
+  });
+  avatar.classList.add('selectable-obj');
+  const avInfo = { type: 'object', id: 'header.avatar', label: '아바타(헤더)' };
+  attachSelect(avatar, avInfo);
+  if (isSelected(avInfo)) avatar.classList.add('selected');
+  dragFree(avatar, (dx, dy) => { avSt.dx += dx; avSt.dy += dy; });
   const word = el(null, 'wordmark', { fontSize: s.wordmarkSp + 'px' });
   makeEditableText(word, 'wordmark', "'BodoniMTBlack'", s.tealColor);
   const spacer = el(null, null, { width: '24px' });
@@ -517,11 +602,13 @@ function render() {
   navLbl.textContent = 'navBar 총 ' + navBarHeight + 'dp';
   frame.appendChild(navLbl);
 
-  // 사용자가 추가한 안내선
+  // 사용자가 추가한 안내선 + 버튼
   s.customGuides.forEach(buildCustomGuide);
+  renderCustomButtons();
 
   syncColorInputs();
   updateCode();
+  renderHiddenButtonList();
   // 인스펙터의 입력칸에 지금 포커스가 있는 동안은 다시 그리지 않는다(타이핑 중 커서 유지) —
   // 캔버스에서 드래그로 값이 바뀐 경우엔 인스펙터도 최신값으로 갱신되어야 하므로 그 외엔 항상 갱신.
   if (!document.getElementById('inspectorBody').contains(document.activeElement)) {
@@ -558,11 +645,11 @@ function renderHomeCarousel(top, bottom) {
   const cy = carouselTop + areaH / 2;
   const cx = s.screenWidth / 2;
 
-  drawCover(cx - s.carouselCenterW / 2 - 20 - s.carouselSideW / 2, cy - s.carouselSideH / 2,
+  drawCover('home.coverSide1', cx - s.carouselCenterW / 2 - 20 - s.carouselSideW / 2, cy - s.carouselSideH / 2,
     s.carouselSideW, s.carouselSideH, 1, 0.5, 'side');
-  drawCover(cx + s.carouselCenterW / 2 + 20 - s.carouselSideW / 2, cy - s.carouselSideH / 2,
+  drawCover('home.coverSide2', cx + s.carouselCenterW / 2 + 20 - s.carouselSideW / 2, cy - s.carouselSideH / 2,
     s.carouselSideW, s.carouselSideH, 2, 0.5, 'side');
-  drawCover(cx - s.carouselCenterW / 2, cy - s.carouselCenterH / 2,
+  drawCover('home.coverCenter', cx - s.carouselCenterW / 2, cy - s.carouselCenterH / 2,
     s.carouselCenterW, s.carouselCenterH, 0, 1, 'center');
 
   const corner = el(null, 'handle-corner', {
@@ -582,9 +669,12 @@ function renderHomeCarousel(top, bottom) {
   });
 }
 
-function drawCover(x, y, w, h, colorIdx, alpha, kind) {
-  const card = el(null, 'cover-card', { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px', opacity: alpha });
-  const swatch = el(null, 'swatch', { background: s.coverColors[colorIdx % s.coverColors.length] });
+function drawCover(id, x, y, w, h, colorIdx, alpha, kind) {
+  const st = elState(id);
+  st.naturalW = w; st.naturalH = h;
+  const fw = st.w ?? w, fh = st.h ?? h;
+  const card = el(null, 'cover-card', { width: fw + 'px', height: fh + 'px', opacity: alpha });
+  const swatch = el(null, 'swatch', { background: st.color || s.coverColors[colorIdx % s.coverColors.length] });
   card.appendChild(swatch);
   const title = document.createElement('div'); title.className = 'title';
   title.style.fontSize = (kind === 'center' ? s.coverTitleCenterSp : s.coverTitleSideSp) + 'px';
@@ -599,6 +689,8 @@ function drawCover(x, y, w, h, colorIdx, alpha, kind) {
   }
   card.appendChild(title); card.appendChild(date);
   frame.appendChild(card);
+  const label = (kind === 'center' ? '캐러셀 가운데 표지' : '캐러셀 옆 표지') + ' (' + id + ')';
+  wireObject(card, id, label, x, y);
   return card;
 }
 
@@ -611,23 +703,27 @@ function renderListShareBody(top, bottom, shared) {
   drawIconButton('list.menu', s.screenWidth - s.sideMargin - 40, top, 40, 40, '☰', '목록 배열(3/4/5열)', 'circle', false);
 
   const gridTop = top + 40 + 14;
+  const gridSt = elState('list.grid');
+  const naturalCellW = (s.screenWidth - s.sideMargin * 2 - 20) / 3;
+  const naturalCellH = naturalCellW / (182 / 275);
+  gridSt.naturalW = naturalCellW; gridSt.naturalH = naturalCellH;
+  const cellW = gridSt.w ?? naturalCellW, cellH = gridSt.h ?? naturalCellH, gap = 10;
   const grid = el(null, null, {
-    position: 'absolute', top: gridTop + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px',
-    bottom: (frame.offsetHeight - bottom) + 'px', display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', alignContent: 'start',
+    position: 'absolute', display: 'grid',
+    gridTemplateColumns: `repeat(3, ${cellW}px)`, gap: gap + 'px', alignContent: 'start',
+    width: (cellW * 3 + gap * 2) + 'px',
   });
-  const cellW = (s.screenWidth - s.sideMargin * 2 - 20) / 3;
-  const cellH = cellW / (182 / 275);
   for (let i = 0; i < 6; i++) {
-    const cell = el(null, null, { position: 'relative', aspectRatio: (182 / 275),
-      background: s.coverColors[i % s.coverColors.length], borderRadius: '4px 10px 10px 4px' });
+    const cell = el(null, null, { width: cellW + 'px', height: cellH + 'px',
+      background: gridSt.color || s.coverColors[i % s.coverColors.length], borderRadius: '4px 10px 10px 4px' });
     grid.appendChild(cell);
   }
   frame.appendChild(grid);
+  wireObject(grid, 'list.grid', '카드 그리드(카드 크기 · 그리드 위치)', s.sideMargin, gridTop);
   // 카드마다 있는 즐겨찾기★/삭제✕ 아이콘 — 대표로 첫 번째 카드 위치에 그려서 보정할 수 있게 함
   // (모든 카드가 같은 상대 위치를 공유하므로 하나만 옮기면 전체에 적용된다고 보면 됨).
-  drawIconButton('cover.fav', s.sideMargin + 2, gridTop + 2, 24, 24, '★', '즐겨찾기(카드 좌상단)', 'circle', false);
-  drawIconButton('cover.delete', s.sideMargin + cellW - 26, gridTop + 2, 24, 24, '✕', '삭제(카드 우상단)', 'circle', false);
+  drawIconButton('cover.fav', s.sideMargin + gridSt.dx + 2, gridTop + gridSt.dy + 2, 24, 24, '★', '즐겨찾기(카드 좌상단)', 'circle', false);
+  drawIconButton('cover.delete', s.sideMargin + gridSt.dx + cellW - 26, gridTop + gridSt.dy + 2, 24, 24, '✕', '삭제(카드 우상단)', 'circle', false);
 }
 
 function renderDiaryBody(top, bottom) {
@@ -657,14 +753,19 @@ function renderDiaryBody(top, bottom) {
     s.calTitleGap = clamp(s.calTitleGap + dy, 0, 80);
   });
 
+  const boxSt = elState('diary.calendarBox');
+  const naturalTop = ymBottom + s.calTitleGap;
+  const naturalW = s.screenWidth - s.sideMargin * 2;
+  const naturalH = bottom - naturalTop;
+  boxSt.naturalW = naturalW; boxSt.naturalH = naturalH;
   const grid = el(null, null, {
-    position: 'absolute', top: (ymBottom + s.calTitleGap) + 'px',
-    left: s.sideMargin + 'px', right: s.sideMargin + 'px', bottom: (frame.offsetHeight - bottom) + 'px',
+    position: 'absolute', width: (boxSt.w ?? naturalW) + 'px', height: (boxSt.h ?? naturalH) + 'px',
     border: '1px dashed #ccc', display: 'flex', alignItems: 'center', justifyContent: 'center',
     color: '#999', fontSize: '11px',
   });
   grid.textContent = '달력 그리드 영역';
   frame.appendChild(grid);
+  wireObject(grid, 'diary.calendarBox', '달력 그리드 영역', s.sideMargin, naturalTop);
 }
 
 /** Other(설정) 탭 — 프로필 카드(아바타+별명 수정 연필), 테마 3칩, 로그아웃/미리보기 버튼.
@@ -673,26 +774,20 @@ function renderOtherBody(top, bottom) {
   const w = s.screenWidth - s.sideMargin * 2;
   let y = top;
 
-  const profileCard = el(null, 'placeholder-card', { left: s.sideMargin + 'px', top: y + 'px', width: w + 'px', height: '84px' });
-  profileCard.textContent = '프로필 카드 (아바타 · 별명)';
-  frame.appendChild(profileCard);
+  const profile = placeCard('other.profileCard', '프로필 카드 (아바타 · 별명)', s.sideMargin, y, w, 84);
   drawIconButton('other.avatarEdit', s.sideMargin + w - 36, y + 26, 26, 26, '✎', '별명 수정', 'circle', false);
-  y += 84 + 18;
+  y = profile.bottom + 18;
 
   drawIconButton('other.themeSystem', s.sideMargin, y, 60, 30, '시스템', '화면 테마: 시스템', 'pill', true);
   drawIconButton('other.themeLight', s.sideMargin + 66, y, 60, 30, '라이트', '화면 테마: 라이트', 'pill', false);
   drawIconButton('other.themeDark', s.sideMargin + 132, y, 60, 30, '다크', '화면 테마: 다크', 'pill', false);
   y += 30 + 18;
 
-  const gestureCard = el(null, 'placeholder-card', { left: s.sideMargin + 'px', top: y + 'px', width: w + 'px', height: '150px' });
-  gestureCard.textContent = '제스처 카드 (두 손가락 탭 / 세 손가락 탭 / 길게 누르기 — 각 4개 칩)';
-  frame.appendChild(gestureCard);
-  y += 150 + 18;
+  const gesture = placeCard('other.gestureCard', '제스처 카드 (두 손가락 탭 / 세 손가락 탭 / 길게 누르기 — 각 4개 칩)', s.sideMargin, y, w, 150);
+  y = gesture.bottom + 18;
 
-  const infoCard = el(null, 'placeholder-card', { left: s.sideMargin + 'px', top: y + 'px', width: w + 'px', height: '54px' });
-  infoCard.textContent = '정보 카드 (버전 표시)';
-  frame.appendChild(infoCard);
-  y += 54 + 24;
+  const info = placeCard('other.infoCard', '정보 카드 (버전 표시)', s.sideMargin, y, w, 54);
+  y = info.bottom + 24;
 
   drawIconButton('other.devPreview', s.sideMargin, y, w, 44, '폰트 · 사이즈 미리보기', '개발자 미리보기 버튼', 'pill', false);
   y += 44 + 14;
@@ -755,11 +850,44 @@ function renderInspector() {
       s.customGuides = s.customGuides.filter(x => x.id !== g.id); selected = null; render();
     }, true]]));
   } else if (selected.type === 'button') {
-    const st = btnState(selected.id);
+    const st = elState(selected.id);
+    if (selected.custom) {
+      const cb = s.customButtons.find(c => c.id === selected.id);
+      if (cb) {
+        const glyphInput = document.createElement('input'); glyphInput.type = 'text';
+        glyphInput.value = cb.glyph; glyphInput.maxLength = 4; glyphInput.style.width = '100%';
+        glyphInput.addEventListener('input', () => { cb.glyph = glyphInput.value; render(); });
+        box.appendChild(inspRow('표시 글자/기호', glyphInput));
+        const labelInput = document.createElement('input'); labelInput.type = 'text';
+        labelInput.value = cb.label; labelInput.style.width = '100%';
+        labelInput.addEventListener('input', () => { cb.label = labelInput.value; render(); });
+        labelInput.addEventListener('blur', () => renderInspector());
+        box.appendChild(inspRow('이름(설명)', labelInput));
+      }
+    }
     box.appendChild(inspRow('가로 위치 보정 (dx, px)', numberInput(st.dx, -300, 300, (v) => { st.dx = v; render(); })));
     box.appendChild(inspRow('세로 위치 보정 (dy, px)', numberInput(st.dy, -300, 300, (v) => { st.dy = v; render(); })));
+    box.appendChild(inspRow('폭 (w, px)', numberInput(st.w ?? st.naturalW ?? 40, 8, 400, (v) => { st.w = v; render(); })));
+    box.appendChild(inspRow('높이 (h, px)', numberInput(st.h ?? st.naturalH ?? 40, 8, 400, (v) => { st.h = v; render(); })));
     box.appendChild(inspRow('색상', colorInput(st.color || s.tealColor, (v) => { st.color = v; render(); })));
-    box.appendChild(actionButtons([['기본값으로', () => { st.dx = 0; st.dy = 0; st.color = null; render(); }]]));
+    const actions = [['기본값으로', () => { st.dx = 0; st.dy = 0; st.w = null; st.h = null; st.color = null; render(); }]];
+    if (selected.custom) {
+      actions.push(['삭제', () => {
+        s.customButtons = s.customButtons.filter(c => c.id !== selected.id);
+        delete s.elements[selected.id]; selected = null; render();
+      }, true]);
+    } else {
+      actions.push(['숨기기(삭제)', () => { st.removed = true; selected = null; render(); }, true]);
+    }
+    box.appendChild(actionButtons(actions));
+  } else if (selected.type === 'object') {
+    const st = elState(selected.id);
+    box.appendChild(inspRow('가로 위치 보정 (dx, px)', numberInput(st.dx, -300, 300, (v) => { st.dx = v; render(); })));
+    box.appendChild(inspRow('세로 위치 보정 (dy, px)', numberInput(st.dy, -300, 300, (v) => { st.dy = v; render(); })));
+    box.appendChild(inspRow('폭 (w, px)', numberInput(st.w ?? st.naturalW ?? 40, 8, 900, (v) => { st.w = v; render(); })));
+    box.appendChild(inspRow('높이 (h, px)', numberInput(st.h ?? st.naturalH ?? 40, 8, 1400, (v) => { st.h = v; render(); })));
+    box.appendChild(inspRow('색상', colorInput(st.color || '#9a9a92', (v) => { st.color = v; render(); })));
+    box.appendChild(actionButtons([['기본값으로', () => { st.dx = 0; st.dy = 0; st.w = null; st.h = null; st.color = null; render(); }]]));
   } else if (selected.type === 'text') {
     const key = selected.key;
     const st = textState(key);
@@ -814,6 +942,34 @@ document.getElementById('addGuideV').addEventListener('click', () => {
   s.customGuides.push({ id: 'g' + Date.now() + Math.floor(Math.random() * 1000), axis: 'v', pos: Math.round(s.screenWidth / 2) });
   render();
 });
+
+// ---- 버튼 추가 / 숨긴 버튼 복원 ----
+document.getElementById('addButtonBtn').addEventListener('click', () => {
+  const id = 'custom' + Date.now();
+  s.customButtons.push({
+    id, x: Math.round(s.screenWidth / 2 - 20), y: Math.round(s.screenHeight / 2 - 20),
+    w: 40, h: 40, glyph: '★', label: '새 버튼', shape: 'circle',
+  });
+  select({ type: 'button', id, label: '새 버튼', custom: true });
+  render();
+});
+function renderHiddenButtonList() {
+  const wrap = document.getElementById('hiddenButtonWrap');
+  const container = document.getElementById('hiddenButtonList');
+  const hidden = Object.entries(s.elements).filter(([, st]) => st.removed);
+  if (!hidden.length) { wrap.style.display = 'none'; container.innerHTML = ''; return; }
+  wrap.style.display = '';
+  container.innerHTML = '';
+  hidden.forEach(([id, st]) => {
+    const row = el(null, null, { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' });
+    const label = document.createElement('span'); label.style.fontSize = '11px'; label.textContent = st.naturalLabel || id;
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'preset'; btn.textContent = '복원';
+    btn.addEventListener('click', () => { st.removed = false; render(); });
+    row.appendChild(label); row.appendChild(btn);
+    container.appendChild(row);
+  });
+}
 
 // ---- screen-size presets (saved to localStorage) ----
 function loadSavedPresets() {
@@ -904,14 +1060,31 @@ ${s.coverColors.map(c => '    Color(0xFF' + c.replace('#', '').toUpperCase() + '
 // 탭 태그라인: ${JSON.stringify(s.texts).replace(/,/g, ', ')}
 `;
 
-  const btnLines = Object.entries(s.buttons)
-    .filter(([, st]) => st.dx || st.dy || st.color)
-    .map(([id, st]) => `// ${id}: dx=${st.dx}px, dy=${st.dy}px${st.color ? ', color=' + st.color : ''}`);
-  if (btnLines.length) {
+  const elLines = Object.entries(s.elements)
+    .filter(([, st]) => st.dx || st.dy || st.w || st.h || st.color || st.removed)
+    .map(([id, st]) => {
+      const parts = [];
+      if (st.removed) parts.push('숨김(삭제됨)');
+      if (st.dx) parts.push(`dx=${st.dx}px`);
+      if (st.dy) parts.push(`dy=${st.dy}px`);
+      if (st.w) parts.push(`w=${st.w}px`);
+      if (st.h) parts.push(`h=${st.h}px`);
+      if (st.color) parts.push(`color=${st.color}`);
+      return `// ${id}: ${parts.join(', ')}`;
+    });
+  if (elLines.length) {
     c += `
-// ---- 버튼 위치/색상 조정(참고 — Compose는 절대좌표가 아니라 Row/Column 흐름이라, dx/dy는
-//      "기본 위치에서 이만큼 옮기고 싶다"는 지시로 해석해서 spacing/order/padding을 조정해야 함) ----
-${btnLines.join('\n')}
+// ---- 버튼/객체 위치·크기·색상 조정(참고 — Compose는 절대좌표가 아니라 Row/Column 흐름이라,
+//      dx/dy/w/h는 "기본값에서 이만큼 옮기거나 키우고 싶다"는 지시로 해석해서 spacing/size/
+//      padding을 조정해야 함. "숨김"은 그 버튼을 화면에서 빼달라는 뜻) ----
+${elLines.join('\n')}
+`;
+  }
+
+  if (s.customButtons.length) {
+    c += `
+// ---- 사용자가 새로 추가한 버튼(참고 — 실제 코드엔 없던 것, 필요하면 새로 만들어야 함) ----
+${s.customButtons.map(cb => `// "${cb.label}"(${cb.glyph}): x=${Math.round(cb.x)}px, y=${Math.round(cb.y)}px, w=${cb.w}px, h=${cb.h}px`).join('\n')}
 `;
   }
 
