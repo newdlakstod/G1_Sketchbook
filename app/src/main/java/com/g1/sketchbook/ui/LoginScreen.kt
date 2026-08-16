@@ -49,7 +49,7 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth().widthIn(max = Dimens.Onboarding.duckW)
                     .aspectRatio(Dimens.Onboarding.duckW / Dimens.Onboarding.duckH)
                     .padding(vertical = 12.dp),
-                contentDescription = "G1 Sketch 오리",
+                contentDescription = "daymory 오리",
             )
         }
         Text("Draw together, keep the little days", fontFamily = Cavorting, fontSize = Dimens.Onboarding.subtitleSp,
@@ -62,7 +62,7 @@ fun LoginScreen(
                 Modifier.clip(RoundedCornerShape(50)).border(2.dp, Ink, RoundedCornerShape(50)).bounceClick { onSignIn() }
                     .padding(horizontal = 46.dp, vertical = 14.dp),
             ) {
-                Text("continue", color = Ink, fontSize = 16.sp)
+                Text("Google 계정으로 로그인", color = Ink, fontSize = Dimens.Onboarding.ctaSp)
             }
         }
         error?.let {

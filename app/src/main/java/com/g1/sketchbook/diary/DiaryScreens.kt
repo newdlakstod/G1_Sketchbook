@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -65,6 +66,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -169,7 +172,12 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
 /** Slide 2 — calendar tab: huge month title, edit/prev/next, and an airy (borderless) month grid.
  *  Tapping the grid opens the clean full-screen calendar (slides 3/4). */
 @Composable
-fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int) -> Unit) {
+fun DiaryCalendarScreen(
+    avatar: String = "🦆",
+    onOpenDiary: (String) -> Unit,
+    onOpenCalendar: (Int, Int) -> Unit,
+    onGoSettings: () -> Unit = {},
+) {
     val ctx = LocalContext.current
     val repo = remember { DiaryRepository(ctx) }
     val today = remember { repo.today() }
@@ -181,6 +189,8 @@ fun DiaryCalendarScreen(onOpenDiary: (String) -> Unit, onOpenCalendar: (Int, Int
 
     Column(Modifier.fillMaxSize().padding(horizontal = Dimens.Calendar.sideMargin)) {
         Spacer(Modifier.height(Dimens.Calendar.topSpacer))
+        com.g1.sketchbook.ui.main.TabHeader(avatar, onAvatar = onGoSettings)
+        Spacer(Modifier.height(Dimens.Screen.titleGap))
         Text("A piece of today", fontFamily = Cavorting, fontSize = Dimens.Screen.titleSp,
             color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(Dimens.Calendar.topTitleGap))
@@ -358,6 +368,12 @@ private fun CleanDetailBody(repo: DiaryRepository, date: String, modifier: Modif
     val d = parts[2].toInt()
     val cal = remember(date) { Calendar.getInstance().apply { set(parts[0].toInt(), parts[1].toInt() - 1, d) } }
     val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
+    val ctx = LocalContext.current
+    // 보기 전용 확대/축소 — 그림 자체는 수정하지 않으므로 BrushView의 캔버스가 아니라 표준 Compose
+    // 제스처로 충분(1x~5x, 다 축소하면 팬도 원점으로 되돌림).
+    var scale by remember(date) { mutableFloatStateOf(1f) }
+    var offsetX by remember(date) { mutableFloatStateOf(0f) }
+    var offsetY by remember(date) { mutableFloatStateOf(0f) }
     Column(modifier) {
         // Weekday / day aligned to the frame's left / right edges (title comes from the shared header).
         Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -369,8 +385,28 @@ private fun CleanDetailBody(repo: DiaryRepository, date: String, modifier: Modif
         Box(Modifier.weight(1f).fillMaxWidth().padding(4.dp).sketchBorder(MaterialTheme.colorScheme.onSurface),
             contentAlignment = Alignment.Center) {
             if (bmp != null) {
-                Image(bmp.asImageBitmap(), date, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().padding(7.dp).clip(RoundedCornerShape(4.dp)))
+                Image(
+                    bmp.asImageBitmap(), date, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().padding(7.dp).clip(RoundedCornerShape(4.dp))
+                        .pointerInput(date) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                if (scale <= 1f) { offsetX = 0f; offsetY = 0f }
+                                else { offsetX += pan.x; offsetY += pan.y }
+                            }
+                        }
+                        .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offsetX; translationY = offsetY },
+                )
+                IconButton(
+                    onClick = {
+                        val status = saveToGallery(ctx, bmp, "daymory_$date")
+                        Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp).size(40.dp)
+                        .clip(CircleShape).background(Color(0x66000000)),
+                ) {
+                    Icon(Icons.Filled.Save, "갤러리에 저장", tint = Color.White, modifier = Modifier.size(20.dp))
+                }
             } else {
                 Text("이 날의 일기가 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }

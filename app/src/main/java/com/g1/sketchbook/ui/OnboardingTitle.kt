@@ -33,11 +33,10 @@ fun onboardingPalette(): OnboardingPalette {
 }
 
 /**
- * 온보딩(Splash/Login) 공통 "Daily sketch" 타이틀.
+ * 온보딩(Splash/Login) 공통 "daymory" 타이틀.
  *
  * 글자 크기를 [maxFontSize]에 고정하지 않는다 — 화면 폭에 맞는 한도 안에서 가능한 한 크게 잡되,
- * 한 줄로 안 들어가면 줄어들어서라도 한 줄을 우선하고, 그래도 안 들어가는 극단적인 비율에서만
- * "Daily"/"sketch" 두 줄로 나눈다(이때도 줄 간격을 넉넉히 둬서 글자가 서로 겹치지 않게 한다).
+ * 한 단어라 줄바꿈할 지점이 없으므로 안 들어가면 최소 크기까지 계속 줄여서라도 한 줄로 표시한다.
  */
 @Composable
 fun OnboardingTitle(maxFontSize: TextUnit, color: Color, modifier: Modifier = Modifier) {
@@ -47,14 +46,12 @@ fun OnboardingTitle(maxFontSize: TextUnit, color: Color, modifier: Modifier = Mo
         val maxWidthPx = constraints.maxWidth
         var fs = maxFontSize
         while (fs > minFontSize &&
-            measurer.measure(AnnotatedString("Daily sketch"), TextStyle(fontFamily = Cavorting, fontSize = fs)).size.width > maxWidthPx
+            measurer.measure(AnnotatedString("daymory"), TextStyle(fontFamily = Cavorting, fontSize = fs)).size.width > maxWidthPx
         ) {
             fs = (fs.value - 4f).sp
         }
-        val fitsOneLine = measurer.measure(AnnotatedString("Daily sketch"), TextStyle(fontFamily = Cavorting, fontSize = fs)).size.width <= maxWidthPx
-        val text = if (fitsOneLine) "Daily sketch" else "Daily\nsketch"
         Text(
-            text, fontFamily = Cavorting, fontSize = fs, color = color, textAlign = TextAlign.Center,
+            "daymory", fontFamily = Cavorting, fontSize = fs, color = color, textAlign = TextAlign.Center,
             lineHeight = fs * 1.15f, modifier = Modifier.fillMaxWidth(),
         )
     }

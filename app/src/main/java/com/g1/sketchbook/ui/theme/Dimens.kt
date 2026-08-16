@@ -14,22 +14,27 @@ object Dimens {
     /** 탭 화면 공통 — 홈/스케치북 리스트/설정 세 탭이 이 값을 그대로 공유해서 타이틀 위치·크기가 항상 동일함.
      *  (일기달력 탭은 타이틀 자리에 동적인 연도/월이 들어가서 자체 Calendar 그룹 값을 쓰지만, 상하 여백은 같은 값.) */
     object Screen {
-        val topMargin = 63.5.dp     // 탭 타이틀 위 상단 여백
+        val topMargin = 60.dp       // 탭 타이틀 위 상단 여백 (00_탭화면 레이아웃 시안)
         val bottomMargin = 45.dp    // 하단 네비게이션 바 위 여백
-        val titleSp = 78.sp         // 탭 타이틀 글자 크기 (Cavorting, 가운데 정렬)
+        val titleSp = 61.sp         // 탭 타이틀 글자 크기 (Cavorting, 가운데 정렬)
+        val titleGap = 40.dp        // 상단 여백 ~ 타이틀 사이 간격
+        val contentGap = 60.dp      // 타이틀 ~ 본문 사이 간격
+        val sideMargin = 45.dp      // 본문 좌우 여백 (탭 화면 공통)
+        val navItemSize = 60.dp     // 하단 네비게이션 아이템 크기
+        val navBarPadding = 25.dp   // 하단 네비게이션 바 내부 여백
     }
 
     /** 온보딩 (Splash/Login) */
     object Onboarding {
-        val titleSp = 130.sp        // "Daily sketch" 타이틀 — 화면 폭에 맞춰 줄어들 수 있는 최대값(고정 아님)
-        val subtitleSp = 37.sp      // "Draw together, keep the little days" 부제
-        val duckW = 765.dp          // 오리 GIF 비율 고정용 — 실제 크기는 화면 폭에 맞춰 이 비율로 축소됨
-        val duckH = 510.dp
+        val titleSp = 87.sp         // "daymory" 타이틀 — 화면 폭에 맞춰 줄어들 수 있는 최대값(고정 아님)
+        val subtitleSp = 24.sp      // "Draw together, keep the little days" 부제
+        val ctaSp = 21.sp           // "enter" / "Google 계정으로 로그인" 버튼 글자 크기
+        val duckW = 275.dp          // 오리 GIF 비율 고정용 — 실제 크기는 화면 폭에 맞춰 이 비율로 축소됨
+        val duckH = 400.dp
     }
 
     /** 홈 탭 (타이틀 크기·위치는 Screen 공용값 사용) */
     object Home {
-        val titleToIconGap = 68.dp      // 타이틀 ~ 아이콘 행 사이 간격
         val actionIcon = 56.dp          // 새 노트/공유/참여 원형 아이콘 버튼 지름 (명시 안 됨, 추정치)
         val carouselCenterW = 267.5.dp  // 캐러셀 가운데(포커스) 노트 너비
         val carouselCenterH = 402.dp    // 캐러셀 가운데(포커스) 노트 높이
@@ -42,7 +47,7 @@ object Dimens {
     /** 새 스케치북 만들기 화면 (팝업 카드 — 이름/사이즈/배경을 한 화면에서 선택) */
     object Wizard {
         val titleSp = 78.sp
-        val cardWidth = 425.dp      // 카드 최대 너비
+        val cardWidth = 280.dp      // 카드 최대 너비
         val cardRadius = 28.dp      // 카드 모서리 둥글기
     }
 
@@ -50,10 +55,10 @@ object Dimens {
     object Calendar {
         val topSpacer = Screen.topMargin   // 탭 타이틀 위 상단 여백 — 다른 탭과 동일
         val bottomMargin = Screen.bottomMargin  // 하단 네비게이션 바 위 여백 — 다른 탭과 동일
-        val sideMargin = 71.dp      // 좌우 여백
+        val sideMargin = Screen.sideMargin // 좌우 여백 — 다른 탭 화면과 동일 템플릿
         val topTitleGap = 16.dp     // "A piece of today" 탭 타이틀 ~ 연월 사이 간격
         val titleGap = 24.dp        // 연월 타이틀과 달력 그리드 사이 간격
-        val yearMonthSp = 52.sp     // "2026.01" 형식 연월 표기 글자 크기(연도/월 이름 분리 표기 대신 한 줄로 통합)
+        val yearMonthSp = 78.sp     // "2026.01" 형식 연월 표기 글자 크기(연도/월 이름 분리 표기 대신 한 줄로 통합)
         val weekdaySp = 26.sp       // 요일(Sun..Sat) 글자 크기
         val daySp = 21.sp           // 날짜 숫자 크기
         val arrowIconW = 10.dp      // 이전/다음 달 화살표 너비 — Icon 크기가 아니라 직접 그리는 화살표(Canvas)의 크기

@@ -16,7 +16,7 @@ import com.g1.sketchbook.ui.NicknameScreen
 import com.g1.sketchbook.ui.RootViewModel
 import com.g1.sketchbook.ui.SplashScreen
 import com.g1.sketchbook.ui.main.MainScreen
-import com.g1.sketchbook.ui.theme.G1Theme
+import com.g1.sketchbook.ui.theme.DaymoryTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AppRoot(vm: RootViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
-    G1Theme(mode = state.theme) {
+    DaymoryTheme(mode = state.theme) {
         var splash by remember { mutableStateOf(true) }
         when {
             splash -> SplashScreen(onEnter = { splash = false })

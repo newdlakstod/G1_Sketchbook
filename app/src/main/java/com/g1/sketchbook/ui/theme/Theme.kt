@@ -24,6 +24,13 @@ val Grey = Color(0xFF858585)
 val Taupe = Color(0xFFCEC0BB)
 val Ivory = Color(0xFFF6F1E6)   // 밝은 미색 (text on navy, nav icon)
 
+/** 스케치북 표지 색상 팔레트 — 홈 캐러셀과 스케치북 리스트가 공유(예전엔 두 파일에 똑같이 복붙돼
+ *  있었음). 시안 색상을 근사한 값이라 실기기 확인 후 미세 조정이 필요할 수 있음. */
+val CoverColors = listOf(
+    Color(0xFFF4611E), Color(0xFF8EC5C4), Color(0xFF0C5A54), Color(0xFFEE82AB),
+    Color(0xFFF9C112), Color(0xFFDD0404), Color(0xFFF8EEDD),
+)
+
 private val LightColors = lightColorScheme(
     primary = Navy,
     onPrimary = Ivory,
@@ -96,7 +103,7 @@ private val AppTypography = Typography().run {
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 @Composable
-fun G1Theme(
+fun DaymoryTheme(
     mode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit,
 ) {

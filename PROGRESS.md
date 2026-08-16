@@ -297,6 +297,35 @@
   - **대응**: FAR/NEAR 두 조각을 부모-자식 중첩이 아니라 **형제(sibling)** 로 바꿔 각자 `BoxWithConstraints` 안에서 `.align()`으로 독립적으로 배치(자식을 부모 폭 밖으로 밀어내는 트릭 완전히 제거) — 시각적으로는 동일한 결과(FAR가 사라질 때쯤 NEAR가 움직이기 시작해서 이어붙는 지점이 안 보임). 여기에 `Modifier.zIndex(10f)`을 추가해 이 오버레이가 캔버스(AndroidView)보다 항상 위에 그려지도록 명시적으로 고정.
   - 이 변경만으로 100% 확정 원인 해결이라고 장담하긴 어려움 — 실기기 확인 후 여전히 안 보이면 추가로 다른 원인을 찾아야 함.
 
+- **daymory 리브랜딩 + 폰 기준 레이아웃/네비게이션 재설계** (v2.0.0, 2026-08-16): 사용자가 PPT로 만든
+  접은 화면(폰 비율) 시안 세트를 바탕으로 한 대규모 개편. 3~4인 공유 화면 재설계는 이번엔 제외(별도
+  세션으로 미룸), 오리 마스코트는 기존 걷는 GIF 그대로 비율만 조정.
+  1. **리브랜딩**: 앱 이름 "G1 Sketchbook" → **"daymory"** — `strings.xml`(app_name), `themes.xml`
+     (`Theme.G1Sketchbook`→`Theme.Daymory`), `Theme.kt`(`G1Theme`→`DaymoryTheme`), 설정 탭 정보
+     카드, 로그인 화면 콘텐츠 설명, 스플래시/로그인 타이틀("Daily sketch"→"daymory", 단어라
+     2줄 폴백 로직 제거) 전부 갱신. `applicationId`/런처 아이콘은 미변경(리소스 재구성 리스크).
+  2. **`Dimens.kt` 폰 기준 재설정**: `Screen.topMargin` 63.5→60dp, `titleSp` 78→61sp, 신규
+     `titleGap`(40dp)/`contentGap`(60dp)/`sideMargin`(45dp, 화면마다 0/16/20/71dp로 제각각이던
+     좌우 여백 통일)/`navItemSize`(60dp)/`navBarPadding`(25dp) 추가. `Calendar.yearMonthSp`
+     52→78sp(달력 숫자가 이제 탭 타이틀보다 큼), `Calendar.sideMargin`은 `Screen.sideMargin` 참조로
+     변경(일기 탭도 공통 템플릿 적용). `Onboarding.titleSp` 130→87sp, `subtitleSp` 37→24sp,
+     `duckW/H` 765×510→275×400dp, 신규 `ctaSp`(21sp). `Wizard.cardWidth` 425→280dp.
+  2. **네비게이션 5탭 재설계**: 알약형 배경+원형 팝업 아이콘 방식을 버리고 아이콘+라벨 텍스트가
+     있는 평평한 Row로 교체(선택 탭은 `primary` 색상만, 배경/그림자 없음). **"공유" 탭 신설**
+     (Home/List/**share**/Diary/Other) — 새 화면을 만들지 않고 기존 `SketchbookTab`을
+     `initialShowShared=true`로 재사용(위저드·그리드·생성/참여 로직 100% 재사용, 코드 중복 없음).
+  3. **탭 헤더**: 왼쪽 아바타 + 가운데 "daymory" 워드마크(기존에 있었지만 미사용이던 `Pretendard`
+     폰트 재사용, 새 폰트 에셋 불필요) + 오른쪽 화면별 액션 슬롯을 5개 탭 전부에 추가. 기존
+     태그라인/버튼은 그대로 두고 그 위에 추가하는 방식이라 기존 동작 영향 없음.
+  4. **커버 색상 팔레트**: `MainScreen.kt`/`SketchbookScreens.kt`에 중복돼 있던 `CoverColors`를
+     `Theme.kt`의 공유 상수 하나로 합치면서 시안 7색(오렌지/연청록/진청록/핑크/옐로우/레드/크림)으로
+     교체.
+  5. **일기 상세보기**: `CleanDetailBody`의 정적 이미지에 핀치 확대/축소+팬 추가(1x~5x, 그림 자체는
+     안 바뀌는 보기 전용이라 표준 Compose 제스처로 구현, `BrushView` 안 씀). 존재하지만 호출부가
+     없던 `saveToGallery()`를 다운로드 아이콘 버튼에 연결(결과는 Toast로 표시).
+  - 실기기 시각 확인 불가 상태로 진행 — 특히 네비게이션 바 세부 여백, 헤더 오른쪽 아이콘 매핑,
+    커버 색상 근사값은 실기기 확인 후 조정이 필요할 수 있음.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).

@@ -107,6 +107,7 @@ import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.ui.bounceClick
+import com.g1.sketchbook.ui.theme.CoverColors
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -118,11 +119,6 @@ fun bgDrawable(key: String) = when (key) {
     "kraft" -> R.drawable.paper_kraft
     else -> R.drawable.paper_watercolor
 }
-
-private val CoverColors = listOf(
-    Color(0xFF1E2D4C), Color(0xFF6E8266), Color(0xFF9C8C82),
-    Color(0xFF4F6E6A), Color(0xFFB79A94), Color(0xFF7C8A76),
-)
 private val PAPER_KEYS = listOf("a5", "a4", "a3")
 private val DISPLAY_KEYS = listOf("desktop", "mobile", "tablet")
 
@@ -189,8 +185,11 @@ private fun SizeIcon(key: String, color: Color, modifier: Modifier) {
 @Composable
 fun SketchbookTab(
     nickname: String,
+    avatar: String,
     myUid: String,
     onOpenBook: (String) -> Unit,
+    initialShowShared: Boolean = false,
+    onGoSettings: () -> Unit = {},
     openWizardAs: WType? = null,
     onWizardOpened: () -> Unit = {},
 ) {
@@ -214,6 +213,11 @@ fun SketchbookTab(
     }
     SketchbookListScreen(
         books = books,
+        avatar = avatar,
+        initialShowShared = initialShowShared,
+        onGoSettings = onGoSettings,
+        onNewShared = { wizardType = WType.SHARED_NEW; creating = true },
+        onJoinShared = { wizardType = WType.SHARED_JOIN; creating = true },
         onOpen = { onOpenBook(it.id) },
         onDelete = { repo.delete(it.id); refresh++ },
         onToggleFav = { repo.toggleFav(it.id); refresh++ },
@@ -404,6 +408,11 @@ private fun WizardChoice(icon: ImageVector, title: String, onClick: () -> Unit) 
 @Composable
 private fun SketchbookListScreen(
     books: List<Sketchbook>,
+    avatar: String = "🦆",
+    initialShowShared: Boolean = false,
+    onGoSettings: () -> Unit = {},
+    onNewShared: () -> Unit = {},
+    onJoinShared: () -> Unit = {},
     onOpen: (Sketchbook) -> Unit,
     onDelete: (Sketchbook) -> Unit,
     onToggleFav: (Sketchbook) -> Unit,
@@ -411,7 +420,7 @@ private fun SketchbookListScreen(
     val context = LocalContext.current
     val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var pendingDelete by remember { mutableStateOf<Sketchbook?>(null) }
-    var showShared by remember { mutableStateOf(false) }
+    var showShared by remember { mutableStateOf(initialShowShared) }
     var columns by remember { mutableIntStateOf(session.gridColumns) }
     var columnMenuOpen by remember { mutableStateOf(false) }
     Scaffold(
@@ -421,9 +430,18 @@ private fun SketchbookListScreen(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()
-            .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, start = 16.dp, end = 16.dp)) {
-            Text("Sketchbook list", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
-                color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin,
+                start = Dimens.Screen.sideMargin, end = Dimens.Screen.sideMargin)) {
+            com.g1.sketchbook.ui.main.TabHeader(avatar, onAvatar = onGoSettings) {
+                if (showShared) {
+                    IconButton(onClick = onNewShared) { Icon(Icons.Filled.Groups, "공유 스케치북 만들기") }
+                    IconButton(onClick = onJoinShared) { Icon(Icons.AutoMirrored.Filled.Login, "공유 스케치북 참여") }
+                }
+            }
+            Spacer(Modifier.height(Dimens.Screen.titleGap))
+            Text(if (showShared) "Draw together" else "Sketchbook list", fontFamily = com.g1.sketchbook.ui.theme.Cavorting,
+                fontSize = Dimens.Screen.titleSp, color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

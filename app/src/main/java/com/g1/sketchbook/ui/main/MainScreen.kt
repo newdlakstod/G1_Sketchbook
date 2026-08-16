@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -17,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -50,7 +51,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -81,14 +81,10 @@ import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.ui.theme.Cavorting
+import com.g1.sketchbook.ui.theme.CoverColors
 import com.g1.sketchbook.ui.theme.Dimens
 import com.g1.sketchbook.ui.theme.Pretendard
 import com.g1.sketchbook.ui.theme.ThemeMode
-
-private val CoverColors = listOf(
-    Color(0xFF1E2D4C), Color(0xFF6E8266), Color(0xFF9C8C82),
-    Color(0xFF4F6E6A), Color(0xFFB79A94), Color(0xFF7C8A76),
-)
 
 @Composable
 fun MainScreen(
@@ -114,12 +110,17 @@ fun MainScreen(
             0 -> HomeTab(
                 nickname, avatar, onOpenBook, onGoSketchbooks = { onTab(1) },
                 onNewBook = { pendingWizardType = com.g1.sketchbook.sketchbook.WType.PERSONAL; onTab(1) },
-                onNewShared = { pendingWizardType = com.g1.sketchbook.sketchbook.WType.SHARED_NEW; onTab(1) },
-                onJoinShared = { pendingWizardType = com.g1.sketchbook.sketchbook.WType.SHARED_JOIN; onTab(1) },
+                onNewShared = { pendingWizardType = com.g1.sketchbook.sketchbook.WType.SHARED_NEW; onTab(2) },
+                onJoinShared = { pendingWizardType = com.g1.sketchbook.sketchbook.WType.SHARED_JOIN; onTab(2) },
+                onGoSettings = { onTab(4) },
             )
-            1 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, myUid, onOpenBook,
+            1 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, avatar, myUid, onOpenBook,
+                onGoSettings = { onTab(4) },
                 openWizardAs = pendingWizardType, onWizardOpened = { pendingWizardType = null })
-            2 -> com.g1.sketchbook.diary.DiaryCalendarScreen(onOpenDiary, onOpenCalendar)
+            2 -> com.g1.sketchbook.sketchbook.SketchbookTab(nickname, avatar, myUid, onOpenBook,
+                initialShowShared = true, onGoSettings = { onTab(4) },
+                openWizardAs = pendingWizardType, onWizardOpened = { pendingWizardType = null })
+            3 -> com.g1.sketchbook.diary.DiaryCalendarScreen(avatar, onOpenDiary, onOpenCalendar, onGoSettings = { onTab(4) })
             else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
         }
     }
@@ -139,81 +140,70 @@ fun MainScreen(
     }
 }
 
-/** Landscape side rail; mirrors the floating bottom bar — selected item pops out to the right. */
+private val NavIcons = listOf(Icons.Filled.Home, Icons.Filled.Book, Icons.Filled.Groups, Icons.Filled.CalendarMonth, Icons.Filled.Settings)
+private val NavLabels = listOf("Home", "List", "share", "Diary", "Other")
+private val NavDescs = listOf("홈", "스케치북", "공유", "일기", "설정")
+
+/** Landscape side rail; mirrors the flat bottom bar — icon+label stacked, colour-only selection. */
 @Composable
 private fun SideNavRail(tab: Int, onTab: (Int) -> Unit) {
-    val icons = listOf(Icons.Filled.Home, Icons.Filled.Book, Icons.Filled.CalendarMonth, Icons.Filled.Settings)
-    val descs = listOf("홈", "스케치북", "일기", "설정")
-    Box(Modifier.fillMaxHeight().systemBarsPadding().padding(start = 12.dp), contentAlignment = Alignment.CenterStart) {
-        Box(Modifier.height(288.dp).width(86.dp)) {
-            Surface(
-                shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp,
-                modifier = Modifier.align(Alignment.CenterStart).fillMaxHeight().width(60.dp),
-            ) {}
+    Column(
+        Modifier.fillMaxHeight().systemBarsPadding().padding(vertical = Dimens.Screen.navBarPadding).width(Dimens.Screen.navItemSize + 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        NavIcons.forEachIndexed { i, icon ->
+            val selected = i == tab
+            val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             Column(
-                Modifier.align(Alignment.CenterStart).fillMaxHeight().width(60.dp),
+                Modifier.width(Dimens.Screen.navItemSize).bounceClick { onTab(i) },
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceEvenly,
             ) {
-                icons.forEachIndexed { i, icon ->
-                    val selected = i == tab
-                    Box(Modifier.weight(1f).fillMaxWidth().bounceClick { onTab(i) }, contentAlignment = Alignment.Center) {
-                        if (selected) {
-                            Surface(
-                                shape = CircleShape, color = MaterialTheme.colorScheme.primary, shadowElevation = 8.dp,
-                                modifier = Modifier.size(56.dp).offset(x = 18.dp),
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(icon, descs[i], tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(27.dp))
-                                }
-                            }
-                        } else {
-                            Icon(icon, descs[i], tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(26.dp))
-                        }
-                    }
-                }
+                Icon(icon, NavDescs[i], tint = tint, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.height(3.dp))
+                Text(NavLabels[i], color = tint, fontFamily = Pretendard, fontSize = 10.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
             }
         }
     }
 }
 
-/** Floating pill nav bar; the selected item rises into a white circle (icons only, no labels). */
+/** Flat bottom nav bar — icon + label per tab, no pill/background; the active tab is coloured. */
 @Composable
 private fun FloatingNavBar(tab: Int, onTab: (Int) -> Unit) {
-    val icons = listOf(Icons.Filled.Home, Icons.Filled.Book, Icons.Filled.CalendarMonth, Icons.Filled.Settings)
-    val descs = listOf("홈", "스케치북", "일기", "설정")
-    Box(
-        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp)
-            .padding(bottom = Dimens.Screen.bottomMargin).height(86.dp),
+    Row(
+        Modifier.fillMaxWidth().navigationBarsPadding()
+            .padding(horizontal = Dimens.Screen.sideMargin, vertical = Dimens.Screen.navBarPadding)
+            .padding(bottom = Dimens.Screen.bottomMargin),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Surface(
-            shape = RoundedCornerShape(34.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp,
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(62.dp),
-        ) {}
-        Row(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(62.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            icons.forEachIndexed { i, icon ->
-                val selected = i == tab
-                Box(Modifier.weight(1f).fillMaxHeight().bounceClick { onTab(i) }, contentAlignment = Alignment.Center) {
-                    if (selected) {
-                        Surface(
-                            shape = CircleShape, color = MaterialTheme.colorScheme.primary, shadowElevation = 8.dp,
-                            modifier = Modifier.size(58.dp).offset(y = (-18).dp),
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(icon, descs[i], tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(28.dp))
-                            }
-                        }
-                    } else {
-                        Icon(icon, descs[i], tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(26.dp))
-                    }
-                }
+        NavIcons.forEachIndexed { i, icon ->
+            val selected = i == tab
+            val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            Column(
+                Modifier.width(Dimens.Screen.navItemSize).bounceClick { onTab(i) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(icon, NavDescs[i], tint = tint, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.height(3.dp))
+                Text(NavLabels[i], color = tint, fontFamily = Pretendard, fontSize = 10.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
             }
         }
+    }
+}
+
+/** 탭 공통 상단 헤더 — 왼쪽 아바타, 가운데 "daymory" 워드마크(Pretendard Bold), 오른쪽은 화면별
+ *  액션 슬롯(비어있어도 무방). 5개 탭 모두 이 헤더를 공유하고, 그 아래 각자의 태그라인이 이어진다.
+ *  좌우 여백은 호출부의 Column이 이미 Dimens.Screen.sideMargin으로 잡아준다고 가정(중복 방지). */
+@Composable
+fun TabHeader(avatar: String, onAvatar: () -> Unit, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
+    Box(modifier.fillMaxWidth()) {
+        Box(Modifier.align(Alignment.CenterStart).size(32.dp).bounceClick(onClick = onAvatar)) { Avatar(avatar, 32.dp) }
+        Text("daymory", fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 20.sp,
+            color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.align(Alignment.Center))
+        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp), content = actions)
     }
 }
 
@@ -226,14 +216,18 @@ private fun HomeTab(
     onNewBook: () -> Unit,
     onNewShared: () -> Unit,
     onJoinShared: () -> Unit,
+    onGoSettings: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val repo = remember { SketchbookRepository(ctx) }
     val books = remember { repo.list() }
-    Column(Modifier.fillMaxSize().padding(top = Dimens.Screen.topMargin)) {
+    Column(Modifier.fillMaxSize()
+        .padding(top = Dimens.Screen.topMargin, start = Dimens.Screen.sideMargin, end = Dimens.Screen.sideMargin)) {
+        TabHeader(avatar, onAvatar = onGoSettings)
+        Spacer(Modifier.height(Dimens.Screen.titleGap))
         Text("Draw your time", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
             color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(Dimens.Home.titleToIconGap))
+        Spacer(Modifier.height(Dimens.Screen.contentGap))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             HomeActionIcon(Icons.Filled.Add, "새 노트 추가", onNewBook)
             Spacer(Modifier.width(14.dp))
@@ -337,10 +331,13 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
     var gesture3Tap by remember { mutableStateOf(session.threeFingerTapAction) }
     var gestureLongPress by remember { mutableStateOf(session.longPressAction) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-        .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, start = 20.dp, end = 20.dp)) {
+        .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin,
+            start = Dimens.Screen.sideMargin, end = Dimens.Screen.sideMargin)) {
+        TabHeader(avatar, onAvatar = { avatarEditing = true })
+        Spacer(Modifier.height(Dimens.Screen.titleGap))
         Text("Setting", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
             color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(Dimens.Screen.contentGap))
         SettingLabel("프로필")
         Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
@@ -389,7 +386,7 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
                 Text("🦆", fontSize = 28.sp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("G1 Sketchbook", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text("daymory", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     Text("아날로그 감성 스케치북", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text("v${com.g1.sketchbook.BuildConfig.VERSION_NAME}", fontSize = 12.sp,

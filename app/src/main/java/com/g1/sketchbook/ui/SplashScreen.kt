@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.ui.theme.Cavorting
 import com.g1.sketchbook.ui.theme.Dimens
 
@@ -51,7 +50,7 @@ fun SplashScreen(onEnter: () -> Unit) {
             Modifier.clip(RoundedCornerShape(50)).border(2.dp, Ink, RoundedCornerShape(50)).bounceClick(onClick = onEnter)
                 .padding(horizontal = 46.dp, vertical = 14.dp),
         ) {
-            Text("enter", color = Ink, fontSize = 16.sp)
+            Text("enter", color = Ink, fontSize = Dimens.Onboarding.ctaSp)
         }
         Spacer(Modifier.height(24.dp))
     }
