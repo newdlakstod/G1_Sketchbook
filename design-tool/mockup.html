@@ -120,8 +120,8 @@
 
   .navbar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; border-top: 1px solid #ddd; }
   .navitem { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  .navitem .ic { width: 20px; height: 20px; border-radius: 4px; background: #999; }
-  .navitem.active .ic { background: #008484; }
+  .navitem .ic { width: 20px; height: 20px; color: #999; display: flex; align-items: center; justify-content: center; }
+  .navitem.active .ic { color: #008484; }
   .navitem span { font-size: 9px; color: #999; margin-top: 3px; }
   .navitem.active span { font-weight: 700; }
 
@@ -277,8 +277,9 @@ let s = deepClone(DEFAULTS);
 let tab = 'home';
 let selected = null; // { type: 'guide'|'guide-custom'|'button'|'text', ... }
 const NAV = [
-  { label: 'Home', key: 'home' }, { label: 'List', key: 'list' }, { label: 'share', key: 'share' },
-  { label: 'Diary', key: 'diary' }, { label: 'Other', key: 'other' },
+  { label: 'Home', key: 'home', icon: 'home' }, { label: 'List', key: 'list', icon: 'book' },
+  { label: 'share', key: 'share', icon: 'groups' }, { label: 'Diary', key: 'diary', icon: 'calendar' },
+  { label: 'Other', key: 'other', icon: 'settings' },
 ];
 const PRESET_STORE_KEY = 'daymory_mockup_screen_presets';
 const FONT_OPTIONS = [
@@ -356,6 +357,45 @@ function el(tag, cls, style) {
   return e;
 }
 
+// ---- 실제 코드의 Material 아이콘과 형태를 맞춘 간단한 SVG 아이콘(테두리/외형 위주로, 정사각형
+// 와이어프레임 대신 실제와 같은 모양으로 보이게). currentColor를 써서 버튼의 글자색을 그대로 물려받는다.
+const ICONS = {
+  home: '<polygon points="12,2.5 22,10.5 22,21.5 14.5,21.5 14.5,14 9.5,14 9.5,21.5 2,21.5 2,10.5" fill="currentColor"/>',
+  book: '<rect x="4" y="3" width="16" height="18" rx="2" fill="currentColor"/><rect x="11" y="3" width="2" height="18" fill="#00000033"/>',
+  groups: '<circle cx="8.5" cy="8.5" r="3.4" fill="currentColor"/><circle cx="16" cy="9.3" r="2.9" fill="currentColor" opacity="0.75"/>'
+    + '<path d="M2 20.5c0-4 2.9-6.6 6.5-6.6s6.5 2.6 6.5 6.6" fill="currentColor"/>'
+    + '<path d="M14.7 14.2c2.7.5 4.8 2.6 4.8 6.3" fill="currentColor" opacity="0.75"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>'
+    + '<line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/>'
+    + '<line x1="7.5" y1="2.5" x2="7.5" y2="6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+    + '<line x1="16.5" y1="2.5" x2="16.5" y2="6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  settings: '<circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2.2"/>'
+    + '<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="2.6 3.4"/>',
+  add: '<line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>'
+    + '<line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>',
+  share: '<circle cx="18" cy="6" r="2.4" fill="currentColor"/><circle cx="6" cy="12" r="2.4" fill="currentColor"/><circle cx="18" cy="18" r="2.4" fill="currentColor"/>'
+    + '<line x1="8.1" y1="10.7" x2="15.9" y2="7.3" stroke="currentColor" stroke-width="1.6"/>'
+    + '<line x1="8.1" y1="13.3" x2="15.9" y2="16.7" stroke="currentColor" stroke-width="1.6"/>',
+  login: '<rect x="13.5" y="4" width="6.5" height="16" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.8"/>'
+    + '<line x1="3" y1="12" x2="12.5" y2="12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'
+    + '<polyline points="8,7.5 13,12 8,16.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
+  person: '<circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 20.5c0-4.4 3.6-7 8-7s8 2.6 8 7" fill="currentColor"/>',
+  menu: '<line x1="4" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'
+    + '<line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'
+    + '<line x1="4" y1="17" x2="20" y2="17" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
+  star: '<polygon points="12,2 14.9,8.6 22,9.3 16.5,13.9 18.2,21 12,17.3 5.8,21 7.5,13.9 2,9.3 9.1,8.6" fill="currentColor"/>',
+  delete: '<path d="M6 8h12l-1 12.5a1.5 1.5 0 01-1.5 1.5h-7a1.5 1.5 0 01-1.5-1.5z" fill="currentColor"/>'
+    + '<rect x="4.5" y="5.5" width="15" height="2" rx="1" fill="currentColor"/>'
+    + '<rect x="9.5" y="2.5" width="5" height="2" rx="1" fill="currentColor"/>',
+  edit: '<path d="M4 17.25V20h2.75L16.81 9.94l-2.75-2.75L4 17.25z" fill="currentColor"/>'
+    + '<path d="M18.71 6.04a1 1 0 000-1.41L16.87 2.79a1 1 0 00-1.41 0l-1.5 1.5 2.75 2.75 1.5-1.5z" fill="currentColor"/>',
+  chevronLeft: '<polyline points="15,4 7,12 15,20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  chevronRight: '<polyline points="9,4 17,12 9,20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>',
+};
+function iconSvg(name, sizePx) {
+  return `<svg width="${sizePx}" height="${sizePx}" viewBox="0 0 24 24" style="display:block;">${ICONS[name] || ''}</svg>`;
+}
+
 // ---- selection / inspector ----
 function select(info) { selected = info; renderInspector(); }
 function isSelected(info) {
@@ -410,8 +450,11 @@ function buildCustomGuide(g) {
 /** 실제 코드에 있는 버튼 하나를 목업에 그린다. id는 저장/코드출력 참조용 고유 키.
  *  x,y,w,h는 "기본(자연스러운) 위치·크기"이고 실제 표시값은 여기에 버튼별 dx/dy/w/h 보정을
  *  더하거나 대신한 값. "삭제"하면 st.removed=true가 되어 다음 렌더부터 안 그려진다(좌측
- *  "버튼 추가/복원"에서 다시 꺼낼 수 있음 — 완전히 지우는 게 아니라 숨기는 것). */
-function drawIconButton(id, x, y, w, h, glyph, label, shape, filled) {
+ *  "버튼 추가/복원"에서 다시 꺼낼 수 있음 — 완전히 지우는 게 아니라 숨기는 것).
+ *  shape가 'pill'이면 iconOrText를 실제 텍스트 라벨로 그대로 쓰고(FilterChip처럼 글자만 있는
+ *  실제 버튼들), 그 외(circle 등 아이콘 버튼)에는 iconOrText를 ICONS 키로 써서 실제 코드의
+ *  Material 아이콘과 같은 모양의 SVG를 그린다 — 와이어프레임 사각형/이모지 대신. */
+function drawIconButton(id, x, y, w, h, iconOrText, label, shape, filled) {
   const st = elState(id);
   st.naturalW = w; st.naturalH = h; st.naturalLabel = label;
   if (st.removed) return null;
@@ -421,7 +464,12 @@ function drawIconButton(id, x, y, w, h, glyph, label, shape, filled) {
   });
   if (shape !== 'pill') b.style.borderRadius = '50%';
   b.style.background = st.color || (filled ? s.tealColor : '#9a9a92');
-  b.textContent = glyph;
+  if (shape === 'pill') {
+    b.textContent = iconOrText;
+  } else {
+    const iconPx = Math.round(Math.max(14, Math.min(fw, fh) * 0.46));
+    b.innerHTML = iconSvg(iconOrText, iconPx);
+  }
   b.title = label + ' — 드래그로 위치 보정, 클릭하면 좌측에 세부 설정';
   frame.appendChild(b);
   const info = { type: 'button', id, label, custom: false };
@@ -602,9 +650,9 @@ function render() {
       const ic = el(null, 'ic', {
         width: icSize + 'px', height: icSize + 'px',
         transform: `translate(${navSt.dx}px, ${navSt.dy}px)`,
+        color: navSt.color || (n.key === tab ? s.tealColor : '#999'),
       });
-      if (n.key === tab) ic.style.background = s.tealColor;
-      if (navSt.color) ic.style.background = navSt.color;
+      ic.innerHTML = iconSvg(n.icon, icSize);
       ic.classList.add('selectable-obj');
       const navInfo = { type: 'object', id: 'nav.' + n.key, label: '네비게이션 아이콘: ' + n.label };
       attachSelect(ic, navInfo);
@@ -644,10 +692,10 @@ function renderHeaderActions() {
   const rightX = s.screenWidth - s.sideMargin;
   const y = s.topMargin;
   if (tab === 'home') {
-    drawIconButton('home.toggle', rightX - 32, y - 2, 32, 32, '⇄', '개인/공유 노트 전환', 'circle', false);
+    drawIconButton('home.toggle', rightX - 32, y - 2, 32, 32, 'person', '개인/공유 노트 전환', 'circle', false);
   } else if (tab === 'share') {
-    drawIconButton('share.newShared', rightX - 32 * 2 - 6, y - 2, 32, 32, '👥', '공유 스케치북 만들기', 'circle', false);
-    drawIconButton('share.join', rightX - 32, y - 2, 32, 32, '↪', '공유 스케치북 참여', 'circle', false);
+    drawIconButton('share.newShared', rightX - 32 * 2 - 6, y - 2, 32, 32, 'groups', '공유 스케치북 만들기', 'circle', false);
+    drawIconButton('share.join', rightX - 32, y - 2, 32, 32, 'login', '공유 스케치북 참여', 'circle', false);
   }
 }
 
@@ -657,11 +705,11 @@ function renderHomeCarousel(top, bottom) {
   const totalW = btnSize * 3 + gap * 2;
   let bx = s.screenWidth / 2 - totalW / 2;
   const rowY = top;
-  drawIconButton('home.add', bx, rowY, btnSize, btnSize, '+', '새 노트 추가', 'circle', true);
+  drawIconButton('home.add', bx, rowY, btnSize, btnSize, 'add', '새 노트 추가', 'circle', true);
   bx += btnSize + gap;
-  drawIconButton('home.share', bx, rowY, btnSize, btnSize, '👥', '공유 스케치북 만들기', 'circle', true);
+  drawIconButton('home.share', bx, rowY, btnSize, btnSize, 'share', '공유 스케치북 만들기', 'circle', true);
   bx += btnSize + gap;
-  drawIconButton('home.join', bx, rowY, btnSize, btnSize, '↪', '공유 스케치북 참여', 'circle', true);
+  drawIconButton('home.join', bx, rowY, btnSize, btnSize, 'login', '공유 스케치북 참여', 'circle', true);
 
   const carouselTop = rowY + btnSize + 28; // 실제 코드: Spacer(28dp) 이후 캐러셀
   const areaH = bottom - carouselTop;
@@ -722,9 +770,9 @@ function drawCover(id, x, y, w, h, colorIdx, alpha, kind) {
  *  카드 그리드(카드마다 즐겨찾기★/삭제✕). shared=true면 헤더에 만들기/참여 아이콘도 추가로 뜬다
  *  (그건 renderHeaderActions에서 그림 — 여긴 탭 본문만). */
 function renderListShareBody(top, bottom, shared) {
-  drawIconButton('list.filterPersonal', s.sideMargin, top, 40, 40, '🧍', '개인', 'circle', !shared);
-  drawIconButton('list.filterShared', s.sideMargin + 48, top, 40, 40, '👥', '공유받음', 'circle', shared);
-  drawIconButton('list.menu', s.screenWidth - s.sideMargin - 40, top, 40, 40, '☰', '목록 배열(3/4/5열)', 'circle', false);
+  drawIconButton('list.filterPersonal', s.sideMargin, top, 40, 40, 'person', '개인', 'circle', !shared);
+  drawIconButton('list.filterShared', s.sideMargin + 48, top, 40, 40, 'groups', '공유받음', 'circle', shared);
+  drawIconButton('list.menu', s.screenWidth - s.sideMargin - 40, top, 40, 40, 'menu', '목록 배열(3/4/5열)', 'circle', false);
 
   const gridTop = top + 40 + 14;
   const gridSt = elState('list.grid');
@@ -747,8 +795,8 @@ function renderListShareBody(top, bottom, shared) {
     wireObject(grid, 'list.grid', '카드 그리드(카드 크기 · 그리드 위치)', s.sideMargin, gridTop);
     // 카드마다 있는 즐겨찾기★/삭제✕ 아이콘 — 대표로 첫 번째 카드 위치에 그려서 보정할 수 있게 함
     // (모든 카드가 같은 상대 위치를 공유하므로 하나만 옮기면 전체에 적용된다고 보면 됨).
-    drawIconButton('cover.fav', s.sideMargin + gridSt.dx + 2, gridTop + gridSt.dy + 2, 24, 24, '★', '즐겨찾기(카드 좌상단)', 'circle', false);
-    drawIconButton('cover.delete', s.sideMargin + gridSt.dx + cellW - 26, gridTop + gridSt.dy + 2, 24, 24, '✕', '삭제(카드 우상단)', 'circle', false);
+    drawIconButton('cover.fav', s.sideMargin + gridSt.dx + 2, gridTop + gridSt.dy + 2, 24, 24, 'star', '즐겨찾기(카드 좌상단)', 'circle', false);
+    drawIconButton('cover.delete', s.sideMargin + gridSt.dx + cellW - 26, gridTop + gridSt.dy + 2, 24, 24, 'delete', '삭제(카드 우상단)', 'circle', false);
   }
 }
 
@@ -771,9 +819,9 @@ function renderDiaryBody(top, bottom) {
   const ymMid = (ymTop + ymBottom) / 2;
 
   // 이전/다음 달 화살표(연월 좌우) + 오늘 일기 편집 연필(연월 우상단)
-  drawIconButton('diary.prev', s.sideMargin, ymMid - 16, 32, 32, '‹', '이전 달', 'circle', false);
-  drawIconButton('diary.next', s.screenWidth - s.sideMargin - 32, ymMid - 16, 32, 32, '›', '다음 달', 'circle', false);
-  drawIconButton('diary.edit', s.screenWidth - s.sideMargin - 35, ymTop - 4, 35, 35, '✎', '오늘 일기 그리기', 'circle', false);
+  drawIconButton('diary.prev', s.sideMargin, ymMid - 16, 32, 32, 'chevronLeft', '이전 달', 'circle', false);
+  drawIconButton('diary.next', s.screenWidth - s.sideMargin - 32, ymMid - 16, 32, 32, 'chevronRight', '다음 달', 'circle', false);
+  drawIconButton('diary.edit', s.screenWidth - s.sideMargin - 35, ymTop - 4, 35, 35, 'edit', '오늘 일기 그리기', 'circle', false);
 
   buildHandleH(ymBottom + s.calTitleGap, 'calTitleGap', 'dp', 0, 80, (dy) => {
     s.calTitleGap = clamp(s.calTitleGap + dy, 0, 80);
@@ -803,7 +851,7 @@ function renderOtherBody(top, bottom) {
   let y = top;
 
   const profile = placeCard('other.profileCard', '프로필 카드 (아바타 · 별명)', s.sideMargin, y, w, 84);
-  drawIconButton('other.avatarEdit', s.sideMargin + w - 36, y + 26, 26, 26, '✎', '별명 수정', 'circle', false);
+  drawIconButton('other.avatarEdit', s.sideMargin + w - 36, y + 26, 26, 26, 'edit', '별명 수정', 'circle', false);
   y = profile.bottom + 18;
 
   drawIconButton('other.themeSystem', s.sideMargin, y, 60, 30, '시스템', '화면 테마: 시스템', 'pill', true);
