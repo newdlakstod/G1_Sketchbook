@@ -3,7 +3,7 @@ package com.g1.sketchbook.preview
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.g1.sketchbook.ui.LoginScreen
-import com.g1.sketchbook.ui.NicknameScreen
+import com.g1.sketchbook.ui.NicknameDialog
 import com.g1.sketchbook.ui.SplashScreen
 import com.g1.sketchbook.ui.theme.DaymoryTheme
 import com.g1.sketchbook.ui.theme.ThemeMode
@@ -31,9 +31,12 @@ private fun LoginErrorPreview() = PreviewTheme {
     LoginScreen(busy = false, error = "로그인 상태를 확인하지 못했어요.", onSignIn = {})
 }
 
-@Preview(name = "05 Nickname", showBackground = true, widthDp = PREVIEW_WIDTH, heightDp = PREVIEW_HEIGHT)
+@Preview(name = "05 Nickname dialog", showBackground = true, widthDp = PREVIEW_WIDTH, heightDp = PREVIEW_HEIGHT)
 @Composable
-private fun NicknamePreview() = PreviewTheme { NicknameScreen(onSave = {}) }
+private fun NicknameDialogPreview() = PreviewTheme {
+    LoginScreen(busy = false, error = null, onSignIn = {})
+    NicknameDialog(onCancel = {}, onConfirm = {})
+}
 
 @Preview(name = "06 Splash - dark", showBackground = true, widthDp = PREVIEW_WIDTH, heightDp = PREVIEW_HEIGHT)
 @Composable
