@@ -193,11 +193,11 @@
     <legend>캔버스(기기 화면) 크기</legend>
     <div class="field-row">
       <label>폭(dp)</label>
-      <input id="widthInput" type="number" value="360" min="200" max="900" step="1" />
+      <input id="widthInput" type="number" value="475" min="200" max="900" step="1" />
     </div>
     <div class="field-row">
       <label>높이(dp)</label>
-      <input id="heightInput" type="number" value="740" min="400" max="1400" step="1" />
+      <input id="heightInput" type="number" value="751" min="400" max="1400" step="1" />
     </div>
     <div class="hint" style="margin-bottom:6px;">
       정확한 값은 기기를 PC에 연결하고 <code>adb shell wm size</code> / <code>wm density</code>로
@@ -252,7 +252,7 @@ const DEFAULTS = {
   coverTitleCenterSp: 14, coverDateCenterSp: 12, coverTitleSideSp: 12, coverDateSideSp: 10,
   yearMonthSp: 78, calTopTitleGap: 16, calTitleGap: 24,
   wordmarkSp: 20,
-  screenWidth: 360, screenHeight: 740,
+  screenWidth: 475, screenHeight: 751,
   tealColor: '#008484', bgColor: '#f5f1e6',
   coverColors: ['#F4611E', '#8EC5C4', '#0C5A54', '#EE82AB', '#F9C112', '#DD0404', '#F8EEDD'],
   texts: {
@@ -388,7 +388,7 @@ function buildHandleV(x, key, unit, min, max, onDrag, label) {
   dragHorizontal(h, onDrag);
 }
 function buildCustomGuide(g) {
-  const label = (g.axis === 'h' ? '가로' : '세로') + ' 안내선(사용자 추가)';
+  const label = g.name || ((g.axis === 'h' ? '가로' : '세로') + ' 안내선(사용자 추가)');
   const info = { type: 'guide-custom', id: g.id, axis: g.axis, label };
   if (g.axis === 'h') {
     const h = el('div', 'handle-h', { top: g.pos + 'px' });
@@ -834,7 +834,13 @@ function renderInspector() {
   box.innerHTML = '';
   if (!selected) { box.innerHTML = '<div class="hint">안내선, 버튼, 글자 등을 화면에서 클릭하면 여기에 표시됩니다.</div>'; return; }
 
-  const title = document.createElement('div'); title.className = 'insp-title'; title.textContent = selected.label;
+  const title = document.createElement('div'); title.className = 'insp-title';
+  if (selected.type === 'guide-custom') {
+    const g0 = s.customGuides.find(x => x.id === selected.id);
+    title.textContent = (g0 && g0.name) ? g0.name : selected.label;
+  } else {
+    title.textContent = selected.label;
+  }
   box.appendChild(title);
 
   if (selected.type === 'guide') {
@@ -843,6 +849,13 @@ function renderInspector() {
   } else if (selected.type === 'guide-custom') {
     const g = s.customGuides.find(x => x.id === selected.id);
     if (!g) { selected = null; renderInspector(); return; }
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text'; nameInput.value = g.name || ''; nameInput.placeholder = '예: 카드 안쪽 여백';
+    nameInput.style.width = '100%';
+    nameInput.addEventListener('input', () => { g.name = nameInput.value; });
+    nameInput.addEventListener('blur', () => render());
+    nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') nameInput.blur(); });
+    box.appendChild(inspRow('안내선 이름', nameInput));
     const max = g.axis === 'h' ? 2000 : 2000;
     box.appendChild(inspRow('위치 (' + (g.axis === 'h' ? 'top' : 'left') + ', px)',
       numberInput(g.pos, 0, max, (v) => { g.pos = v; render(); })));
@@ -935,11 +948,15 @@ document.getElementById('bgColorInput').addEventListener('input', (e) => { s.bgC
 
 // ---- 안내선 추가 ----
 document.getElementById('addGuideH').addEventListener('click', () => {
-  s.customGuides.push({ id: 'g' + Date.now() + Math.floor(Math.random() * 1000), axis: 'h', pos: Math.round(s.screenHeight / 2) });
+  const id = 'g' + Date.now() + Math.floor(Math.random() * 1000);
+  s.customGuides.push({ id, axis: 'h', pos: Math.round(s.screenHeight / 2), name: '' });
+  select({ type: 'guide-custom', id, axis: 'h', label: '가로 안내선(사용자 추가)' });
   render();
 });
 document.getElementById('addGuideV').addEventListener('click', () => {
-  s.customGuides.push({ id: 'g' + Date.now() + Math.floor(Math.random() * 1000), axis: 'v', pos: Math.round(s.screenWidth / 2) });
+  const id = 'g' + Date.now() + Math.floor(Math.random() * 1000);
+  s.customGuides.push({ id, axis: 'v', pos: Math.round(s.screenWidth / 2), name: '' });
+  select({ type: 'guide-custom', id, axis: 'v', label: '세로 안내선(사용자 추가)' });
   render();
 });
 
@@ -1100,8 +1117,11 @@ ${textLines.join('\n')}
 
   if (s.customGuides.length) {
     c += `
-// ---- 사용자 추가 안내선(참고 — 이름 없는 임시 측정선) ----
-${s.customGuides.map((g, i) => `// ${g.axis === 'h' ? '가로' : '세로'} 안내선 ${i + 1}: ${Math.round(g.pos)}px (${g.axis === 'h' ? 'top' : 'left'} 기준)`).join('\n')}
+// ---- 사용자 추가 안내선(참고 — 임시 측정선) ----
+${s.customGuides.map((g, i) => {
+  const name = g.name ? g.name : `${g.axis === 'h' ? '가로' : '세로'} 안내선 ${i + 1}`;
+  return `// ${name}: ${Math.round(g.pos)}px (${g.axis === 'h' ? 'top' : 'left'} 기준)`;
+}).join('\n')}
 `;
   }
 
