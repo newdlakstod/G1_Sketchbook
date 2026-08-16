@@ -391,6 +391,7 @@
 - **닉네임 전체 화면을 팝업으로 교체** (2026-08-17): 로그인 후 표시되던
   `NicknameScreen.kt`를 삭제하고 로그인 온보딩 위에 `NicknameDialog`를 띄우도록 변경했다.
   입력창은 투명한 pill 형태이며 `별명을 입력해주세요.` 안내문만 연한 회색으로 표시한다.
+  팝업 폭은 `NicknameDialog.kt`의 `Modifier.width(280.dp)` 한 줄에서 조절한다.
   입력은 16자로 제한하고 우측 하단에 취소·확인 버튼을 배치했다. 취소·바깥 터치·뒤로가기는
   로그아웃 후 로그인 화면으로 돌아가고, 확인은 기존 `saveNickname`으로 저장한다. Preview 호출과
   `compileDebugKotlin testDebugUnitTest`를 검증했다.

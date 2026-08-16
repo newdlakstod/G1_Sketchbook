@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -33,6 +34,7 @@ fun NicknameDialog(
     // 취소 동작 조절: 바깥 영역 터치와 뒤로가기도 취소 버튼과 같이 로그인 화면으로 돌아간다.
     Dialog(onDismissRequest = onCancel) {
         Surface(
+            modifier = Modifier.width(280.dp), // 팝업 좌우 폭 조절: 숫자가 작을수록 좁아진다.
             shape = RoundedCornerShape(28.dp),
             tonalElevation = 6.dp,
         ) {
