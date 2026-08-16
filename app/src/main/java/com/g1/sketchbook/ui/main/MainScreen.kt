@@ -173,8 +173,7 @@ private fun SideNavRail(tab: Int, onTab: (Int) -> Unit) {
 private fun FloatingNavBar(tab: Int, onTab: (Int) -> Unit) {
     Row(
         Modifier.fillMaxWidth().navigationBarsPadding()
-            .padding(horizontal = Dimens.Screen.sideMargin, vertical = Dimens.Screen.navBarPadding)
-            .padding(bottom = Dimens.Screen.bottomMargin),
+            .padding(horizontal = Dimens.Screen.sideMargin, vertical = Dimens.Screen.navBarPadding),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         NavIcons.forEachIndexed { i, icon ->

@@ -22,7 +22,7 @@ import kotlin.random.Random
  *   slots/{uid}/  { name, role, snapshot(base64), updatedAt }
  * ```
  * Each participant keeps their own canvas; we sync a downscaled Base64 snapshot per stroke so the
- * partner sees it live in a split view. Max 2 participants.
+ * others see it live in a split/grid view. Max [MAX_SLOTS] participants.
  */
 class ShareRepository {
 
@@ -59,7 +59,7 @@ class ShareRepository {
         if (!snap.exists()) return Result.failure(IllegalStateException("세션을 찾을 수 없어요. 코드를 확인해 주세요."))
         val slots = snap.child("slots")
         val already = slots.hasChild(uid)
-        if (!already && slots.childrenCount >= 2) return Result.failure(IllegalStateException("세션 정원(2명)이 가득 찼어요."))
+        if (!already && slots.childrenCount >= MAX_SLOTS) return Result.failure(IllegalStateException("세션 정원(${MAX_SLOTS}명)이 가득 찼어요."))
         writeSlot(normalized, uid, name, role = "guest")
         return Result.success(Unit)
     }
@@ -117,5 +117,6 @@ class ShareRepository {
 
     companion object {
         private const val ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        const val MAX_SLOTS = 4
     }
 }

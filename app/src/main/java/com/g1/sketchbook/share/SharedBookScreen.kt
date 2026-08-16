@@ -26,11 +26,18 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,12 +54,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -71,16 +80,17 @@ import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.min
 
-/** How the two canvases are laid out. */
-private enum class ViewMode { EQUAL, LARGE, SOLO }
-/** Which canvas is focused (enlarged / shown alone). */
-private enum class Focus { MINE, THEIRS }
+/** How the (up to 4) canvases are laid out. GRID auto-switches between a simple 2-pane split (2
+ *  people) and a 2x2 grid (3-4 people) based on how many are actually in the session — no manual
+ *  toggle needed for that part. MAXIMIZE shows one big pane plus a small floating popup, with a
+ *  picker for who's in the popup and a switch to swap big<->popup. */
+private enum class ViewMode { GRID, MAXIMIZE }
 
 /**
  * A shared sketchbook: same 15-page book as a personal one, shown with a selectable view mode —
- * EQUAL (even split), LARGE (one big + the other as a small strip), or SOLO (only one). My canvas
- * is interactive; the partner's is a live snapshot. Pages save locally; each stroke pushes a
- * snapshot so the partner sees my current page. Fixed to A4 + watercolor paper.
+ * GRID (auto 2-pane/2x2 split) or MAXIMIZE (one big + a floating popup). My canvas is interactive;
+ * everyone else's is a live snapshot. Pages save locally; each stroke pushes a snapshot so others
+ * see my current page. Fixed to A4 + watercolor paper. Up to ShareRepository.MAX_SLOTS participants.
  */
 @Composable
 fun SharedBookScreen(
@@ -125,17 +135,16 @@ fun SharedBookScreen(
     var pageTurnMode by remember { mutableStateOf(false) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
-    var partner by remember { mutableStateOf<ShareRepository.Slot?>(null) }
-    var partnerBmp by remember { mutableStateOf<Bitmap?>(null) }
-    var mode by remember { mutableStateOf(ViewMode.EQUAL) }
-    var focus by remember { mutableStateOf(Focus.MINE) }
+    var others by remember { mutableStateOf<List<ShareRepository.Slot>>(emptyList()) }
+    var mode by remember { mutableStateOf(ViewMode.GRID) }
+    // MAXIMIZE mode: null = "나", else a participant's uid. popupUid is just a preference — the
+    // effective value (popupDisplay, computed below near the layout code) self-heals if the person
+    // it points to has left the session or is now the same as whoever's maximized.
+    var maximizedUid by remember { mutableStateOf<String?>(null) }
+    var popupUid by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(code) {
-        share.observeSession(code).collect { st -> partner = st.slots.firstOrNull { it.uid != myUid } }
-    }
-    LaunchedEffect(partner?.updatedAt, partner?.snapshot) {
-        val s = partner?.snapshot
-        partnerBmp = if (s == null) null else withContext(Dispatchers.Default) { decodeSnapshot(s) }
+        share.observeSession(code).collect { st -> others = st.slots.filter { it.uid != myUid } }
     }
 
     fun pushMine() {
@@ -222,31 +231,25 @@ fun SharedBookScreen(
                 Column(Modifier.weight(1f).padding(start = 4.dp)) {
                     Text(book.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
                     Text(
-                        if (partner == null) "상대를 기다리는 중… · 코드 $code" else "${partner!!.name} 님과 함께",
+                        when {
+                            others.isEmpty() -> "상대를 기다리는 중… · 코드 $code"
+                            others.size == 1 -> "${others[0].name} 님과 함께"
+                            else -> "${others.size}명과 함께"
+                        },
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                     )
                 }
-                // View-mode selector; focus (mine/partner) appears when a canvas is enlarged/soloed.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (mode != ViewMode.EQUAL) {
-                        SegGroup {
-                            SegChip("나", focus == Focus.MINE) { focus = Focus.MINE }
-                            SegChip("상대", focus == Focus.THEIRS) { focus = Focus.THEIRS }
-                        }
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    SegGroup {
-                        SegChip("분할", mode == ViewMode.EQUAL) { mode = ViewMode.EQUAL }
-                        SegChip("크게", mode == ViewMode.LARGE) { mode = ViewMode.LARGE }
-                        SegChip("하나", mode == ViewMode.SOLO) { mode = ViewMode.SOLO }
-                    }
+                // 최대화 모드 안의 "..."+스위치가 참가자 선택을 대신하므로, 여기 헤더에는 GRID/
+                // MAXIMIZE 두 모드만 고른다.
+                SegGroup {
+                    SegChip("분할", mode == ViewMode.GRID) { mode = ViewMode.GRID }
+                    SegChip("최대화", mode == ViewMode.MAXIMIZE) { mode = ViewMode.MAXIMIZE }
                 }
             }
         }
 
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
             val landscape = maxWidth > maxHeight
-            val mw = maxWidth; val mh = maxHeight   // capture out of the layout-scope marker
             val mine = remember {
                 movableContentOf<Modifier> { m ->
                     PaneFrame(m, "나 · $myName", accent = true) {
@@ -278,50 +281,87 @@ fun SharedBookScreen(
                     }
                 }
             }
-            val theirs = remember {
-                movableContentOf<Modifier> { m ->
-                    PaneFrame(m, partner?.name ?: "상대", accent = false) {
-                        val bmp = partnerBmp
-                        if (bmp != null) {
-                            Image(bmp.asImageBitmap(), "상대 그림", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+
+            when (mode) {
+                ViewMode.GRID -> when {
+                    // 2인 이하: 반반 분할(세로면 상대=위/나=아래 — 시안 "2인 모드"와 동일).
+                    others.size <= 1 -> {
+                        val other = others.getOrNull(0)
+                        if (landscape) {
+                            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OtherPane(other, code, Modifier.weight(1f).fillMaxSize())
+                                mine(Modifier.weight(1f).fillMaxSize())
+                            }
                         } else {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(
-                                    if (partner == null) "아직 아무도 없어요\n코드 $code 를 공유해 보세요" else "아직 그리기 전이에요",
-                                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OtherPane(other, code, Modifier.weight(1f).fillMaxWidth())
+                                mine(Modifier.weight(1f).fillMaxWidth())
+                            }
+                        }
+                    }
+                    // 3~4인: 2x2 그리드 — 나는 항상 우하단 고정, 나머지는 좌상→우상→좌하
+                    // 순서(3인이면 좌하단이 빈 칸 — 시안 그대로).
+                    else -> {
+                        val cellSlots = (others.take(3) + listOf(null, null, null)).take(3)
+                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                GridCell(cellSlots[0], code, Modifier.weight(1f).fillMaxHeight())
+                                GridCell(cellSlots[1], code, Modifier.weight(1f).fillMaxHeight())
+                            }
+                            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                GridCell(cellSlots[2], code, Modifier.weight(1f).fillMaxHeight())
+                                mine(Modifier.weight(1f).fillMaxHeight())
                             }
                         }
                     }
                 }
-            }
-            val bigIsMine = focus == Focus.MINE
-            when (mode) {
-                ViewMode.SOLO -> Box(Modifier.fillMaxSize()) {
-                    if (bigIsMine) mine(Modifier.fillMaxSize()) else theirs(Modifier.fillMaxSize())
-                    // Keep my BrushView alive (page/strokes) even while only the partner is shown.
-                    if (!bigIsMine) Box(Modifier.size(1.dp)) { mine(Modifier.size(1.dp)) }
-                }
-                ViewMode.LARGE -> {
-                    val small: @Composable (Modifier) -> Unit = if (bigIsMine) theirs else mine
-                    val big: @Composable (Modifier) -> Unit = if (bigIsMine) mine else theirs
-                    if (landscape) {
-                        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            small(Modifier.fillMaxHeight().width(mw * 0.26f)); big(Modifier.weight(1f).fillMaxHeight())
-                        }
-                    } else {
-                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            small(Modifier.fillMaxWidth().height(mh * 0.22f)); big(Modifier.weight(1f).fillMaxWidth())
-                        }
+                ViewMode.MAXIMIZE -> {
+                    // bigUid/popupUid are just preferences — recomputed each render so a participant
+                    // leaving (or the picker landing on the currently-maximized person) self-heals
+                    // instead of leaving stale state around.
+                    val bigUid = maximizedUid.takeIf { it == null || others.any { o -> o.uid == it } }
+                    val popupCandidates = buildList {
+                        if (bigUid != null) add(null)
+                        addAll(others.filter { it.uid != bigUid }.map { it.uid })
                     }
-                }
-                ViewMode.EQUAL -> if (landscape) {
-                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        theirs(Modifier.weight(1f).fillMaxSize()); mine(Modifier.weight(1f).fillMaxSize())
-                    }
-                } else {
-                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        theirs(Modifier.weight(1f).fillMaxWidth()); mine(Modifier.weight(1f).fillMaxWidth())
+                    val popupDisplay = popupUid.takeIf { it in popupCandidates } ?: popupCandidates.firstOrNull()
+                    var pickerOpen by remember { mutableStateOf(false) }
+                    Box(Modifier.fillMaxSize()) {
+                        if (bigUid == null) mine(Modifier.fillMaxSize())
+                        else OtherPane(others.first { it.uid == bigUid }, code, Modifier.fillMaxSize())
+
+                        // popupCandidates is only empty when bigUid==null AND there's nobody else —
+                        // in that case there's nothing left to show in the popup (calling mine() again
+                        // here would violate movableContentOf's one-placement-per-composition rule).
+                        if (popupCandidates.isNotEmpty()) {
+                            Box(
+                                Modifier.align(Alignment.TopStart).padding(8.dp).size(width = 130.dp, height = 170.dp)
+                                    .shadow(8.dp, MaterialTheme.shapes.medium)
+                                    .background(MaterialTheme.colorScheme.background, MaterialTheme.shapes.medium),
+                            ) {
+                                if (popupDisplay == null) mine(Modifier.fillMaxSize())
+                                else OtherPane(others.first { it.uid == popupDisplay }, code, Modifier.fillMaxSize())
+                            }
+                        }
+
+                        Row(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box {
+                                IconButton(onClick = { pickerOpen = true }) {
+                                    Icon(Icons.Filled.MoreVert, "팝업에 표시할 참가자 선택")
+                                }
+                                DropdownMenu(expanded = pickerOpen, onDismissRequest = { pickerOpen = false }) {
+                                    popupCandidates.forEach { uid ->
+                                        DropdownMenuItem(
+                                            text = { Text(if (uid == null) "나" else others.first { it.uid == uid }.name) },
+                                            onClick = { popupUid = uid; pickerOpen = false },
+                                        )
+                                    }
+                                }
+                            }
+                            // 시안의 "내 화면 최대화"/"참가자 최대화" 두 상태 — 이 스위치가 큰 화면과
+                            // 팝업을 맞바꾼다.
+                            Switch(checked = bigUid != null, onCheckedChange = { maximizedUid = popupDisplay; popupUid = bigUid })
+                        }
                     }
                 }
             }
@@ -369,13 +409,21 @@ private fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** A titled, rounded frame around a pane; the active (mine) pane gets a subtle accent border. */
+/** A titled, rounded frame around a pane; the active (mine) pane gets a subtle accent border.
+ *  Small generic person-icon avatar next to the name — Slot has no synced emoji, so every
+ *  participant (including me) gets the same neutral circle, matching the mockup's grey-circle style. */
 @Composable
 private fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, content: @Composable () -> Unit) {
     Column(modifier) {
-        Text(title, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-            color = if (accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp, bottom = 2.dp))
+        Row(Modifier.padding(start = 4.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(16.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) { Icon(Icons.Filled.Person, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(11.dp)) }
+            Spacer(Modifier.width(4.dp))
+            Text(title, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                color = if (accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Box(
             Modifier.weight(1f).fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.medium)
@@ -387,6 +435,46 @@ private fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, conten
                 .clipToBounds(),
         ) { content() }
     }
+}
+
+/** Decodes one participant's latest snapshot — re-decodes only when their data actually changes.
+ *  Others' panes are plain images (no BrushView), so unlike `mine` they don't need movableContentOf:
+ *  moving between grid/maximize layouts is cheap to just re-render. */
+@Composable
+private fun ParticipantBitmap(slot: ShareRepository.Slot?): Bitmap? {
+    var bmp by remember(slot?.uid) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(slot?.updatedAt, slot?.snapshot) {
+        val s = slot?.snapshot
+        bmp = if (s == null) null else withContext(Dispatchers.Default) { decodeSnapshot(s) }
+    }
+    return bmp
+}
+
+/** One other participant's pane — their latest snapshot, or a waiting/blank-canvas message.
+ *  [slot] null means "nobody's joined yet" (only meaningful in the 2-pane branch — [GridCell]
+ *  renders a plain empty box instead once there's already at least one other participant). */
+@Composable
+private fun OtherPane(slot: ShareRepository.Slot?, code: String, modifier: Modifier) {
+    val bmp = ParticipantBitmap(slot)
+    PaneFrame(modifier, slot?.name ?: "상대", accent = false) {
+        if (bmp != null) {
+            Image(bmp.asImageBitmap(), "${slot?.name ?: "상대"} 그림", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(
+                    if (slot == null) "아직 아무도 없어요\n코드 $code 를 공유해 보세요" else "아직 그리기 전이에요",
+                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+/** A 2x2 grid cell — a participant pane, or a plain blank cell (3-person grid's empty 4th slot). */
+@Composable
+private fun GridCell(slot: ShareRepository.Slot?, code: String, modifier: Modifier) {
+    if (slot != null) OtherPane(slot, code, modifier)
+    else Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), MaterialTheme.shapes.medium))
 }
 
 // ---- snapshot codec (downscaled JPEG -> Base64, API 24 safe) ----
