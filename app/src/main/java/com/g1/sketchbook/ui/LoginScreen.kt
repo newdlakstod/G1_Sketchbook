@@ -2,7 +2,6 @@ package com.g1.sketchbook.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -48,8 +47,8 @@ fun LoginScreen(
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Image(
                 painterResource(R.drawable.onboarding_duck2), "daymory 오리", contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxWidth().widthIn(max = Dimens.Onboarding.duckW)
-                    .aspectRatio(Dimens.Onboarding.duckW / Dimens.Onboarding.duckH)
+                modifier = Modifier.widthIn(max = Dimens.Onboarding.duckMaxWidth).fillMaxWidth()
+                    .aspectRatio(Dimens.Onboarding.duckAspectRatio)
                     .padding(vertical = 12.dp),
             )
         }
@@ -60,10 +59,10 @@ fun LoginScreen(
             CircularProgressIndicator(color = DaymoryTeal)
         } else {
             Box(
-                Modifier.clip(RoundedCornerShape(50)).border(2.dp, DaymoryTeal, RoundedCornerShape(50)).bounceClick { onSignIn() }
+                Modifier.clip(RoundedCornerShape(50)).background(DaymoryTeal).bounceClick { onSignIn() }
                     .padding(horizontal = 46.dp, vertical = 14.dp),
             ) {
-                Text("Google 계정으로 로그인", color = DaymoryTeal, fontSize = Dimens.Onboarding.ctaSp)
+                Text("Google 계정으로 로그인", color = Color.White, fontSize = Dimens.Onboarding.ctaSp)
             }
         }
         error?.let {
