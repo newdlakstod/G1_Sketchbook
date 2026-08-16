@@ -202,7 +202,7 @@ fun TabHeader(avatar: String, onAvatar: () -> Unit, modifier: Modifier = Modifie
     Box(modifier.fillMaxWidth()) {
         Box(Modifier.align(Alignment.CenterStart).size(32.dp).bounceClick(onClick = onAvatar)) { Avatar(avatar, 32.dp) }
         Text("daymory", fontFamily = com.g1.sketchbook.ui.theme.BodoniMTBlack, fontSize = 20.sp,
-            color = com.g1.sketchbook.ui.theme.DaymoryTeal, modifier = Modifier.align(Alignment.Center))
+            color = Color.Black, modifier = Modifier.align(Alignment.Center))
         Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp), content = actions)
     }
