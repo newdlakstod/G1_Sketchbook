@@ -53,7 +53,11 @@ data class Sketchbook(
     val code: String? = null,      // invite/session code for shared books
 ) {
     val size get() = Catalog.size(sizeKey)
+    /** "2026.08.16" — shown under cover thumbnails (home carousel, sketchbook list). */
+    val dateLabel: String get() = sketchbookDateFormat.format(java.util.Date(createdAt))
 }
+
+private val sketchbookDateFormat = java.text.SimpleDateFormat("yyyy.MM.dd", java.util.Locale.getDefault())
 
 const val MAX_PAGES = 15
 

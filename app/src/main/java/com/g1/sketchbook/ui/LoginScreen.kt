@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.R
 import com.g1.sketchbook.ui.theme.Cavorting
+import com.g1.sketchbook.ui.theme.DaymoryTeal
 import com.g1.sketchbook.ui.theme.Dimens
 
 @Composable
@@ -36,33 +37,33 @@ fun LoginScreen(
     error: String?,
     onSignIn: () -> Unit,
 ) {
-    val (SageBg, Ink) = onboardingPalette()
+    val (SageBg, _) = onboardingPalette()
     Column(
         modifier = Modifier.fillMaxSize().background(SageBg).systemBarsPadding()
             .padding(horizontal = 28.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(12.dp))
-        OnboardingTitle(maxFontSize = Dimens.Onboarding.titleSp, color = Ink)
+        OnboardingTitle(maxFontSize = Dimens.Onboarding.titleSp, color = DaymoryTeal)
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            DuckWalk(
+            Image(
+                painterResource(R.drawable.onboarding_duck2), "daymory 오리", contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxWidth().widthIn(max = Dimens.Onboarding.duckW)
                     .aspectRatio(Dimens.Onboarding.duckW / Dimens.Onboarding.duckH)
                     .padding(vertical = 12.dp),
-                contentDescription = "daymory 오리",
             )
         }
         Text("Draw together, keep the little days", fontFamily = Cavorting, fontSize = Dimens.Onboarding.subtitleSp,
-            color = Ink, textAlign = TextAlign.Center)
+            color = DaymoryTeal, textAlign = TextAlign.Center)
         Spacer(Modifier.height(16.dp))
         if (busy) {
-            CircularProgressIndicator(color = Ink)
+            CircularProgressIndicator(color = DaymoryTeal)
         } else {
             Box(
-                Modifier.clip(RoundedCornerShape(50)).border(2.dp, Ink, RoundedCornerShape(50)).bounceClick { onSignIn() }
+                Modifier.clip(RoundedCornerShape(50)).border(2.dp, DaymoryTeal, RoundedCornerShape(50)).bounceClick { onSignIn() }
                     .padding(horizontal = 46.dp, vertical = 14.dp),
             ) {
-                Text("Google 계정으로 로그인", color = Ink, fontSize = Dimens.Onboarding.ctaSp)
+                Text("Google 계정으로 로그인", color = DaymoryTeal, fontSize = Dimens.Onboarding.ctaSp)
             }
         }
         error?.let {

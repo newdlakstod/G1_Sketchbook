@@ -440,7 +440,7 @@ private fun SketchbookListScreen(
             }
             Spacer(Modifier.height(Dimens.Screen.titleGap))
             Text(if (showShared) "Draw together" else "Sketchbook list", fontFamily = com.g1.sketchbook.ui.theme.Cavorting,
-                fontSize = Dimens.Screen.titleSp, color = MaterialTheme.colorScheme.onSurface,
+                fontSize = Dimens.Screen.titleSp, color = com.g1.sketchbook.ui.theme.DaymoryTeal,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

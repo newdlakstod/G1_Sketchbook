@@ -56,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -336,8 +337,8 @@ fun SharedBookScreen(
                         if (popupCandidates.isNotEmpty()) {
                             Box(
                                 Modifier.align(Alignment.TopStart).padding(8.dp).size(width = 130.dp, height = 170.dp)
-                                    .shadow(8.dp, MaterialTheme.shapes.medium)
-                                    .background(MaterialTheme.colorScheme.background, MaterialTheme.shapes.medium),
+                                    .shadow(8.dp, RectangleShape)
+                                    .background(MaterialTheme.colorScheme.background, RectangleShape),
                             ) {
                                 if (popupDisplay == null) mine(Modifier.fillMaxSize())
                                 else OtherPane(others.first { it.uid == popupDisplay }, code, Modifier.fillMaxSize())
@@ -409,9 +410,9 @@ private fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** A titled, rounded frame around a pane; the active (mine) pane gets a subtle accent border.
- *  Small generic person-icon avatar next to the name — Slot has no synced emoji, so every
- *  participant (including me) gets the same neutral circle, matching the mockup's grey-circle style. */
+/** A titled, square-cornered frame around a pane (시안 그대로 — 라운드 코너 없음); the active (mine)
+ *  pane gets a subtle accent border. Small generic person-icon avatar next to the name — Slot has no
+ *  synced emoji, so every participant (including me) gets the same neutral circle. */
 @Composable
 private fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, content: @Composable () -> Unit) {
     Column(modifier) {
@@ -426,11 +427,11 @@ private fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, conten
         }
         Box(
             Modifier.weight(1f).fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.surface, RectangleShape)
                 .border(
                     width = if (accent) 2.dp else 1.dp,
                     color = if (accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                    shape = MaterialTheme.shapes.medium,
+                    shape = RectangleShape,
                 )
                 .clipToBounds(),
         ) { content() }
@@ -474,7 +475,7 @@ private fun OtherPane(slot: ShareRepository.Slot?, code: String, modifier: Modif
 @Composable
 private fun GridCell(slot: ShareRepository.Slot?, code: String, modifier: Modifier) {
     if (slot != null) OtherPane(slot, code, modifier)
-    else Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), MaterialTheme.shapes.medium))
+    else Box(modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RectangleShape))
 }
 
 // ---- snapshot codec (downscaled JPEG -> Base64, API 24 safe) ----

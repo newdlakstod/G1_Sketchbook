@@ -21,7 +21,9 @@ object Dimens {
         val contentGap = 60.dp      // 타이틀 ~ 본문 사이 간격
         val sideMargin = 45.dp      // 본문 좌우 여백 (탭 화면 공통)
         val navItemSize = 60.dp     // 하단 네비게이션 아이템 크기
-        val navBarPadding = 25.dp   // 하단 네비게이션 바 내부 여백
+        // 네비게이션 바 영역이 화면 하단 끝부터 총 60dp가 되도록(아이콘 24dp+간격 3dp+라벨 1줄
+        // 기준) 상하 내부 여백을 역산한 값.
+        val navBarPadding = 10.dp   // 하단 네비게이션 바 내부 여백(상하)
     }
 
     /** 온보딩 (Splash/Login) */
@@ -36,12 +38,16 @@ object Dimens {
     /** 홈 탭 (타이틀 크기·위치는 Screen 공용값 사용) */
     object Home {
         val actionIcon = 56.dp          // 새 노트/공유/참여 원형 아이콘 버튼 지름 (명시 안 됨, 추정치)
-        val carouselCenterW = 267.5.dp  // 캐러셀 가운데(포커스) 노트 너비
-        val carouselCenterH = 402.dp    // 캐러셀 가운데(포커스) 노트 높이
-        val carouselSideW = 217.dp      // 캐러셀 옆(비포커스) 노트 너비
-        val carouselSideH = 327.dp      // 캐러셀 옆(비포커스) 노트 높이
+        val carouselCenterW = 182.dp    // 캐러셀 가운데(포커스) 노트 너비
+        val carouselCenterH = 275.dp    // 캐러셀 가운데(포커스) 노트 높이
+        val carouselSideW = 145.dp      // 캐러셀 옆(비포커스) 노트 너비
+        val carouselSideH = 218.dp      // 캐러셀 옆(비포커스) 노트 높이
         /** 표지 가로세로 비율(가운데 노트 기준) — 스케치북 리스트 썸네일도 이 비율을 그대로 씀(고정 비율). */
         val coverRatio = (carouselCenterW / carouselCenterH)
+        val coverTitleCenterSp = 14.sp  // 가운데 노트 표지 하단 제목
+        val coverDateCenterSp = 12.sp   // 가운데 노트 표지 하단 날짜
+        val coverTitleSideSp = 12.sp    // 옆 노트 표지 하단 제목
+        val coverDateSideSp = 10.sp     // 옆 노트 표지 하단 날짜
     }
 
     /** 새 스케치북 만들기 화면 (팝업 카드 — 이름/사이즈/배경을 한 화면에서 선택) */

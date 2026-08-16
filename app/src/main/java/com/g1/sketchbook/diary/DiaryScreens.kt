@@ -192,7 +192,7 @@ fun DiaryCalendarScreen(
         com.g1.sketchbook.ui.main.TabHeader(avatar, onAvatar = onGoSettings)
         Spacer(Modifier.height(Dimens.Screen.titleGap))
         Text("A piece of today", fontFamily = Cavorting, fontSize = Dimens.Screen.titleSp,
-            color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            color = com.g1.sketchbook.ui.theme.DaymoryTeal, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(Dimens.Calendar.topTitleGap))
         Box(Modifier.fillMaxWidth()) {
             Text(

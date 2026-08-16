@@ -14,3 +14,6 @@ val Pretendard = FontFamily(
     Font(R.font.pretendard_medium, FontWeight.Medium),
     Font(R.font.pretendard_bold, FontWeight.Bold),
 )
+
+/** Bold display serif (Bodoni MT Black) — used only for the "daymory" wordmark in the tab header. */
+val BodoniMTBlack = FontFamily(Font(R.font.bodoni_mt_black))

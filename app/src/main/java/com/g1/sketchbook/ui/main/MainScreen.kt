@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -199,8 +201,8 @@ private fun FloatingNavBar(tab: Int, onTab: (Int) -> Unit) {
 fun TabHeader(avatar: String, onAvatar: () -> Unit, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
     Box(modifier.fillMaxWidth()) {
         Box(Modifier.align(Alignment.CenterStart).size(32.dp).bounceClick(onClick = onAvatar)) { Avatar(avatar, 32.dp) }
-        Text("daymory", fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 20.sp,
-            color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.align(Alignment.Center))
+        Text("daymory", fontFamily = com.g1.sketchbook.ui.theme.BodoniMTBlack, fontSize = 20.sp,
+            color = com.g1.sketchbook.ui.theme.DaymoryTeal, modifier = Modifier.align(Alignment.Center))
         Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp), content = actions)
     }
@@ -219,13 +221,24 @@ private fun HomeTab(
 ) {
     val ctx = LocalContext.current
     val repo = remember { SketchbookRepository(ctx) }
-    val books = remember { repo.list() }
+    val allBooks = remember { repo.list() }
+    // 우상단 토글로 개인/공유 노트를 전환해서 봄(시안: "공유노트인지, 개인노트인지 우상단 토글
+    // 버튼을 통해 확인") — 스케치북 리스트 탭의 개인/공유받음 필터와 같은 개념, 홈 캐러셀에도 적용.
+    var showShared by remember { mutableStateOf(false) }
+    val books = remember(allBooks, showShared) { allBooks.filter { it.shared == showShared } }
     Column(Modifier.fillMaxSize()
         .padding(top = Dimens.Screen.topMargin, start = Dimens.Screen.sideMargin, end = Dimens.Screen.sideMargin)) {
-        TabHeader(avatar, onAvatar = onGoSettings)
+        TabHeader(avatar, onAvatar = onGoSettings) {
+            IconButton(onClick = { showShared = !showShared }) {
+                Icon(
+                    if (showShared) Icons.Filled.Groups else Icons.Filled.Person,
+                    if (showShared) "공유 노트 보는 중 · 개인 노트로 전환" else "개인 노트 보는 중 · 공유 노트로 전환",
+                )
+            }
+        }
         Spacer(Modifier.height(Dimens.Screen.titleGap))
         Text("Draw your time", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
-            color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            color = com.g1.sketchbook.ui.theme.DaymoryTeal, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(Dimens.Screen.contentGap))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             HomeActionIcon(Icons.Filled.Add, "새 노트 추가", onNewBook)
@@ -238,7 +251,10 @@ private fun HomeTab(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (books.isEmpty()) {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("아직 스케치북이 없어요", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (showShared) "아직 공유받은 스케치북이 없어요" else "아직 스케치북이 없어요",
+                        fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    )
                     Text("위 + 버튼으로 첫 스케치북을 만들어보세요.", fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                 }
@@ -294,22 +310,31 @@ private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
         val elevation = androidx.compose.ui.unit.lerp(18.dp, 4.dp, distance)
         val book = books[page]
         val coverShape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp)
+        val titleSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverTitleCenterSp, Dimens.Home.coverTitleSideSp, distance)
+        val dateSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverDateCenterSp, Dimens.Home.coverDateSideSp, distance)
+        val cover = CoverColors[page % CoverColors.size]
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(fade).bounceClick { onOpen(book.id) }) {
-                Box(Modifier.width(w).height(h)
-                    .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
-                    .clip(coverShape)
-                    .background(CoverColors[page % CoverColors.size])) {
-                    Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize(0.6f).align(Alignment.Center))
-                    if (book.shared) {
-                        Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
-                            .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
+                Box(Modifier.width(w + 4.dp).height(h + 4.dp)) {
+                    // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
+                    Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape).background(cover.copy(alpha = 0.5f)))
+                    Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape).background(cover.copy(alpha = 0.75f)))
+                    Box(Modifier.width(w).height(h)
+                        .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
+                        .clip(coverShape)
+                        .background(cover)) {
+                        Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize(0.6f).align(Alignment.Center))
+                        if (book.shared) {
+                            Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
+                                .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
+                        }
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(book.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                Text(book.name, fontSize = titleSp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp))
+                Text(book.dateLabel, fontSize = dateSp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
     }
@@ -335,7 +360,7 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
         TabHeader(avatar, onAvatar = { avatarEditing = true })
         Spacer(Modifier.height(Dimens.Screen.titleGap))
         Text("Setting", fontFamily = com.g1.sketchbook.ui.theme.Cavorting, fontSize = Dimens.Screen.titleSp,
-            color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            color = com.g1.sketchbook.ui.theme.DaymoryTeal, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(Dimens.Screen.contentGap))
         SettingLabel("프로필")
         Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,

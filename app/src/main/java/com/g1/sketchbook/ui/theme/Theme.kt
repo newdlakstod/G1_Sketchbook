@@ -23,6 +23,9 @@ val Navy = Color(0xFF1E2D4C)
 val Grey = Color(0xFF858585)
 val Taupe = Color(0xFFCEC0BB)
 val Ivory = Color(0xFFF6F1E6)   // 밝은 미색 (text on navy, nav icon)
+/** daymory 로고/탭 태그라인 전용 고정 틸 색상(시안 Color code #008484) — 라이트/다크 모드와 무관하게
+ *  항상 이 색으로 표시(오리 일러스트 자체도 같은 톤이라 브랜드 일관성 유지). */
+val DaymoryTeal = Color(0xFF008484)
 
 /** 스케치북 표지 색상 팔레트 — 홈 캐러셀과 스케치북 리스트가 공유(예전엔 두 파일에 똑같이 복붙돼
  *  있었음). 시안 색상을 근사한 값이라 실기기 확인 후 미세 조정이 필요할 수 있음. */
