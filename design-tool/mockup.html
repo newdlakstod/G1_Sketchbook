@@ -294,7 +294,7 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function elState(id) {
   return s.elements[id] || (s.elements[id] = { dx: 0, dy: 0, w: null, h: null, color: null, removed: false });
 }
-function textState(key) { return s.textStyle[key] || (s.textStyle[key] = { color: null, font: null }); }
+function textState(key) { return s.textStyle[key] || (s.textStyle[key] = { color: null, font: null, dx: 0, dy: 0 }); }
 
 // ---- generic drag helpers ----
 // onDelta receives the INCREMENTAL movement since the previous frame (not since drag start) —
@@ -474,7 +474,9 @@ function wireObject(domEl, id, label, x, y) {
 function placeCard(id, label, x, y, w, h) {
   const st = elState(id);
   st.naturalW = w; st.naturalH = h;
-  const fw = st.w ?? w, fh = st.h ?? h;
+  const fh = st.h ?? h;
+  if (st.removed) return { st, bottom: y };
+  const fw = st.w ?? w;
   const card = el(null, 'placeholder-card', { width: fw + 'px', height: fh + 'px' });
   card.textContent = label;
   frame.appendChild(card);
@@ -493,6 +495,9 @@ function makeEditableText(node, textKey, defaultFontCss, defaultColor) {
   node.textContent = s.texts[textKey];
   node.style.fontFamily = st.font ? FONT_OPTIONS.find(f => f.key === st.font).css : defaultFontCss;
   node.style.color = st.color || defaultColor;
+  // 텍스트는 flex/absolute 등 배치 방식이 요소마다 달라서, 위치 보정은 layout에 영향을 주지 않는
+  // transform으로 통일해서 어디든 똑같이 먹히게 한다.
+  if (st.dx || st.dy) node.style.transform = `translate(${st.dx}px, ${st.dy}px)`;
   node.addEventListener('input', () => { s.texts[textKey] = node.textContent; });
   node.addEventListener('pointerdown', (e) => e.stopPropagation());
   node.addEventListener('click', (e) => e.stopPropagation());
@@ -523,20 +528,23 @@ function render() {
   const header = el(null, 'header-row', { top: y + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px', height: '28px' });
   const avSt = elState('header.avatar');
   avSt.naturalW = 32; avSt.naturalH = 32;
-  const avSize = avSt.w ?? 32;
-  const avatar = el(null, 'avatar-dot', {
-    width: avSize + 'px', height: avSize + 'px', position: 'relative',
-    left: avSt.dx + 'px', top: avSt.dy + 'px', background: avSt.color || '#ddd',
-  });
-  avatar.classList.add('selectable-obj');
-  const avInfo = { type: 'object', id: 'header.avatar', label: '아바타(헤더)' };
-  attachSelect(avatar, avInfo);
-  if (isSelected(avInfo)) avatar.classList.add('selected');
-  dragFree(avatar, (dx, dy) => { avSt.dx += dx; avSt.dy += dy; });
+  if (!avSt.removed) {
+    const avSize = avSt.w ?? 32;
+    const avatar = el(null, 'avatar-dot', {
+      width: avSize + 'px', height: avSize + 'px', position: 'relative',
+      left: avSt.dx + 'px', top: avSt.dy + 'px', background: avSt.color || '#ddd',
+    });
+    avatar.classList.add('selectable-obj');
+    const avInfo = { type: 'object', id: 'header.avatar', label: '아바타(헤더)' };
+    attachSelect(avatar, avInfo);
+    if (isSelected(avInfo)) avatar.classList.add('selected');
+    dragFree(avatar, (dx, dy) => { avSt.dx += dx; avSt.dy += dy; });
+    header.appendChild(avatar);
+  }
   const word = el(null, 'wordmark', { fontSize: s.wordmarkSp + 'px' });
   makeEditableText(word, 'wordmark', "'BodoniMTBlack'", s.tealColor);
   const spacer = el(null, null, { width: '24px' });
-  header.appendChild(avatar); header.appendChild(word); header.appendChild(spacer);
+  header.appendChild(word); header.appendChild(spacer);
   frame.appendChild(header);
   y += 28;
 
@@ -587,11 +595,26 @@ function render() {
   NAV.forEach(n => {
     const item = el(null, 'navitem' + (n.key === tab ? ' active' : ''));
     if (n.key === tab) item.style.color = s.tealColor;
-    const ic = el(null, 'ic');
-    if (n.key === tab) ic.style.background = s.tealColor;
+    const navSt = elState('nav.' + n.key);
+    navSt.naturalW = 20; navSt.naturalH = 20;
+    if (!navSt.removed) {
+      const icSize = navSt.w ?? 20;
+      const ic = el(null, 'ic', {
+        width: icSize + 'px', height: icSize + 'px',
+        transform: `translate(${navSt.dx}px, ${navSt.dy}px)`,
+      });
+      if (n.key === tab) ic.style.background = s.tealColor;
+      if (navSt.color) ic.style.background = navSt.color;
+      ic.classList.add('selectable-obj');
+      const navInfo = { type: 'object', id: 'nav.' + n.key, label: '네비게이션 아이콘: ' + n.label };
+      attachSelect(ic, navInfo);
+      if (isSelected(navInfo)) ic.classList.add('selected');
+      dragFree(ic, (dx, dy) => { navSt.dx += dx; navSt.dy += dy; });
+      item.appendChild(ic);
+    }
     const label = document.createElement('span'); label.textContent = n.label;
     if (n.key === tab) label.style.color = s.tealColor;
-    item.appendChild(ic); item.appendChild(label);
+    item.appendChild(label);
     navbar.appendChild(item);
   });
   frame.appendChild(navbar);
@@ -672,6 +695,7 @@ function renderHomeCarousel(top, bottom) {
 function drawCover(id, x, y, w, h, colorIdx, alpha, kind) {
   const st = elState(id);
   st.naturalW = w; st.naturalH = h;
+  if (st.removed) return null;
   const fw = st.w ?? w, fh = st.h ?? h;
   const card = el(null, 'cover-card', { width: fw + 'px', height: fh + 'px', opacity: alpha });
   const swatch = el(null, 'swatch', { background: st.color || s.coverColors[colorIdx % s.coverColors.length] });
@@ -707,23 +731,25 @@ function renderListShareBody(top, bottom, shared) {
   const naturalCellW = (s.screenWidth - s.sideMargin * 2 - 20) / 3;
   const naturalCellH = naturalCellW / (182 / 275);
   gridSt.naturalW = naturalCellW; gridSt.naturalH = naturalCellH;
-  const cellW = gridSt.w ?? naturalCellW, cellH = gridSt.h ?? naturalCellH, gap = 10;
-  const grid = el(null, null, {
-    position: 'absolute', display: 'grid',
-    gridTemplateColumns: `repeat(3, ${cellW}px)`, gap: gap + 'px', alignContent: 'start',
-    width: (cellW * 3 + gap * 2) + 'px',
-  });
-  for (let i = 0; i < 6; i++) {
-    const cell = el(null, null, { width: cellW + 'px', height: cellH + 'px',
-      background: gridSt.color || s.coverColors[i % s.coverColors.length], borderRadius: '4px 10px 10px 4px' });
-    grid.appendChild(cell);
+  if (!gridSt.removed) {
+    const cellW = gridSt.w ?? naturalCellW, cellH = gridSt.h ?? naturalCellH, gap = 10;
+    const grid = el(null, null, {
+      position: 'absolute', display: 'grid',
+      gridTemplateColumns: `repeat(3, ${cellW}px)`, gap: gap + 'px', alignContent: 'start',
+      width: (cellW * 3 + gap * 2) + 'px',
+    });
+    for (let i = 0; i < 6; i++) {
+      const cell = el(null, null, { width: cellW + 'px', height: cellH + 'px',
+        background: gridSt.color || s.coverColors[i % s.coverColors.length], borderRadius: '4px 10px 10px 4px' });
+      grid.appendChild(cell);
+    }
+    frame.appendChild(grid);
+    wireObject(grid, 'list.grid', '카드 그리드(카드 크기 · 그리드 위치)', s.sideMargin, gridTop);
+    // 카드마다 있는 즐겨찾기★/삭제✕ 아이콘 — 대표로 첫 번째 카드 위치에 그려서 보정할 수 있게 함
+    // (모든 카드가 같은 상대 위치를 공유하므로 하나만 옮기면 전체에 적용된다고 보면 됨).
+    drawIconButton('cover.fav', s.sideMargin + gridSt.dx + 2, gridTop + gridSt.dy + 2, 24, 24, '★', '즐겨찾기(카드 좌상단)', 'circle', false);
+    drawIconButton('cover.delete', s.sideMargin + gridSt.dx + cellW - 26, gridTop + gridSt.dy + 2, 24, 24, '✕', '삭제(카드 우상단)', 'circle', false);
   }
-  frame.appendChild(grid);
-  wireObject(grid, 'list.grid', '카드 그리드(카드 크기 · 그리드 위치)', s.sideMargin, gridTop);
-  // 카드마다 있는 즐겨찾기★/삭제✕ 아이콘 — 대표로 첫 번째 카드 위치에 그려서 보정할 수 있게 함
-  // (모든 카드가 같은 상대 위치를 공유하므로 하나만 옮기면 전체에 적용된다고 보면 됨).
-  drawIconButton('cover.fav', s.sideMargin + gridSt.dx + 2, gridTop + gridSt.dy + 2, 24, 24, '★', '즐겨찾기(카드 좌상단)', 'circle', false);
-  drawIconButton('cover.delete', s.sideMargin + gridSt.dx + cellW - 26, gridTop + gridSt.dy + 2, 24, 24, '✕', '삭제(카드 우상단)', 'circle', false);
 }
 
 function renderDiaryBody(top, bottom) {
@@ -758,14 +784,16 @@ function renderDiaryBody(top, bottom) {
   const naturalW = s.screenWidth - s.sideMargin * 2;
   const naturalH = bottom - naturalTop;
   boxSt.naturalW = naturalW; boxSt.naturalH = naturalH;
-  const grid = el(null, null, {
-    position: 'absolute', width: (boxSt.w ?? naturalW) + 'px', height: (boxSt.h ?? naturalH) + 'px',
-    border: '1px dashed #ccc', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    color: '#999', fontSize: '11px',
-  });
-  grid.textContent = '달력 그리드 영역';
-  frame.appendChild(grid);
-  wireObject(grid, 'diary.calendarBox', '달력 그리드 영역', s.sideMargin, naturalTop);
+  if (!boxSt.removed) {
+    const grid = el(null, null, {
+      position: 'absolute', width: (boxSt.w ?? naturalW) + 'px', height: (boxSt.h ?? naturalH) + 'px',
+      border: '1px dashed #ccc', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#999', fontSize: '11px',
+    });
+    grid.textContent = '달력 그리드 영역';
+    frame.appendChild(grid);
+    wireObject(grid, 'diary.calendarBox', '달력 그리드 영역', s.sideMargin, naturalTop);
+  }
 }
 
 /** Other(설정) 탭 — 프로필 카드(아바타+별명 수정 연필), 테마 3칩, 로그아웃/미리보기 버튼.
@@ -900,13 +928,18 @@ function renderInspector() {
     box.appendChild(inspRow('폭 (w, px)', numberInput(st.w ?? st.naturalW ?? 40, 8, 900, (v) => { st.w = v; render(); })));
     box.appendChild(inspRow('높이 (h, px)', numberInput(st.h ?? st.naturalH ?? 40, 8, 1400, (v) => { st.h = v; render(); })));
     box.appendChild(inspRow('색상', colorInput(st.color || '#9a9a92', (v) => { st.color = v; render(); })));
-    box.appendChild(actionButtons([['기본값으로', () => { st.dx = 0; st.dy = 0; st.w = null; st.h = null; st.color = null; render(); }]]));
+    box.appendChild(actionButtons([
+      ['기본값으로', () => { st.dx = 0; st.dy = 0; st.w = null; st.h = null; st.color = null; render(); }],
+      ['숨기기(삭제)', () => { st.removed = true; selected = null; render(); }, true],
+    ]));
   } else if (selected.type === 'text') {
     const key = selected.key;
     const st = textState(key);
     const sizeKeyMap = { wordmark: 'wordmarkSp', home: 'titleSp', list: 'titleSp', share: 'titleSp', diary: 'titleSp', other: 'titleSp',
       coverTitle: 'coverTitleCenterSp', coverDate: 'coverDateCenterSp', calYearMonth: 'yearMonthSp' };
     const sizeKey = sizeKeyMap[key];
+    box.appendChild(inspRow('가로 위치 보정 (dx, px)', numberInput(st.dx, -300, 300, (v) => { st.dx = v; render(); })));
+    box.appendChild(inspRow('세로 위치 보정 (dy, px)', numberInput(st.dy, -300, 300, (v) => { st.dy = v; render(); })));
     if (sizeKey) {
       box.appendChild(inspRow('글자 크기 (sp)', numberInput(s[sizeKey], 6, 120, (v) => { s[sizeKey] = v; render(); })));
     }
@@ -919,7 +952,7 @@ function renderInspector() {
     select.addEventListener('change', () => { st.font = select.value === 'auto' ? null : select.value; render(); });
     box.appendChild(inspRow('폰트', select));
     box.appendChild(inspRow('색상', colorInput(st.color || selected.defaultColor || '#20201c', (v) => { st.color = v; render(); })));
-    box.appendChild(actionButtons([['기본값으로', () => { st.font = null; st.color = null; render(); }]]));
+    box.appendChild(actionButtons([['기본값으로', () => { st.dx = 0; st.dy = 0; st.font = null; st.color = null; render(); }]]));
     box.appendChild(el(null, 'hint', {})).textContent = '문구는 화면에서 직접 클릭해 수정하세요.';
   }
 }
@@ -1106,11 +1139,18 @@ ${s.customButtons.map(cb => `// "${cb.label}"(${cb.glyph}): x=${Math.round(cb.x)
   }
 
   const textLines = Object.entries(s.textStyle)
-    .filter(([, st]) => st.font || st.color)
-    .map(([key, st]) => `// ${key}: ${st.font ? 'font=' + st.font + ' ' : ''}${st.color ? 'color=' + st.color : ''}`.trim());
+    .filter(([, st]) => st.font || st.color || st.dx || st.dy)
+    .map(([key, st]) => {
+      const parts = [];
+      if (st.dx) parts.push(`dx=${st.dx}px`);
+      if (st.dy) parts.push(`dy=${st.dy}px`);
+      if (st.font) parts.push(`font=${st.font}`);
+      if (st.color) parts.push(`color=${st.color}`);
+      return `// ${key}: ${parts.join(', ')}`;
+    });
   if (textLines.length) {
     c += `
-// ---- 글자별 개별 폰트/색상(참고) ----
+// ---- 글자별 개별 위치·폰트·색상(참고 — dx/dy는 "기본 위치에서 이만큼 옮기고 싶다"는 지시) ----
 ${textLines.join('\n')}
 `;
   }
