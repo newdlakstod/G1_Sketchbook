@@ -343,6 +343,11 @@
   4. **그리드 시안 반영(레이아웃 이해 수정)**: 네비게이션 바 총 높이가 화면 하단부터 60dp가 되도록 내부 여백값 보정(25dp→10dp). 홈 캐러셀 노트 아이콘 크기를 시안 수치로 축소(가운데 267.5×402→182×275dp, 옆 217×327→145×218dp). 캐러셀 표지에 제목+날짜 2줄 텍스트 추가(가운데 14/12sp, 옆 12/10sp — `Sketchbook.dateLabel` 신규 헬퍼), 책처럼 두께감 있는 그림자(뒤로 살짝 어긋난 종이 스택 2겹) 추가. 홈 탭 헤더 우측에 개인/공유 토글 아이콘 추가해 캐러셀 필터링(스케치북 리스트 탭의 개인/공유받음 필터와 동일 개념).
   5. **공유 화면 각진 코너**: 지난번 3~4인 지원 작업에서 `PaneFrame`/`GridCell`/최대화 팝업에 남아있던 둥근 모서리(`MaterialTheme.shapes.medium`)를 전부 `RectangleShape`로 교체 — 시안(분할 화면 mockup)이 각진 사각형이라 그대로 맞춤.
 
+- **Android Studio Canvas Preview** (2026-08-17): Added debug-only
+  `app/src/debug/java/com/g1/sketchbook/preview/BrushCanvasPreview.kt`. It renders
+  `BrushView` with `BrushControls` through Compose `@Preview`; the existing
+  `design-tool/mockup.html` is unchanged. Verified with `compileDebugKotlin`.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
