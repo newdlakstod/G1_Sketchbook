@@ -107,7 +107,6 @@ import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.ui.bounceClick
-import com.g1.sketchbook.ui.theme.CoverColors
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -474,7 +473,7 @@ private fun SketchbookListScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     itemsIndexed(shown, key = { _, b -> b.id }) { i, b ->
-                        CoverCard(b, CoverColors[i % CoverColors.size], { onOpen(b) }, { pendingDelete = b }, { onToggleFav(b) })
+                        CoverCard(b, { onOpen(b) }, { pendingDelete = b }, { onToggleFav(b) })
                     }
                 }
             }
@@ -510,19 +509,16 @@ private fun FilterIconBtn(icon: ImageVector, label: String, selected: Boolean, o
 }
 
 @Composable
-private fun CoverCard(book: Sketchbook, cover: Color, onOpen: () -> Unit, onDelete: () -> Unit, onToggleFav: () -> Unit) {
-    val coverShape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp)
+private fun CoverCard(book: Sketchbook, onOpen: () -> Unit, onDelete: () -> Unit, onToggleFav: () -> Unit) {
     // Same cover ratio as the home carousel (Dimens.Home.coverRatio) — every note cover keeps one
     // fixed proportion across the whole app, whichever screen shows it.
     Box(Modifier.aspectRatio(Dimens.Home.coverRatio)) {
-        Box(
-            Modifier.fillMaxSize()
-                .shadow(12.dp, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
-                .clip(coverShape)
-                .background(cover).bounceClick(onClick = onOpen),
+        // 목록 표지도 홈과 같은 공용 컴포넌트를 사용해 기본색과 책등 위치를 일치시킵니다.
+        SketchbookCover(
+            modifier = Modifier.fillMaxSize()
+                .shadow(12.dp, SketchbookCoverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
+                .bounceClick(onClick = onOpen),
         ) {
-            Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(0.66f).align(Alignment.Center).padding(start = 12.dp))
             // Scrim so the cream text stays readable regardless of the cover's own colour (some covers,
             // e.g. the light mauve one, put light text under ~2:1 contrast without this).
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.5f)

@@ -1,7 +1,6 @@
 package com.g1.sketchbook.ui.main
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,20 +69,20 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.GestureAction
 import com.g1.sketchbook.data.SessionStore
-import com.g1.sketchbook.ui.bounceClick
+import com.g1.sketchbook.sketchbook.DefaultSketchbookCoverColor
 import com.g1.sketchbook.sketchbook.Sketchbook
+import com.g1.sketchbook.sketchbook.SketchbookCover
+import com.g1.sketchbook.sketchbook.SketchbookCoverShape
 import com.g1.sketchbook.sketchbook.SketchbookRepository
+import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Cavorting
-import com.g1.sketchbook.ui.theme.CoverColors
 import com.g1.sketchbook.ui.theme.Dimens
 import com.g1.sketchbook.ui.theme.Pretendard
 import com.g1.sketchbook.ui.theme.ThemeMode
@@ -309,22 +308,22 @@ private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
         // recede — so the size shrink alone doesn't have to carry the whole depth illusion.
         val elevation = androidx.compose.ui.unit.lerp(18.dp, 4.dp, distance)
         val book = books[page]
-        val coverShape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp, topStart = 4.dp, bottomStart = 4.dp)
+        val coverShape = SketchbookCoverShape
         val titleSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverTitleCenterSp, Dimens.Home.coverTitleSideSp, distance)
         val dateSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverDateCenterSp, Dimens.Home.coverDateSideSp, distance)
-        val cover = CoverColors[page % CoverColors.size]
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(fade).bounceClick { onOpen(book.id) }) {
                 Box(Modifier.width(w + 4.dp).height(h + 4.dp)) {
                     // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
-                    Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape).background(cover.copy(alpha = 0.5f)))
-                    Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape).background(cover.copy(alpha = 0.75f)))
-                    Box(Modifier.width(w).height(h)
-                        .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
-                        .clip(coverShape)
-                        .background(cover)) {
-                        Image(painterResource(R.drawable.mascot_duck), null, contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize(0.6f).align(Alignment.Center))
+                    Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape)
+                        .background(DefaultSketchbookCoverColor.copy(alpha = 0.5f)))
+                    Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
+                        .background(DefaultSketchbookCoverColor.copy(alpha = 0.75f)))
+                    // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
+                    SketchbookCover(
+                        modifier = Modifier.width(w).height(h)
+                            .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
+                    ) {
                         if (book.shared) {
                             Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
                                 .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
