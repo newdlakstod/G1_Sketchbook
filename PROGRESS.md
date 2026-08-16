@@ -347,6 +347,9 @@
   `app/src/main/java/com/g1/sketchbook/preview/BrushCanvasPreview.kt`. It renders
   `BrushView` with `BrushControls` through Compose `@Preview`; the existing
   `design-tool/mockup.html` is unchanged. Verified with `compileDebugKotlin`.
+- **Android Studio Home Preview** (2026-08-17): Added
+  `app/src/main/java/com/g1/sketchbook/preview/HomeScreenPreview.kt`, which renders
+  the real `MainScreen` with the Home tab selected and preview-only callbacks.
 
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
