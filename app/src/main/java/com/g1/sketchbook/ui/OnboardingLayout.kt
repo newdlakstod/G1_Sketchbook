@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
@@ -20,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -28,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.R
 import com.g1.sketchbook.ui.theme.Cavorting
+import com.g1.sketchbook.ui.theme.DaymoryTeal
 import com.g1.sketchbook.ui.theme.Dimens
 
 @Composable
@@ -39,22 +42,23 @@ internal fun OnboardingLayout(
     error: String? = null,
 ) {
     val backgroundColor = MaterialTheme.colorScheme.background
-    val foregroundColor = MaterialTheme.colorScheme.onBackground
     Column(
         modifier = Modifier.fillMaxSize().background(backgroundColor).systemBarsPadding()
             .padding(horizontal = 28.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(12.dp))
-        OnboardingTitle(preferredFontSize = Dimens.Onboarding.titleSp, color = foregroundColor)
+        OnboardingTitle(preferredFontSize = Dimens.Onboarding.titleSp, color = DaymoryTeal)
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Image(
                 painter = painterResource(R.drawable.onboarding_duck2),
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Fit,
-                colorFilter = ColorFilter.tint(foregroundColor),
+                colorFilter = ColorFilter.tint(DaymoryTeal),
                 modifier = Modifier.width(Dimens.Onboarding.duckMaxWidth)
                     .aspectRatio(Dimens.Onboarding.duckAspectRatio)
+                    // 오리 위치 조절: x는 좌우(+ 오른쪽), y는 상하(+ 아래쪽) 이동값이다.
+                    .offset(x = 0.dp, y = 0.dp)
                     .padding(vertical = 12.dp),
             )
         }
@@ -62,20 +66,20 @@ internal fun OnboardingLayout(
             "Draw together, keep the little days",
             fontFamily = Cavorting,
             fontSize = Dimens.Onboarding.subtitleSp,
-            color = foregroundColor,
+            color = DaymoryTeal,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(16.dp))
         Box(Modifier.fillMaxWidth().height(56.dp), contentAlignment = Alignment.Center) {
             if (busy) {
-                CircularProgressIndicator(color = foregroundColor)
+                CircularProgressIndicator(color = DaymoryTeal)
             } else {
                 Box(
-                    Modifier.clip(RoundedCornerShape(50)).background(foregroundColor)
+                    Modifier.clip(RoundedCornerShape(50)).background(DaymoryTeal)
                         .bounceClick(onClick = onCta)
                         .padding(horizontal = 46.dp, vertical = 14.dp),
                 ) {
-                    Text(ctaLabel, color = backgroundColor, fontSize = Dimens.Onboarding.ctaSp)
+                    Text(ctaLabel, color = Color.White, fontSize = Dimens.Onboarding.ctaSp)
                 }
             }
         }

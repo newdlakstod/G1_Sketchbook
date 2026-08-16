@@ -371,6 +371,11 @@
   `colorScheme.background`로 통일하고, 제목·부제·오리 tint·로딩·버튼 배경은
   `onBackground`, 버튼 글자는 `background`를 사용하도록 변경했다. 기존 세이지 전용 팔레트는
   제거했고 오류 문구는 테마 `error`를 유지한다. 라이트/다크 Splash·Login Preview 추가.
+- **온보딩 브랜드 색상 복원 + 오리 위치 조절값** (2026-08-17): 배경은 MainScreen과 동일한
+  `colorScheme.background`를 유지하되 제목·부제·오리 tint·로딩·버튼 배경은 고정 브랜드 색상
+  `DaymoryTeal`, 버튼 글자는 흰색으로 복원했다. 공용 `OnboardingLayout`의 오리 Modifier에
+  `.offset(x = 0.dp, y = 0.dp)`와 한국어 조절 주석을 추가했다. x 양수는 오른쪽, y 양수는
+  아래쪽이며 Splash/Login/Loading/Error 네 화면에 함께 적용된다.
 
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
