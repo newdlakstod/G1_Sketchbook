@@ -1,30 +1,32 @@
-# Onboarding Theme Contrast Design
+# Onboarding Theme Inversion Design
 
 ## Goal
 
-Make every onboarding state use the same background as MainScreen and invert all branded foreground elements between light and dark themes.
+Invert the fixed ivory and Daymory Teal onboarding palette in dark mode without changing the rest of the app theme.
 
 ## Theme Colors
 
-- Screen background uses `MaterialTheme.colorScheme.background`, identical to MainScreen.
-- The `daymory` title, subtitle, duck image, loading indicator, and CTA background use `MaterialTheme.colorScheme.onBackground`.
-- CTA label uses `MaterialTheme.colorScheme.background`, producing the inverse of its button background.
-- Error copy uses `MaterialTheme.colorScheme.error` so failures remain distinguishable.
+- Light mode uses ivory for the screen background and `DaymoryTeal` for the title, subtitle, duck image, loading indicator, error copy, and CTA background.
+- Dark mode swaps those two colors: `DaymoryTeal` becomes the screen background and ivory becomes every foreground element and the CTA background.
+- The CTA label always uses the current screen background color, keeping it inverse to the button background.
+- The palette branch lives only in the shared `OnboardingLayout`; the global light and dark color schemes remain unchanged.
 
 ## Image Treatment
 
-- Apply `ColorFilter.tint(onBackground)` to the duck PNG.
+- Apply `ColorFilter.tint(foregroundColor)` to the duck PNG.
 - Preserve transparency while rendering all visible duck pixels in the current theme's foreground color.
 - Do not create separate light/dark bitmap assets.
 
 ## Cleanup
 
-- Remove the obsolete onboarding-specific sage background palette, dark palette, palette data class, and palette function.
+- Reuse the existing `DaymoryTeal` and `Ivory` constants; do not add another palette type or dependency.
+- Add a Korean comment beside the Kotlin theme branch explaining the light/dark inversion, matching the project's requested edit guidance.
 - Keep layout positions, sizing, copy, and screen behavior unchanged.
 
 ## Verification
 
-- Assert that `OnboardingLayout` uses `background` and `onBackground` and applies a duck color filter.
-- Assert that the legacy onboarding palette no longer exists.
+- Assert that `OnboardingLayout` selects ivory/teal for light mode and teal/ivory for dark mode.
+- Assert that the CTA label uses the selected background and the duck uses the selected foreground.
+- Assert that no global theme color scheme is changed.
 - Compile debug Kotlin and run debug unit tests.
 - Refresh the onboarding Preview in both light and dark themes.
