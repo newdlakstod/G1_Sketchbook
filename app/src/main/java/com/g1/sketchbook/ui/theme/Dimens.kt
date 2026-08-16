@@ -31,8 +31,8 @@ object Dimens {
         val titleSp = 87.sp         // "daymory" 타이틀 — 화면 폭에 맞춰 줄어들 수 있는 최대값(고정 아님)
         val subtitleSp = 24.sp      // "Draw together, keep the little days" 부제
         val ctaSp = 21.sp           // "enter" / "Google 계정으로 로그인" 버튼 글자 크기
-        val duckW = 275.dp          // 오리 GIF 비율 고정용 — 실제 크기는 화면 폭에 맞춰 이 비율로 축소됨
-        val duckH = 400.dp
+        val duckMaxWidth = 275.dp   // 이 값 하나만 바꾸면 오리가 정비율로 커지거나 작아짐
+        const val duckAspectRatio = 275f / 400f
     }
 
     /** 홈 탭 (타이틀 크기·위치는 Screen 공용값 사용) */

@@ -347,9 +347,26 @@
   `app/src/main/java/com/g1/sketchbook/preview/BrushCanvasPreview.kt`. It renders
   `BrushView` with `BrushControls` through Compose `@Preview`; the existing
   `design-tool/mockup.html` is unchanged. Verified with `compileDebugKotlin`.
-- **Android Studio Home Preview** (2026-08-17): Added
-  `app/src/main/java/com/g1/sketchbook/preview/HomeScreenPreview.kt`, which renders
-  the real `MainScreen` with the Home tab selected and preview-only callbacks.
+- **Android Studio 전체 화면 Preview 카탈로그** (2026-08-17): 기존 단일 홈 Preview를
+  `OnboardingPreviews.kt`, `MainTabPreviews.kt`, `FlowPreviews.kt`,
+  `SharedCanvasPreviews.kt`, `BrushCanvasPreview.kt`로 확장. Splash/Login/Nickname, 홈과 5개 탭,
+  개인·공유 생성/참여, 개인 캔버스, 일기 편집기, 전체 달력/날짜 상세, 공유 캔버스 분할/최대화까지
+  총 18개 상태를 Android Studio Design/Split에서 볼 수 있다. 실제 화면 Composable에
+  preview 전용 샘플 데이터/모드만 주입하며, 런타임 기본값과 Firebase/로컬 저장 동작은 유지했다.
+  `design-tool/mockup.html`은 변경하지 않았다. `compileDebugKotlin`과
+  `compileReleaseKotlin`으로 검증.
+- **온보딩 오리 단일 크기 조절값** (2026-08-17): `Dimens.Onboarding.duckW/duckH`를
+  `duckMaxWidth`와 고정 `duckAspectRatio(275:400)`로 분리. 이제 `duckMaxWidth` 하나만 바꾸면
+  Splash/Login 오리가 정비율로 함께 확대·축소된다. `widthIn`을 `fillMaxWidth`보다 바깥에
+  배치해 최대 너비가 실제로 적용되도록 수정했다. `compileDebugKotlin` 검증 완료.
+- **Google 로그인 버튼 스타일 통일** (2026-08-17): Login의 outlined 버튼을 Splash의 enter와
+  동일한 `DaymoryTeal` 채움+흰 글씨 pill로 변경. 고정 너비 없이 기존 좌우 46dp content padding을
+  유지해 문구 길이에 따라 가로 길이가 자동 결정된다. 로그인/로딩/오류 동작은 변경하지 않았다.
+- **온보딩 네 상태 위치 통일** (2026-08-17): Splash/Login/Loading/Error가 새 공통
+  `OnboardingLayout`을 사용하도록 중복 레이아웃을 제거했다. CTA 56dp·오류 40dp 고정 슬롯으로
+  로딩/오류 유무와 관계없이 daymory·오리·부제·버튼 좌표가 동일하다. `OnboardingTitle`은
+  `titleSp` 입력값을 먼저 적용하고 화면 폭을 넘을 때만 55% 한도까지 축소한다. Loading/Error
+  Preview도 각각 분리했다.
 
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
@@ -359,6 +376,9 @@
   - 남은 후보: 화면 디테일 다듬기, 공유 페이지 동기화 옵션(같은 페이지 함께 넘기기), 저장/내보내기 등.
 
 ## Decisions
+- Android Studio Preview는 별도 디자인 복사본이 아니라 실제 앱 Composable을 렌더링한다.
+  디자인 수정은 각 실제 화면 `kt`에서 하고, `preview/*Previews.kt`는 표시할 화면 상태와 샘플
+  데이터 선택에만 사용한다. Preview 중에는 로컬 저장소/Firebase 접속을 하지 않는다.
 - 브러시 = PNG/스탬프 감성 최우선. 연해/중심선/각짐 문제는 "웹 놀이터와 동일 코드(디스크+직접 누적)"로 해결.
 - 백엔드: 지금은 무료(RTDB+Base64), Repository로 감싸 후에 이전(A안).
 - 그림일기: 개인 전용·사용자당 1개.
