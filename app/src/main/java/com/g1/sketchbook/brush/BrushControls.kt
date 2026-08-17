@@ -37,16 +37,19 @@ import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.LineWeight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SliderState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,12 +63,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -104,6 +107,11 @@ private val HueWheel = listOf(
     Color(0xFFFF0000), Color(0xFFFFFF00), Color(0xFF00FF00), Color(0xFF00FFFF),
     Color(0xFF0000FF), Color(0xFFFF00FF), Color(0xFFFF0000),
 )
+
+// 버튼 탭 영역 크기 — 아이콘/스와치 자체보다 살짝 크게 잡아 손가락으로 누르기 편하게 하는 값.
+// Arrangement.spacedBy로 버튼 간격을 더 좁히면(0 이하 포함) 이 탭 영역끼리 겹칠 수 있는데,
+// 겹쳐도 터치는 정상 동작하도록 의도된 것 — 실제 보이는 간격은 이 값과 spacedBy 둘이 함께 정한다.
+private val ButtonTapSize = 30.dp
 
 /** Single-row floating dock. Optional leading controls (back / pages / rotate) show when provided. */
 @Composable
@@ -148,13 +156,22 @@ fun BrushControls(
     var openBrushPanel by remember { mutableStateOf<BrushType?>(null) }
     var openEraserPanel by remember { mutableStateOf(false) }
     var miniBrushPickerOpen by remember { mutableStateOf(false) }
+    var collapsedSizePanelOpen by remember { mutableStateOf(false) } // 최소화 모드: 브러시 아이콘 길게 누르면 굵기/투명도 패널
     val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
+    val screenEdgeMargin = with(LocalDensity.current) { 20.dp.roundToPx() }
     val vertical = dock == ToolbarDock.LEFT || dock == ToolbarDock.RIGHT
     val popupAnchor: PopupPositionProvider = when (dock) {
         ToolbarDock.BOTTOM -> AboveAnchor(gap)
         ToolbarDock.TOP -> BelowAnchor(gap)
         ToolbarDock.LEFT -> SideAnchor(gap, toRight = true)
         ToolbarDock.RIGHT -> SideAnchor(gap, toRight = false)
+    }
+    // 굵기/투명도 패널(SlidersPanel) 전용 앵커 — 화면 가장자리에서 최소 20dp는 띄워서 뜨게 한다.
+    val sizePopupAnchor: PopupPositionProvider = when (dock) {
+        ToolbarDock.BOTTOM -> AboveAnchor(gap, screenEdgeMargin)
+        ToolbarDock.TOP -> BelowAnchor(gap, screenEdgeMargin)
+        ToolbarDock.LEFT -> SideAnchor(gap, toRight = true, edgeMarginPx = screenEdgeMargin)
+        ToolbarDock.RIGHT -> SideAnchor(gap, toRight = false, edgeMarginPx = screenEdgeMargin)
     }
 
     if (confirmClear) {
@@ -179,22 +196,28 @@ fun BrushControls(
         if (collapsed) {
             val collapsedContent: @Composable () -> Unit = {
                 if (onDragBar != null && onDragBarEnd != null) DragHandle(onDragBar, onDragBarEnd)
-                // 현재 브러시(또는 지우개) 아이콘 — 탭하면 4개(+지우개) 미니 팝업에서 바로 고른다.
+                // 현재 브러시(또는 지우개) 아이콘 — 탭하면 4개(+지우개) 미니 팝업, 길게 누르면 굵기/투명도 패널.
                 Box {
-                    Box(Modifier.size(48.dp).bounceClick { miniBrushPickerOpen = true }, contentAlignment = Alignment.Center) {
-                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경",
-                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(36.dp))
+                    Box(
+                        Modifier.size(ButtonTapSize).bounceClick(onLongClick = { collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 길게 눌러 굵기·투명도 조절",
+                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
                         MiniBrushPopup(brush, erasing,
                             onPick = { onBrush(it); miniBrushPickerOpen = false },
                             onEraser = { onToggleErase(); miniBrushPickerOpen = false })
                     }
+                    if (collapsedSizePanelOpen) Popup(sizePopupAnchor, { collapsedSizePanelOpen = false }, PopupProperties(focusable = true)) {
+                        SlidersPanel(!erasing, sizeDp, opacity, onSize, onOpacity)
+                    }
                 }
                 // 현재 색상 — 탭하면 전체 툴바와 같은 색상휠이 뜬다.
                 Box {
                     Box(
-                        Modifier.size(48.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() },
+                        Modifier.size(ButtonTapSize).clickable(indication = null, interactionSource = remember { MutableInteractionSource() },
                             onClickLabel = "현재 색상 — 탭해서 변경") { colorWheelOpen = true },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -221,134 +244,150 @@ fun BrushControls(
                 ) { collapsedContent() }
             }
         } else {
-        val fullContent: @Composable () -> Unit = {
-            if (onDragBar != null && onDragBarEnd != null) { DragHandle(onDragBar, onDragBarEnd); ToolbarDivider(vertical) }
-            onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
-            // Page turning/thumbnail list/selection all live behind one button now — see PagePanel.
-            onOpenPages?.let { IconBtn(Icons.Filled.Layers, "페이지", onClick = it) }
-            onRotate?.let {
-                // Dimmed (not disabled) while locked — BrushView.rotate() itself no-ops, this just
-                // signals why tapping does nothing instead of silently failing.
-                IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전",
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (locked) 0.35f else 1f), onClick = it)
-            }
-            onToggleLock?.let {
-                IconBtn(if (locked) Icons.Filled.Lock else Icons.Filled.LockOpen, if (locked) "화면 잠금 해제" else "화면 잠금",
-                    tint = if (locked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
-            }
-            onToggleFullscreen?.let {
-                IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "전체화면 종료" else "전체화면",
-                    tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
-            }
-            if (onBack != null || onOpenPages != null || onRotate != null ||
-                onToggleLock != null || onToggleFullscreen != null) ToolbarDivider(vertical)
+        val hasNav = onBack != null || onOpenPages != null || onRotate != null ||
+            onToggleLock != null || onToggleFullscreen != null
 
-            // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
-            // width/opacity panel (anchored + labelled per brush, not a single shared control).
-            BrushBtnWithPanel(!erasing && brush == BrushType.PEN, "펜", sizeDp, opacity, true, popupAnchor,
-                panelOpen = openBrushPanel == BrushType.PEN,
-                setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PEN else null; if (o) openEraserPanel = false },
-                onClick = { onBrush(BrushType.PEN); openBrushPanel = null; openEraserPanel = false },
-                onSize = onSize, onOpacity = onOpacity) { t ->
-                Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+        // 버튼바를 구분선 기준 "그룹"으로 나눠서 그린다 — 그룹 안 버튼 간격(GroupButtonGap)과
+        // 그룹-구분선 사이 간격(GroupDividerGap)을 서로 다른 Arrangement.spacedBy로 따로 조절하기
+        // 위함(공유 spacedBy 하나만으로는 구분선 쪽만 더 좁게 만들 수 없어서 이렇게 나눔).
+        val segments = buildList<@Composable () -> Unit> {
+            if (onDragBar != null && onDragBarEnd != null) add { DragHandle(onDragBar, onDragBarEnd) }
+            if (hasNav) add {
+                onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
+                // Page turning/thumbnail list/selection all live behind one button now — see PagePanel.
+                onOpenPages?.let { IconBtn(Icons.Filled.Layers, "페이지", onClick = it) }
+                onRotate?.let {
+                    // Dimmed (not disabled) while locked — BrushView.rotate() itself no-ops, this just
+                    // signals why tapping does nothing instead of silently failing.
+                    IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전",
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (locked) 0.35f else 1f), onClick = it)
+                }
+                onToggleLock?.let {
+                    IconBtn(if (locked) Icons.Filled.Lock else Icons.Filled.LockOpen, if (locked) "화면 잠금 해제" else "화면 잠금",
+                        tint = if (locked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
+                }
+                onToggleFullscreen?.let {
+                    IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "전체화면 종료" else "전체화면",
+                        tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
+                }
             }
-            BrushBtnWithPanel(!erasing && brush == BrushType.PENCIL, "연필", sizeDp, opacity, true, popupAnchor,
-                panelOpen = openBrushPanel == BrushType.PENCIL,
-                setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PENCIL else null; if (o) openEraserPanel = false },
-                onClick = { onBrush(BrushType.PENCIL); openBrushPanel = null; openEraserPanel = false },
-                onSize = onSize, onOpacity = onOpacity) { t ->
-                Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
+            add {
+                // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
+                // width/opacity panel (anchored, not a single shared control).
+                BrushBtnWithPanel(!erasing && brush == BrushType.PEN, sizeDp, opacity, true, sizePopupAnchor,
+                    panelOpen = openBrushPanel == BrushType.PEN,
+                    setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PEN else null; if (o) openEraserPanel = false },
+                    onClick = { onBrush(BrushType.PEN); openBrushPanel = null; openEraserPanel = false },
+                    onSize = onSize, onOpacity = onOpacity) { t ->
+                    Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                }
+                BrushBtnWithPanel(!erasing && brush == BrushType.PENCIL, sizeDp, opacity, true, sizePopupAnchor,
+                    panelOpen = openBrushPanel == BrushType.PENCIL,
+                    setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PENCIL else null; if (o) openEraserPanel = false },
+                    onClick = { onBrush(BrushType.PENCIL); openBrushPanel = null; openEraserPanel = false },
+                    onSize = onSize, onOpacity = onOpacity) { t ->
+                    Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                }
+                BrushBtnWithPanel(!erasing && brush == BrushType.CRAYON, sizeDp, opacity, true, sizePopupAnchor,
+                    panelOpen = openBrushPanel == BrushType.CRAYON,
+                    setPanelOpen = { o -> openBrushPanel = if (o) BrushType.CRAYON else null; if (o) openEraserPanel = false },
+                    onClick = { onBrush(BrushType.CRAYON); openBrushPanel = null; openEraserPanel = false },
+                    onSize = onSize, onOpacity = onOpacity) { t ->
+                    Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                }
+                BrushBtnWithPanel(!erasing && brush == BrushType.WATER, sizeDp, opacity, true, sizePopupAnchor,
+                    panelOpen = openBrushPanel == BrushType.WATER,
+                    setPanelOpen = { o -> openBrushPanel = if (o) BrushType.WATER else null; if (o) openEraserPanel = false },
+                    onClick = { onBrush(BrushType.WATER); openBrushPanel = null; openEraserPanel = false },
+                    onSize = onSize, onOpacity = onOpacity) { t ->
+                    Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                }
+                BrushBtnWithPanel(erasing, sizeDp, opacity, false, sizePopupAnchor,
+                    panelOpen = openEraserPanel,
+                    setPanelOpen = { o -> openEraserPanel = o; if (o) openBrushPanel = null },
+                    onClick = { onToggleErase(); openBrushPanel = null; openEraserPanel = false },
+                    onSize = onSize, onOpacity = onOpacity) { t ->
+                    Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                }
             }
-            BrushBtnWithPanel(!erasing && brush == BrushType.CRAYON, "크레파스", sizeDp, opacity, true, popupAnchor,
-                panelOpen = openBrushPanel == BrushType.CRAYON,
-                setPanelOpen = { o -> openBrushPanel = if (o) BrushType.CRAYON else null; if (o) openEraserPanel = false },
-                onClick = { onBrush(BrushType.CRAYON); openBrushPanel = null; openEraserPanel = false },
-                onSize = onSize, onOpacity = onOpacity) { t ->
-                Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-            }
-            BrushBtnWithPanel(!erasing && brush == BrushType.WATER, "수채화", sizeDp, opacity, true, popupAnchor,
-                panelOpen = openBrushPanel == BrushType.WATER,
-                setPanelOpen = { o -> openBrushPanel = if (o) BrushType.WATER else null; if (o) openEraserPanel = false },
-                onClick = { onBrush(BrushType.WATER); openBrushPanel = null; openEraserPanel = false },
-                onSize = onSize, onOpacity = onOpacity) { t ->
-                Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-            }
-            BrushBtnWithPanel(erasing, "지우개", sizeDp, opacity, false, popupAnchor,
-                panelOpen = openEraserPanel,
-                setPanelOpen = { o -> openEraserPanel = o; if (o) openBrushPanel = null },
-                onClick = { onToggleErase(); openBrushPanel = null; openEraserPanel = false },
-                onSize = onSize, onOpacity = onOpacity) { t ->
-                Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
-            }
-
-            ToolbarDivider(vertical)
-
-            // 5 favourites: tap to pick; tap the already-selected one again to open a colour wheel for it.
-            // Touch area is the 48dp accessibility minimum, but the ripple itself is scoped to the
-            // visible 28dp swatch (shared InteractionSource: outer box detects the tap with no
-            // indication of its own, inner box — clipped to the swatch's own circle — draws it).
-            favorites.forEachIndexed { i, c ->
-                val on = !erasing && c == color
-                val interaction = remember { MutableInteractionSource() }
+            add {
+                // 5 favourites: tap to pick; tap the already-selected one again to open a colour wheel for it.
+                // Touch area is ButtonTapSize (visually bigger than the swatch), but the ripple itself is
+                // scoped to the visible 28dp swatch (shared InteractionSource: outer box detects the tap
+                // with no indication of its own, inner box — clipped to the swatch's own circle — draws it).
+                favorites.forEachIndexed { i, c ->
+                    val on = !erasing && c == color
+                    val interaction = remember { MutableInteractionSource() }
+                    Box {
+                        Box(
+                            Modifier.size(ButtonTapSize)
+                                .clickable(interactionSource = interaction, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") {
+                                    if (on) editFavAt = i else onColor(c)
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(Modifier.size(28.dp).clip(CircleShape).indication(interaction, LocalIndication.current)
+                                .background(Color(c))
+                                .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape))
+                        }
+                        if (editFavAt == i) Popup(popupAnchor, { editFavAt = -1 }, PopupProperties(focusable = true)) {
+                            ColorPickerCard(c) { newColor -> onColor(newColor); onEditFavorite(i, newColor) }
+                        }
+                    }
+                }
+                // Color wheel: opens a hue/saturation/value picker for any custom colour.
                 Box {
+                    val wheelInteraction = remember { MutableInteractionSource() }
                     Box(
-                        Modifier.size(48.dp)
-                            .clickable(interactionSource = interaction, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") {
-                                if (on) editFavAt = i else onColor(c)
+                        Modifier.size(ButtonTapSize)
+                            .clickable(interactionSource = wheelInteraction, indication = null, onClickLabel = "사용자 지정 색상 고르기") {
+                                colorWheelOpen = !colorWheelOpen
                             },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Box(Modifier.size(28.dp).clip(CircleShape).indication(interaction, LocalIndication.current)
-                            .background(Color(c))
-                            .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape))
+                        Box(Modifier.size(28.dp).clip(CircleShape).indication(wheelInteraction, LocalIndication.current)
+                            .background(Brush.sweepGradient(HueWheel))
+                            .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
                     }
-                    if (editFavAt == i) Popup(popupAnchor, { editFavAt = -1 }, PopupProperties(focusable = true)) {
-                        ColorPickerCard(c) { newColor -> onColor(newColor); onEditFavorite(i, newColor) }
+                    if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
+                        ColorPickerCard(color, onColor)
                     }
                 }
+                // Eyedropper: arm it, then the next tap on the canvas picks that colour instead of drawing.
+                IconBtn(Icons.Filled.Colorize, "스포이드",
+                    tint = if (eyedropArmed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    onClick = onToggleEyedrop)
             }
-            // Color wheel: opens a hue/saturation/value picker for any custom colour.
-            Box {
-                val wheelInteraction = remember { MutableInteractionSource() }
-                Box(
-                    Modifier.size(48.dp)
-                        .clickable(interactionSource = wheelInteraction, indication = null, onClickLabel = "사용자 지정 색상 고르기") {
-                            colorWheelOpen = !colorWheelOpen
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Box(Modifier.size(28.dp).clip(CircleShape).indication(wheelInteraction, LocalIndication.current)
-                        .background(Brush.sweepGradient(HueWheel))
-                        .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
-                }
-                if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
-                    ColorPickerCard(color, onColor)
-                }
+            add {
+                IconBtn(Icons.AutoMirrored.Filled.Undo, "되돌리기", onClick = onUndo)
+                IconBtn(Icons.AutoMirrored.Filled.Redo, "다시 실행", onClick = onRedo)
+                IconBtn(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555), onClick = { confirmClear = true })
             }
-            // Eyedropper: arm it, then the next tap on the canvas picks that colour instead of drawing.
-            IconBtn(Icons.Filled.Colorize, "스포이드",
-                tint = if (eyedropArmed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                onClick = onToggleEyedrop)
-
-            ToolbarDivider(vertical)
-
-            IconBtn(Icons.AutoMirrored.Filled.Undo, "되돌리기", onClick = onUndo)
-            IconBtn(Icons.AutoMirrored.Filled.Redo, "다시 실행", onClick = onRedo)
-            IconBtn(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555), onClick = { confirmClear = true })
-            onToggleCollapsed?.let { ToolbarDivider(vertical); IconBtn(Icons.Filled.UnfoldLess, "버튼바 최소화", onClick = it) }
+            onToggleCollapsed?.let { toggle -> add { IconBtn(Icons.Filled.UnfoldLess, "버튼바 최소화", onClick = toggle) } }
         }
+
         if (vertical) {
             Column(
                 Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) { fullContent() }
+                verticalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
+            ) {
+                segments.forEachIndexed { i, seg ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(15.dp)) { seg() } // 버튼 간격(세로 도킹)
+                    if (i < segments.lastIndex) ToolbarDivider(vertical)
+                }
+            }
         } else {
             Row(
                 Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) { fullContent() }
+                horizontalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
+            ) {
+                segments.forEachIndexed { i, seg ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(15.dp)) { seg() } // 버튼 간격(가로 도킹, 기본)
+                    if (i < segments.lastIndex) ToolbarDivider(vertical)
+                }
+            }
         }
         }
     }
@@ -380,8 +419,8 @@ private fun currentToolIcon(brush: BrushType, erasing: Boolean): Int = when {
     else -> R.drawable.brush_water
 }
 
-/** 최소화 상태에서 브러시 아이콘을 탭하면 뜨는 4개(+지우개) 미니 픽커 — 전체 툴바의 굵기/투명도
- *  패널 없이 종류만 빠르게 바꾼다(굵기·투명도를 조절하려면 버튼바를 펼쳐야 함). */
+/** 최소화 상태에서 브러시 아이콘을 탭하면 뜨는 4개(+지우개) 미니 픽커 — 종류만 빠르게 바꾼다.
+ *  같은 아이콘을 길게 누르면 현재 브러시의 굵기·투명도 패널(SlidersPanel)이 뜬다. */
 @Composable
 private fun MiniBrushPopup(current: BrushType, erasing: Boolean, onPick: (BrushType) -> Unit, onEraser: () -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
@@ -424,43 +463,106 @@ fun EyedropFloatingPreview(colorArgb: Int, xPx: Float, yPx: Float, modifier: Mod
 }
 
 /** Width (and, unless erasing, opacity) sliders for ONE specific brush — opened by tapping that
- *  brush's icon again while it's already selected; the brush name heads the panel so it's clear
- *  which brush is being adjusted (each brush keeps its own width/opacity, not a shared value). */
+ *  brush's icon again while it's already selected (each brush keeps its own width/opacity, not a
+ *  shared value). 팝업 자체가 화면 가장자리에서 20dp 띄워서 뜨도록 anchor 쪽(sizePopupAnchor)에서 처리한다. */
 @Composable
-private fun SlidersPanel(title: String, showOpacity: Boolean, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
+private fun SlidersPanel(showOpacity: Boolean, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Column(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            SliderRow("굵기", "${sizeDp.toInt()}", sizeDp, 2f..48f, onSize) { onSize(10f) }
+            // 굵기 표시는 실제 dp가 아니라 이 슬라이더 안에서의 1~30 단계 번호(브러시 종류와 무관, 위치 기준).
+            IconSliderRow(Icons.Filled.LineWeight, "굵기", "${sizeLevel(sizeDp)}", sizeDp, SizeRange, onSize)
             if (showOpacity) {
-                Spacer(Modifier.height(14.dp))
-                SliderRow("불투명도", "${opacity.toInt()}%", opacity, 0f..100f, onOpacity) { onOpacity(100f) }
+                Spacer(Modifier.height(5.dp))
+                IconSliderRow(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
             }
         }
     }
 }
 
+// 슬라이드 단계 수(30단계) = steps(양 끝 제외 중간값 개수) + 2
+private const val SliderStepCount = 28
+private val SizeRange = 2f..48f
+private val SliderAccentColor = Color(0xFFE85555)
+private val SliderThumbSize = 30.dp
+private val SliderThumbTouchSize = 40.dp
+private val SliderTrackHeight = 6.dp
+
+/** 실제 dp 값과 무관하게, 슬라이더 내 위치를 1~30 단계 번호로 환산 (모든 브러시 공통 표기). */
+private fun sizeLevel(sizeDp: Float): Int {
+    val fraction = ((sizeDp - SizeRange.start) / (SizeRange.endInclusive - SizeRange.start)).coerceIn(0f, 1f)
+    return (fraction * (SliderStepCount + 1)).roundToInt() + 1
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SliderRow(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>,
-                      onChange: (Float) -> Unit, onReset: () -> Unit) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Box(Modifier.size(30.dp).clickable { onReset() }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Rotate90DegreesCw, "기본값", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(Modifier.width(6.dp))
-            Box(Modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 5.dp)) {
-                Text(valueText, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            }
+private fun IconSliderRow(icon: ImageVector, contentDescription: String, valueText: String, value: Float,
+                          range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(10.dp))
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = range,
+            steps = SliderStepCount,
+            track = { state -> GradientSliderTrack(state) },
+            thumb = { RingSliderThumb(valueText) },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GradientSliderTrack(state: SliderState) {
+    val span = state.valueRange.endInclusive - state.valueRange.start
+    val fraction = if (span == 0f) 0f else ((state.value - state.valueRange.start) / span).coerceIn(0f, 1f)
+    val inactiveColor = MaterialTheme.colorScheme.surfaceVariant
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(SliderThumbTouchSize)
+    ) {
+        val strokeWidthPx = SliderTrackHeight.toPx()
+        val y = size.height / 2f
+        val thumbX = size.width * fraction
+        drawLine(
+            color = inactiveColor,
+            start = Offset(thumbX, y),
+            end = Offset(size.width, y),
+            strokeWidth = strokeWidthPx,
+            cap = StrokeCap.Round,
+        )
+        if (thumbX > 0f) {
+            drawLine(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(SliderAccentColor, SliderAccentColor.copy(alpha = 0.55f)),
+                    startX = 0f,
+                    endX = thumbX,
+                ),
+                start = Offset(0f, y),
+                end = Offset(thumbX, y),
+                strokeWidth = strokeWidthPx,
+                cap = StrokeCap.Round,
+            )
         }
-        Slider(value, onChange, valueRange = range,
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.surface,
-                activeTrackColor = MaterialTheme.colorScheme.onSurface,
-                inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-            ))
+    }
+}
+
+@Composable
+private fun RingSliderThumb(valueText: String) {
+    Box(Modifier.size(SliderThumbTouchSize), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .size(SliderThumbSize)
+                .shadow(3.dp, CircleShape, clip = false)
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(1.dp, Color(0x1F000000), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(valueText, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SliderAccentColor)
+        }
     }
 }
 
@@ -530,20 +632,22 @@ internal fun ColorPickerCard(color: Long, onColor: (Long) -> Unit) {
     }
 }
 
-private class AboveAnchor(private val gapPx: Int) : PopupPositionProvider {
+private class AboveAnchor(private val gapPx: Int, private val edgeMarginPx: Int = 0) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-        val x = (anchorBounds.left + anchorBounds.width / 2 - popupContentSize.width / 2)
-            .coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+        val minX = edgeMarginPx
+        val maxX = (windowSize.width - popupContentSize.width - edgeMarginPx).coerceAtLeast(minX)
+        val x = (anchorBounds.left + anchorBounds.width / 2 - popupContentSize.width / 2).coerceIn(minX, maxX)
         val y = (anchorBounds.top - popupContentSize.height - gapPx).coerceAtLeast(0)
         return IntOffset(x, y)
     }
 }
 
 /** 버튼바가 위쪽 가장자리에 붙어있을 때용 — 팝업이 위로 열리면 화면 밖으로 나가므로 아래로 연다. */
-private class BelowAnchor(private val gapPx: Int) : PopupPositionProvider {
+private class BelowAnchor(private val gapPx: Int, private val edgeMarginPx: Int = 0) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-        val x = (anchorBounds.left + anchorBounds.width / 2 - popupContentSize.width / 2)
-            .coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+        val minX = edgeMarginPx
+        val maxX = (windowSize.width - popupContentSize.width - edgeMarginPx).coerceAtLeast(minX)
+        val x = (anchorBounds.left + anchorBounds.width / 2 - popupContentSize.width / 2).coerceIn(minX, maxX)
         val y = (anchorBounds.bottom + gapPx).coerceAtMost((windowSize.height - popupContentSize.height).coerceAtLeast(0))
         return IntOffset(x, y)
     }
@@ -551,21 +655,24 @@ private class BelowAnchor(private val gapPx: Int) : PopupPositionProvider {
 
 /** 버튼바가 좌/우 가장자리에 세로로 붙어있을 때용 — 팝업을 화면 안쪽(왼쪽 도킹이면 오른쪽으로,
  *  오른쪽 도킹이면 왼쪽으로)으로 연다. */
-private class SideAnchor(private val gapPx: Int, private val toRight: Boolean) : PopupPositionProvider {
+private class SideAnchor(private val gapPx: Int, private val toRight: Boolean, private val edgeMarginPx: Int = 0) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
         val x = if (toRight) anchorBounds.right + gapPx else anchorBounds.left - popupContentSize.width - gapPx
-        val y = (anchorBounds.top + anchorBounds.height / 2 - popupContentSize.height / 2)
-            .coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
-        return IntOffset(x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)), y)
+        val minY = edgeMarginPx
+        val maxY = (windowSize.height - popupContentSize.height - edgeMarginPx).coerceAtLeast(minY)
+        val y = (anchorBounds.top + anchorBounds.height / 2 - popupContentSize.height / 2).coerceIn(minY, maxY)
+        val minX = edgeMarginPx
+        val maxX = (windowSize.width - popupContentSize.width - edgeMarginPx).coerceAtLeast(minX)
+        return IntOffset(x.coerceIn(minX, maxX), y)
     }
 }
 
 /** Tap to select; tap again while already selected opens THIS brush's own width/opacity panel,
- *  anchored right above this icon (not a shared control), with the brush's name as the header.
+ *  anchored right above this icon (not a shared control).
  *  Open/closed state is hoisted by the caller (BrushControls) — mirrors the favourites-edit popup. */
 @Composable
 private fun BrushBtnWithPanel(
-    selected: Boolean, name: String, sizeDp: Float, opacity: Float, showOpacity: Boolean, anchor: PopupPositionProvider,
+    selected: Boolean, sizeDp: Float, opacity: Float, showOpacity: Boolean, anchor: PopupPositionProvider,
     panelOpen: Boolean, setPanelOpen: (Boolean) -> Unit,
     onClick: () -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
     icon: @Composable (Color) -> Unit,
@@ -573,32 +680,29 @@ private fun BrushBtnWithPanel(
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     Box {
-        // Tap area is the 48dp accessibility minimum; the icon's own 42dp crop window (which frames
-        // the enlarged 52dp artwork) stays exactly as before, just centred inside the bigger hitbox.
-        Box(Modifier.size(48.dp).bounceClick { if (selected) setPanelOpen(!panelOpen) else onClick() },
-            contentAlignment = Alignment.Center) {
-            Box(Modifier.size(42.dp).clipToBounds(), contentAlignment = Alignment.Center) { icon(tint) }
-        }
+        // Tap area is ButtonTapSize, matching the icon's own size exactly — no extra margin
+        // between the tap zone and the visible icon (source art has no built-in padding either).
+        Box(Modifier.size(ButtonTapSize).bounceClick { if (selected) setPanelOpen(!panelOpen) else onClick() },
+            contentAlignment = Alignment.Center) { icon(tint) }
         if (panelOpen) Popup(anchor, { setPanelOpen(false) }, PopupProperties(focusable = true)) {
-            SlidersPanel(name, showOpacity, sizeDp, opacity, onSize, onOpacity)
+            SlidersPanel(showOpacity, sizeDp, opacity, onSize, onOpacity)
         }
     }
 }
 
 @Composable
 private fun IconBtn(icon: ImageVector, desc: String, tint: Color = MaterialTheme.colorScheme.onSurface, onClick: () -> Unit) {
-    Box(Modifier.size(48.dp).bounceClick { onClick() }, contentAlignment = Alignment.Center) { Icon(icon, desc, tint = tint) }
+    Box(Modifier.size(ButtonTapSize).bounceClick { onClick() }, contentAlignment = Alignment.Center) { Icon(icon, desc, tint = tint) }
 }
 
 @Composable
 private fun ToolbarDivider(vertical: Boolean) {
+    // 구분선-버튼 이격거리는 이 함수가 아니라 fullContent를 그리는 바깥 Row/Column의
+    // Arrangement.spacedBy(8dp, "그룹-구분선 간격")에서 조절한다 — 그룹 내부 버튼 간격(15dp)과는
+    // 별도 값이라 여기서 더 손댈 건 없음(선 자체의 두께·길이만 담당).
     if (vertical) {
-        Spacer(Modifier.height(2.dp))
-        Box(Modifier.height(1.dp).width(24.dp).background(MaterialTheme.colorScheme.outlineVariant))
-        Spacer(Modifier.height(2.dp))
+        Box(Modifier.height(1.dp).width(24.dp).background(MaterialTheme.colorScheme.outlineVariant)) // 구분선 선 두께(height)·길이(width)
     } else {
-        Spacer(Modifier.width(2.dp))
-        Box(Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant))
-        Spacer(Modifier.width(2.dp))
+        Box(Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant)) // 구분선 선 두께(width)·길이(height)
     }
 }
