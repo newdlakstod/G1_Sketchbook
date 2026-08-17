@@ -490,6 +490,15 @@
     `ChevronArrow`의 `Stroke(width = w * 0.15f, ...)` 배율 — 사용자가 0.5f에서 직접 조정함).
   - `compileDebugKotlin` 검증 완료.
 
+- **앱 아이콘 교체** (v2.5.1, 2026-08-17): 사용자가 제공한 `image/앱아이콘.png`(1254×1254, 투명
+  배경 로고)로 런처 아이콘을 전부 교체했다. PowerShell(System.Drawing, ImageMagick 등 외부 툴
+  없이)로 밀도별 PNG를 생성: 레거시 `ic_launcher.png`(mdpi 48~xxxhdpi 192, 원본 그대로 리사이즈),
+  `ic_launcher_round.png`(같은 리사이즈 후 원형 클립), 어댑티브 아이콘용 `ic_launcher_foreground.png`
+  (mdpi 108~xxxhdpi 432, 로고를 캔버스의 62%로 축소·중앙 배치해 원형/스퀴클 마스크에 안 잘리게
+  세이프존 확보). 기존 자리표시자 벡터(빨간 원+펜 스트로크: `drawable/ic_launcher_foreground.xml`,
+  `mipmap/ic_launcher(_round).xml`)는 삭제. `ic_launcher_background` 색상을 시안 빨강(#FF6B6B)에서
+  흰색(#FFFFFF)으로 변경(로고가 검정 위주라 대비 확보). `assembleDebug` 빌드 검증 완료.
+
 ## Next (Phase 2~4)
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
