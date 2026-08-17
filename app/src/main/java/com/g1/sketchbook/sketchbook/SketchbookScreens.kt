@@ -120,6 +120,9 @@ fun bgDrawable(key: String) = when (key) {
 }
 private val PAPER_KEYS = listOf("a5", "a4", "a3")
 private val DISPLAY_KEYS = listOf("desktop", "mobile", "tablet")
+// 최소화된 버튼바가 도킹된 가장자리를 따라 미끄러질 때, 화면 밖으로 나가지 않게 남겨두는 여유
+// 폭/높이의 절반 정도(정확한 실측 대신 대략치 — 화면 밖으로 살짝 여유를 두는 정도면 충분).
+private val CollapsedBarHalfExtent = 90.dp
 
 @Composable
 private fun SizeRow(list: List<CanvasSize>, selected: String, onSelect: (String) -> Unit) {
@@ -690,6 +693,9 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
     var toolbarDragPx by remember { mutableStateOf(Offset.Zero) }
+    // 최소화 상태일 때만 쓰는, 도킹된 가장자리를 따라가는 위치(중앙 기준 오프셋) — 가로 도킹(상/하)이면
+    // 가로 방향, 세로 도킹(좌/우)이면 세로 방향 값. 펼친 상태의 자유 드래그(toolbarDragPx)와는 별개.
+    var toolbarCollapsedOffsetPx by remember { mutableStateOf(0f) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
@@ -745,10 +751,23 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
         }
         // 버튼바: 기본은 하단에 붙지만(떠 있는 오버레이라 캔버스 크기는 안 바뀜), 손잡이를 길게 눌러
         // 드래그하면 놓은 위치에서 가장 가까운 가장자리(상/하/좌/우)로 옮겨 붙는다.
+        val toolbarHorizontalDock = toolbarDock == com.g1.sketchbook.brush.ToolbarDock.TOP || toolbarDock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM
         val barModifier = Modifier
             .align(toolbarDock.alignment())
-            .let { if (toolbarDock == com.g1.sketchbook.brush.ToolbarDock.TOP || toolbarDock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM) it.fillMaxWidth() else it }
-            .offset { IntOffset(toolbarDragPx.x.roundToInt(), toolbarDragPx.y.roundToInt()) }
+            // 최소화 모드일 땐 가로 도킹(상/하)이어도 꽉 채우지 않음 — 세로 도킹처럼 버튼 개수만큼만
+            // 감싸게 해서 최소화 바가 실제로 작아 보이게 한다. 펼친 상태는 기존대로 꽉 채움.
+            .let { if (!toolbarCollapsed && toolbarHorizontalDock) it.fillMaxWidth() else it }
+            .offset {
+                if (toolbarCollapsed) {
+                    // 도킹된 가장자리를 따라서만 이동(가로 도킹=가로로, 세로 도킹=세로로), 중앙 고정 아님.
+                    IntOffset(
+                        if (toolbarHorizontalDock) toolbarCollapsedOffsetPx.roundToInt() else 0,
+                        if (!toolbarHorizontalDock) toolbarCollapsedOffsetPx.roundToInt() else 0,
+                    )
+                } else {
+                    IntOffset(toolbarDragPx.x.roundToInt(), toolbarDragPx.y.roundToInt())
+                }
+            }
         BrushControls(
             brush, color, sizeDp, opacity, erasing,
             onBrush = { brush = it; erasing = false },
@@ -764,20 +783,35 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
             locked = locked, onToggleLock = { locked = !locked },
             collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
-            onDragBar = { d -> toolbarDragPx += d },
+            onDragBar = { d ->
+                if (toolbarCollapsed) {
+                    // 최소화 상태: 가장자리 재선택 없이, 지금 붙어있는 가장자리를 따라서만 미끄러짐.
+                    val delta = if (toolbarHorizontalDock) d.x else d.y
+                    val limitPx = with(density2) {
+                        (if (toolbarHorizontalDock) maxWidth else maxHeight).toPx() / 2f - CollapsedBarHalfExtent.toPx()
+                    }
+                    toolbarCollapsedOffsetPx = (toolbarCollapsedOffsetPx + delta).coerceIn(-limitPx, limitPx)
+                } else {
+                    toolbarDragPx += d
+                }
+            },
             onDragBarEnd = {
-                val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
-                val baseX = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.LEFT -> 0f; com.g1.sketchbook.brush.ToolbarDock.RIGHT -> cwPx; else -> cwPx / 2f }
-                val baseY = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.TOP -> 0f; com.g1.sketchbook.brush.ToolbarDock.BOTTOM -> chPx; else -> chPx / 2f }
-                val x = baseX + toolbarDragPx.x; val y = baseY + toolbarDragPx.y
-                val distances = mapOf(
-                    com.g1.sketchbook.brush.ToolbarDock.LEFT to x,
-                    com.g1.sketchbook.brush.ToolbarDock.RIGHT to (cwPx - x),
-                    com.g1.sketchbook.brush.ToolbarDock.TOP to y,
-                    com.g1.sketchbook.brush.ToolbarDock.BOTTOM to (chPx - y),
-                )
-                toolbarDock = distances.minByOrNull { it.value }?.key ?: toolbarDock
-                toolbarDragPx = Offset.Zero
+                // 최소화 상태에선 가장자리를 다시 고르지 않음 — toolbarCollapsedOffsetPx는 드래그 중에
+                // 이미 반영·클램프돼 있어 여기서 더 할 일이 없다.
+                if (!toolbarCollapsed) {
+                    val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
+                    val baseX = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.LEFT -> 0f; com.g1.sketchbook.brush.ToolbarDock.RIGHT -> cwPx; else -> cwPx / 2f }
+                    val baseY = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.TOP -> 0f; com.g1.sketchbook.brush.ToolbarDock.BOTTOM -> chPx; else -> chPx / 2f }
+                    val x = baseX + toolbarDragPx.x; val y = baseY + toolbarDragPx.y
+                    val distances = mapOf(
+                        com.g1.sketchbook.brush.ToolbarDock.LEFT to x,
+                        com.g1.sketchbook.brush.ToolbarDock.RIGHT to (cwPx - x),
+                        com.g1.sketchbook.brush.ToolbarDock.TOP to y,
+                        com.g1.sketchbook.brush.ToolbarDock.BOTTOM to (chPx - y),
+                    )
+                    toolbarDock = distances.minByOrNull { it.value }?.key ?: toolbarDock
+                    toolbarDragPx = Offset.Zero
+                }
             },
             dock = toolbarDock,
             modifier = barModifier,

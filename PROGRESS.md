@@ -4,6 +4,16 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **최소화 버튼바 위치 조절 + Preview 도킹/드래그 배선** (v2.6.1, 2026-08-17):
+  - `SketchbookScreens.kt`/`SharedBookScreen.kt`: 최소화 상태일 땐 가로 도킹(상/하)이어도 폭을 안
+    채우고(버튼 개수만큼만 감싸도록 함), 화면 중앙에 고정되던 것을 그립 드래그로 도킹된 가장자리를
+    따라 미끄러지게(가로 도킹=좌우, 세로 도킹=상하) 바꿨다 — `toolbarCollapsedOffsetPx` 신설, 펼친
+    상태의 기존 "드래그해서 가장 가까운 가장자리로 재도킹" 동작은 그대로 유지.
+  - `preview/BrushCanvasPreview.kt`, `share/SharedBookPreviewScreen.kt`: 잠금·전체화면·최소화·드래그
+    손잡이 콜백을 아예 안 넘기고 있어서 Preview에 해당 버튼/그립이 안 보이던 문제 수정 — 두 Preview
+    모두 실제 화면과 같은 `BoxWithConstraints` 오버레이 구조로 바꿔 dock 전환과 드래그가 실제로
+    동작하도록 배선(Interactive Preview에서 확인 가능).
+  - `--rerun-tasks` 캐시 없는 재컴파일로 검증.
 - **브러시 툴바 슬라이더 재디자인 + 터치영역/간격 정리** (v2.6.0, 2026-08-17): `brush/BrushControls.kt`.
   - 굵기·투명도 슬라이더를 커스텀 트랙(빨강→연빨강 그라데이션 채움 + 회색 미채움)과 원형 흰 썸으로
     재디자인, 30단계(`steps=28`)로 설정. 썸 안에는 색 점 대신 실제 수치를 표기.

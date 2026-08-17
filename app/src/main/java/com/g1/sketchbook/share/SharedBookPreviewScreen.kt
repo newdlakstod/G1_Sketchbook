@@ -3,11 +3,13 @@ package com.g1.sketchbook.share
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -28,16 +30,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
+import com.g1.sketchbook.brush.ToolbarDock
+import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.ui.theme.Dimens
+import kotlin.math.roundToInt
 
 private enum class PreviewViewMode { GRID, MAXIMIZE }
+
+// 최소화된 버튼바가 도킹된 가장자리를 따라 미끄러질 때, 화면 밖으로 나가지 않게 남겨두는 여유
+// 폭/높이의 절반 정도(정확한 실측 대신 대략치 — 실제 화면의 같은 상수와 동일한 값).
+private val CollapsedBarHalfExtent = 90.dp
 
 /** Data-free rendering of the shared-canvas chrome for Android Studio Preview. */
 @Composable
@@ -50,8 +62,17 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
     var sizeDp by remember { mutableFloatStateOf(Dimens.Brush.penWidth) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
+    var locked by remember { mutableStateOf(false) }
+    var fullscreen by remember { mutableStateOf(false) }
+    var collapsed by remember { mutableStateOf(false) }
+    var dock by remember { mutableStateOf(ToolbarDock.BOTTOM) }
+    var dragPx by remember { mutableStateOf(Offset.Zero) }
+    var collapsedOffsetPx by remember { mutableStateOf(0f) }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
+    Column(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -69,7 +90,10 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
             }
         }
 
-        Box(Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
+        // 버튼바: 분할 패널 위에 떠 있는 오버레이(실제 SharedBookScreen과 동일 구조) — 패널 레이아웃
+        // 자체는 그대로 두고, dock/드래그 손잡이를 미리보기에서도 확인할 수 있게 BoxWithConstraints로 감쌈.
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
+            val density2 = LocalDensity.current
             when (mode) {
                 PreviewViewMode.GRID -> Column(
                     Modifier.fillMaxSize(),
@@ -98,17 +122,66 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
                     }
                 }
             }
-        }
 
-        BrushControls(
-            brush, color, sizeDp, opacity, erasing,
-            onBrush = { brush = it; erasing = false },
-            onColor = { color = it; erasing = false },
-            onSize = { sizeDp = it },
-            onOpacity = { opacity = it },
-            onToggleErase = { erasing = !erasing },
-            onUndo = {}, onRedo = {}, onClear = {},
-        )
+            val horizontalDock = dock == ToolbarDock.TOP || dock == ToolbarDock.BOTTOM
+            val barModifier = Modifier
+                .align(dock.alignment())
+                .let { if (!collapsed && horizontalDock) it.fillMaxWidth() else it }
+                .offset {
+                    if (collapsed) {
+                        IntOffset(
+                            if (horizontalDock) collapsedOffsetPx.roundToInt() else 0,
+                            if (!horizontalDock) collapsedOffsetPx.roundToInt() else 0,
+                        )
+                    } else {
+                        IntOffset(dragPx.x.roundToInt(), dragPx.y.roundToInt())
+                    }
+                }
+            BrushControls(
+                brush, color, sizeDp, opacity, erasing,
+                onBrush = { brush = it; erasing = false },
+                onColor = { color = it; erasing = false },
+                onSize = { sizeDp = it },
+                onOpacity = { opacity = it },
+                onToggleErase = { erasing = !erasing },
+                onUndo = {}, onRedo = {}, onClear = {},
+                onOpenPages = {},
+                onRotate = {},
+                locked = locked,
+                onToggleLock = { locked = !locked },
+                fullscreen = fullscreen,
+                onToggleFullscreen = { fullscreen = !fullscreen },
+                collapsed = collapsed,
+                onToggleCollapsed = { collapsed = !collapsed },
+                onDragBar = { d ->
+                    if (collapsed) {
+                        val delta = if (horizontalDock) d.x else d.y
+                        val limitPx = with(density2) {
+                            (if (horizontalDock) maxWidth else maxHeight).toPx() / 2f - CollapsedBarHalfExtent.toPx()
+                        }
+                        collapsedOffsetPx = (collapsedOffsetPx + delta).coerceIn(-limitPx, limitPx)
+                    } else {
+                        dragPx += d
+                    }
+                },
+                onDragBarEnd = {
+                    if (!collapsed) {
+                        val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
+                        val baseX = when (dock) { ToolbarDock.LEFT -> 0f; ToolbarDock.RIGHT -> cwPx; else -> cwPx / 2f }
+                        val baseY = when (dock) { ToolbarDock.TOP -> 0f; ToolbarDock.BOTTOM -> chPx; else -> chPx / 2f }
+                        val x = baseX + dragPx.x; val y = baseY + dragPx.y
+                        val distances = mapOf(
+                            ToolbarDock.LEFT to x, ToolbarDock.RIGHT to (cwPx - x),
+                            ToolbarDock.TOP to y, ToolbarDock.BOTTOM to (chPx - y),
+                        )
+                        dock = distances.minByOrNull { it.value }?.key ?: dock
+                        dragPx = Offset.Zero
+                    }
+                },
+                dock = dock,
+                modifier = barModifier,
+            )
+        }
     }
 }
 
