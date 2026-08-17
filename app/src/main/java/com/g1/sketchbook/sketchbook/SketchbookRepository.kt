@@ -50,6 +50,10 @@ data class Sketchbook(
     val fav: Boolean = false,
     val shared: Boolean = false,   // a "draw together" book, grouped separately
     val code: String? = null,      // invite/session code for shared books
+    val coverColor: Long? = null,  // custom solid cover colour (ARGB); null = default yellow
+    /** 표지 이미지 파일이 바뀔 때마다 올라간다 — id는 그대로라 LaunchedEffect(book.id)만으론 새
+     *  파일을 다시 읽어오지 않으므로, 이 값을 키에 함께 넣어 캐시를 무효화한다. */
+    val coverVersion: Int = 0,
 ) {
     val size get() = Catalog.size(sizeKey)
     /** "2026.08.16" — shown under cover thumbnails (home carousel, sketchbook list). */
@@ -77,7 +81,8 @@ class SketchbookRepository(private val context: Context) {
                 val o = arr.getJSONObject(i)
                 Sketchbook(o.getString("id"), o.getString("name"), o.getString("size"),
                     o.getString("bg"), o.optLong("createdAt"), o.optInt("pages", 1), o.optBoolean("fav", false),
-                    o.optBoolean("shared", false), o.optString("code", "").ifBlank { null })
+                    o.optBoolean("shared", false), o.optString("code", "").ifBlank { null },
+                    o.optLong("coverColor", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }, o.optInt("coverVer", 0))
             }.sortedWith(compareByDescending<Sketchbook> { it.fav }.thenByDescending { it.createdAt })
         }.getOrDefault(emptyList())
     }
@@ -167,12 +172,25 @@ class SketchbookRepository(private val context: Context) {
         return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 
+    /** [bmp]는 미리 표지 비율로 크롭된 상태로 들어온다(호출부의 `cropToCoverAspect` 참고). */
     fun saveCover(id: String, bmp: Bitmap) {
         FileOutputStream(coverFile(id)).use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        bumpCoverVersion(id)
     }
 
     fun removeCover(id: String) {
         coverFile(id).delete()
+        bumpCoverVersion(id)
+    }
+
+    fun setCoverColor(id: String, color: Long?) {
+        save(list().map { if (it.id == id) it.copy(coverColor = color) else it })
+    }
+
+    /** id는 그대로 유지되는 book 갱신이라 `LaunchedEffect(book.id)`만으론 목록 썸네일이 새 표지
+     *  이미지를 다시 읽어오지 않는다 — 이 값을 실제로 바꿔서 캐시를 무효화시킨다. */
+    private fun bumpCoverVersion(id: String) {
+        save(list().map { if (it.id == id) it.copy(coverVersion = it.coverVersion + 1) else it })
     }
 
     private fun save(books: List<Sketchbook>) {
@@ -181,7 +199,8 @@ class SketchbookRepository(private val context: Context) {
             arr.put(JSONObject()
                 .put("id", it.id).put("name", it.name).put("size", it.sizeKey)
                 .put("bg", it.bgKey).put("createdAt", it.createdAt).put("pages", it.pageCount).put("fav", it.fav)
-                .put("shared", it.shared).put("code", it.code ?: ""))
+                .put("shared", it.shared).put("code", it.code ?: "")
+                .put("coverColor", it.coverColor ?: Long.MIN_VALUE).put("coverVer", it.coverVersion))
         }
         prefs.edit().putString(KEY, arr.toString()).apply()
     }

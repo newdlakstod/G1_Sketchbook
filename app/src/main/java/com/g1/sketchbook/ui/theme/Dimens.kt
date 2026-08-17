@@ -61,13 +61,13 @@ object Dimens {
     /** 일기달력 탭 (슬라이드 2, DiaryCalendarScreen / AiryCalendar) */
     object Calendar {
         val titleGap = 24.dp        // 연월 타이틀과 달력 그리드 사이 간격
-        val yearMonthSp = 40.sp     // "2026.01" 형식 연월 표기 글자 크기(연도/월 이름 분리 표기 대신 한 줄로 통합)
+        val yearMonthSp = 35.sp     // "2026.01" 형식 연월 표기 글자 크기(연도/월 이름 분리 표기 대신 한 줄로 통합)
         val weekdaySp = 26.sp       // 요일(Sun..Sat) 글자 크기
         val daySp = 21.sp           // 날짜 숫자 크기
         val arrowIconW = 10.dp      // 이전/다음 달 화살표 너비 — Icon 크기가 아니라 직접 그리는 화살표(Canvas)의 크기
         val arrowIconH = 20.dp      // 이전/다음 달 화살표 높이
         val editIcon = 24.dp        // 오늘 일기 편집(연필) 아이콘 크기 — 액션영역 아이콘 통일 기준(리스트 탭과 동일)
-        val todayDisc = 38.dp       // 오늘 핑크 원 지름
+        val todayDisc = 36.dp       // 오늘 핑크 원 지름
     }
 
     /** 클린 달력 (슬라이드 3·4, CleanCalendarScreen) — 배경화면 캡처용, 바 없음 */

@@ -466,7 +466,7 @@ private fun SliderRow(label: String, valueText: String, value: Float, range: Clo
 
 /** Hue/saturation/value picker: SV square + hue bar + preview, for choosing any custom colour. */
 @Composable
-private fun ColorPickerCard(color: Long, onColor: (Long) -> Unit) {
+internal fun ColorPickerCard(color: Long, onColor: (Long) -> Unit) {
     val init = remember { FloatArray(3).also { AndroidColor.colorToHSV((color and 0xFFFFFFFF).toInt(), it) } }
     var hue by remember { mutableFloatStateOf(init[0]) }
     var sat by remember { mutableFloatStateOf(init[1]) }

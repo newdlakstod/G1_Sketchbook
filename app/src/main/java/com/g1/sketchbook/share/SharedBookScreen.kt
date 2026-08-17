@@ -373,7 +373,7 @@ fun SharedBookScreen(
     if (pagesOpen) {
         com.g1.sketchbook.sketchbook.PagePanel(
             sbRepo, book.id, page, pageCount,
-            onSelect = { p -> goTo(p); pagesOpen = false },
+            onSelect = { p -> goTo(p) },
             onReorder = { order ->
                 saveLocal()
                 sbRepo.applyPageOrder(book.id, order)

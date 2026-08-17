@@ -83,6 +83,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -218,9 +219,10 @@ fun SketchbookTab(
         onOpen = { onOpenBook(it.id) },
         onDelete = { repo?.delete(it.id); refresh++ },
         onToggleFav = { repo?.toggleFav(it.id); refresh++ },
-        onEditBook = { book, name, newCover, removeCover ->
+        onEditBook = { book, name, newCover, removeCover, newColor ->
             repo?.rename(book.id, name)
             if (newCover != null) repo?.saveCover(book.id, newCover) else if (removeCover) repo?.removeCover(book.id)
+            repo?.setCoverColor(book.id, newColor)
             refresh++
         },
     )
@@ -421,7 +423,7 @@ private fun SketchbookListScreen(
     onOpen: (Sketchbook) -> Unit,
     onDelete: (Sketchbook) -> Unit,
     onToggleFav: (Sketchbook) -> Unit,
-    onEditBook: (Sketchbook, String, Bitmap?, Boolean) -> Unit,
+    onEditBook: (Sketchbook, String, Bitmap?, Boolean, Long?) -> Unit,
 ) {
     val context = LocalContext.current
     val session = remember { com.g1.sketchbook.data.SessionStore(context) }
@@ -493,7 +495,7 @@ private fun SketchbookListScreen(
             book = current,
             repo = repo,
             onCancel = { editing = null },
-            onSave = { name, newCover, removeCover -> onEditBook(current, name, newCover, removeCover); editing = null },
+            onSave = { name, newCover, removeCover, newColor -> onEditBook(current, name, newCover, removeCover, newColor); editing = null },
             onToggleFav = { onToggleFav(current) },
             onDelete = { editing = null; pendingDelete = current },
         )
@@ -502,9 +504,10 @@ private fun SketchbookListScreen(
 
 @Composable
 private fun CoverCard(book: Sketchbook, repo: SketchbookRepository?, onOpen: () -> Unit, onEdit: () -> Unit) {
-    // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 기본색을 보여준다.
+    // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 (커스텀 지정 시) coverColor, 그것도 없으면
+    // 기본색을 보여준다. coverVersion을 키에 넣어야 같은 id라도 표지 사진이 바뀌면 다시 읽어온다.
     var cover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(book.id, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
+    LaunchedEffect(book.id, book.coverVersion, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
     // Same cover ratio as the home carousel (Dimens.Home.coverRatio) — every note cover keeps one
     // fixed proportion across the whole app, whichever screen shows it.
     Box(Modifier.aspectRatio(Dimens.Home.coverRatio)) {
@@ -513,16 +516,13 @@ private fun CoverCard(book: Sketchbook, repo: SketchbookRepository?, onOpen: () 
             modifier = Modifier.fillMaxSize()
                 .shadow(12.dp, SketchbookCoverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
                 .bounceClick(onClick = onOpen, onLongClick = onEdit),
+            coverColor = book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor,
             coverImage = cover?.let { BitmapPainter(it.asImageBitmap()) },
         ) {
-            // Scrim so the cream text stays readable regardless of the cover's own colour (some covers,
-            // e.g. the light mauve one, put light text under ~2:1 contrast without this).
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.5f)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)))))
             Column(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 8.dp, bottom = 12.dp)) {
                 Text(book.name, color = Color(0xFFF3ECD9), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val meta = if (book.shared && book.code != null) "🤝 ${book.code} · ${book.pageCount}쪽" else "${book.pageCount}쪽"
+                val meta = if (book.shared && book.code != null) "🤝 ${book.code} · ${book.dateLabel}" else book.dateLabel
                 Text(meta, color = Color(0xFFF3ECD9).copy(alpha = 0.8f), fontSize = 10.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
             }
@@ -530,16 +530,18 @@ private fun CoverCard(book: Sketchbook, repo: SketchbookRepository?, onOpen: () 
     }
 }
 
-/** 표지 길게 눌러 여는 수정 다이얼로그 — 이름, 갤러리 사진으로 고르는 표지 이미지, 즐겨찾기
- *  토글, 삭제를 한 곳에서 처리한다(예전엔 표지 위 아이콘 두 개였지만, 표지를 깔끔하게 비우면서
- *  이 다이얼로그로 옮겼다). 종이 재질(bgKey)은 그림 그릴 때 쓰는 캔버스 배경이라 표지 디자인과는
- *  별개이고, 사이즈도 이미 그려둔 페이지 비율이 깨질 수 있어 여기서 건드리지 않는다. */
+/** 표지 길게 눌러 여는 수정 다이얼로그 — 이름, 표지(색상 또는 갤러리 사진), 즐겨찾기 토글, 삭제를
+ *  한 곳에서 처리한다(예전엔 표지 위 아이콘 두 개였지만, 표지를 깔끔하게 비우면서 이 다이얼로그로
+ *  옮겼다). 종이 재질(bgKey)은 그림 그릴 때 쓰는 캔버스 배경이라 표지 디자인과는 별개이고, 사이즈도
+ *  이미 그려둔 페이지 비율이 깨질 수 있어 여기서 건드리지 않는다. 배경이 표지 사진/색으로 바뀌던
+ *  이전 방식은 팝업 뒤 화면이 계속 바뀌어 산만하다는 피드백을 받아, 평범한 팝업(고정 스크림)으로
+ *  바꾸고 카드 안에 작은 미리보기 하나만 둔다. */
 @Composable
 private fun EditCoverDialog(
     book: Sketchbook,
     repo: SketchbookRepository?,
     onCancel: () -> Unit,
-    onSave: (name: String, newCover: Bitmap?, removeCover: Boolean) -> Unit,
+    onSave: (name: String, newCover: Bitmap?, removeCover: Boolean, newColor: Long?) -> Unit,
     onToggleFav: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -547,66 +549,79 @@ private fun EditCoverDialog(
     var name by remember(book.id) { mutableStateOf(book.name) }
     // 이미 저장된 표지 사진(있으면) 먼저 불러온다.
     var existingCover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(book.id, repo) { existingCover = withContext(Dispatchers.IO) { repo?.loadCover(book.id) } }
+    LaunchedEffect(book.id, book.coverVersion, repo) { existingCover = withContext(Dispatchers.IO) { repo?.loadCover(book.id) } }
     // 갤러리에서 새로 고른 사진(저장 전 미리보기) — "기본색으로"를 누르면 기존 사진도 지우도록 표시.
     var pickedCover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
     var removeRequested by remember(book.id) { mutableStateOf(false) }
+    var color by remember(book.id) { mutableStateOf(book.coverColor) }
+    var colorPickerOpen by remember { mutableStateOf(false) }
     val previewCover = pickedCover ?: existingCover.takeUnless { removeRequested }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
-            decodeSampledBitmap(context, uri, 1024)?.let { pickedCover = it; removeRequested = false }
+            decodeSampledBitmap(context, uri, 1024)
+                ?.let { cropToAspect(it, Dimens.Home.coverRatio) }
+                ?.let { pickedCover = it; removeRequested = false }
         }
     }
 
     Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize()) {
-            if (previewCover != null) {
-                Image(previewCover.asImageBitmap(), "표지 미리보기", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            } else {
-                Box(Modifier.fillMaxSize().background(DefaultSketchbookCoverColor))
-            }
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.30f)))
-            Box(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = Dimens.Screen.bottomMargin),
-                contentAlignment = Alignment.Center) {
-                Column(
-                    Modifier.widthIn(max = Dimens.Wizard.cardWidth).fillMaxWidth()
-                        .clip(RoundedCornerShape(Dimens.Wizard.cardRadius))
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(20.dp),
-                ) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("표지 수정", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = onToggleFav) {
-                                Icon(Icons.Filled.Star, "즐겨찾기",
-                                    tint = if (book.fav) Color(0xFFFFD43B) else MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            IconButton(onClick = onDelete) {
-                                Icon(Icons.Filled.Delete, "삭제", tint = MaterialTheme.colorScheme.error)
-                            }
+        Box(Modifier.fillMaxSize().background(Color(0x55000000)), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier.widthIn(max = Dimens.Wizard.cardWidth).fillMaxWidth().padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(Dimens.Wizard.cardRadius))
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(20.dp),
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("표지 수정", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onToggleFav) {
+                            Icon(Icons.Filled.Star, "즐겨찾기",
+                                tint = if (book.fav) Color(0xFFFFD43B) else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = onDelete) {
+                            Icon(Icons.Filled.Delete, "삭제", tint = MaterialTheme.colorScheme.error)
                         }
                     }
-                    Spacer(Modifier.height(14.dp))
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 작은 미리보기 — 팝업 뒤 화면은 안 바뀌고, 지금 고른 색/사진이 표지 모양(책등
+                    // 포함) 그대로 어떻게 보일지만 확인할 수 있다.
+                    SketchbookCover(
+                        modifier = Modifier.width(64.dp).aspectRatio(Dimens.Home.coverRatio)
+                            .shadow(6.dp, SketchbookCoverShape, clip = false),
+                        coverColor = color?.let { Color(it) } ?: DefaultSketchbookCoverColor,
+                        coverImage = previewCover?.let { BitmapPainter(it.asImageBitmap()) },
+                    )
+                    Spacer(Modifier.width(14.dp))
                     OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
-                        placeholder = { Text("스케치북 이름 입력") }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(18.dp))
-                    Text("표지 이미지", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                            Text("갤러리에서 선택")
-                        }
-                        if (previewCover != null) {
-                            TextButton(onClick = { pickedCover = null; removeRequested = true }) { Text("기본색으로") }
-                        }
+                        placeholder = { Text("스케치북 이름 입력") }, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(18.dp))
+                Text("표지", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { colorPickerOpen = !colorPickerOpen }) { Text("색상 선택") }
+                    TextButton(onClick = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+                        Text("갤러리에서 선택")
                     }
-                    Spacer(Modifier.height(20.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TextButton(onClick = onCancel) { Text("취소") }
-                        TextButton(onClick = { onSave(name, pickedCover, removeRequested) }, enabled = name.isNotBlank()) {
-                            Text("저장", fontWeight = FontWeight.Bold)
-                        }
+                    if (previewCover != null) {
+                        TextButton(onClick = { pickedCover = null; removeRequested = true }) { Text("사진 빼기") }
+                    }
+                }
+                if (colorPickerOpen) {
+                    Spacer(Modifier.height(10.dp))
+                    com.g1.sketchbook.brush.ColorPickerCard(color ?: (DefaultSketchbookCoverColor.toArgb().toLong() and 0xFFFFFFFFL)) {
+                        color = it
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = onCancel) { Text("취소") }
+                    TextButton(onClick = { onSave(name, pickedCover, removeRequested, color) }, enabled = name.isNotBlank()) {
+                        Text("저장", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -624,6 +639,20 @@ private fun decodeSampledBitmap(context: Context, uri: Uri, maxDim: Int): Bitmap
     while (bounds.outWidth / (sample * 2) >= maxDim || bounds.outHeight / (sample * 2) >= maxDim) sample *= 2
     val opts = BitmapFactory.Options().apply { inSampleSize = sample }
     return resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+}
+
+/** 갤러리 사진을 표지 비율(Dimens.Home.coverRatio)에 맞춰 가운데를 기준으로 잘라낸다 — 그래야 표지
+ *  모양에 실제로 맞는 이미지가 저장되고, 목록·홈 어디서 보든(둘 다 ContentScale.Crop) 잘리는 부분이
+ *  예측 가능하다. */
+private fun cropToAspect(bmp: Bitmap, targetRatio: Float): Bitmap {
+    val srcRatio = bmp.width.toFloat() / bmp.height
+    return if (srcRatio > targetRatio) {
+        val newW = (bmp.height * targetRatio).roundToInt().coerceIn(1, bmp.width)
+        Bitmap.createBitmap(bmp, (bmp.width - newW) / 2, 0, newW, bmp.height)
+    } else {
+        val newH = (bmp.width / targetRatio).roundToInt().coerceIn(1, bmp.height)
+        Bitmap.createBitmap(bmp, 0, (bmp.height - newH) / 2, bmp.width, newH)
+    }
 }
 
 @Composable
@@ -757,7 +786,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     if (pagesOpen) {
         PagePanel(
             repo, book.id, page, pageCount,
-            onSelect = { p -> goTo(p); pagesOpen = false },
+            onSelect = { p -> goTo(p) },
             onReorder = { order ->
                 saveCurrent()
                 repo.applyPageOrder(book.id, order)

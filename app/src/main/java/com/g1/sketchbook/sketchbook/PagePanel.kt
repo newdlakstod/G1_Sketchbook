@@ -4,10 +4,8 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +37,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -94,15 +93,15 @@ fun PagePanel(
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
-            Modifier.fillMaxSize().background(Color(0x55000000))
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onDismiss),
+            // 배경(스크림)을 탭해도 안 닫히게 — 드래그로 순서 바꾸다가 살짝 벗어나면 다이얼로그가
+            // 통째로 닫혀버리던 오류의 원인이라, 아래 취소/완료 버튼으로만 나가도록 바꿨다.
+            Modifier.fillMaxSize().background(Color(0x55000000)),
             contentAlignment = Alignment.Center,
         ) {
             Surface(
                 shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.background,
                 shadowElevation = 16.dp, tonalElevation = 3.dp,
-                modifier = Modifier.width(292.dp)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = {}),
+                modifier = Modifier.width(292.dp),
             ) {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                     // 페이지 번호를 직접 입력해 바로 그 위치로 이동할 수 있는 필드 — 1..pageCount 밖의
@@ -187,6 +186,11 @@ fun PagePanel(
                             )
                         }
                     }
+                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = onDismiss) { Text("취소") }
+                        TextButton(onClick = onDismiss) { Text("완료", fontWeight = FontWeight.Bold) }
+                    }
                 }
             }
         }
@@ -205,7 +209,7 @@ private fun PageGridItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
-            .let { if (dragging) it.zIndex(1f).shadow(8.dp, RoundedCornerShape(8.dp)) else it }
+            .let { if (dragging) it.zIndex(1f) else it }
             // 짧게 떼면 탭(페이지로 이동), 길게 누른 채 있으면 드래그(순서 바꾸기) — 직접 손가락을
             // 추적해서 두 제스처를 한 영역에서 구분한다(BrushView의 롱프레스 판정과 같은 원리).
             .pointerInput(bookId, index) {
@@ -235,7 +239,9 @@ private fun PageGridItem(
             },
     ) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(0.74f).clip(RoundedCornerShape(8.dp))
+            Modifier.fillMaxWidth().aspectRatio(0.74f)
+                .let { if (dragging) it.shadow(8.dp, RoundedCornerShape(8.dp)) else it }
+                .clip(RoundedCornerShape(8.dp))
                 .background(Color.White)
                 .border(if (selected) 2.5.dp else 1.dp,
                     if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)),

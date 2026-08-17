@@ -166,12 +166,6 @@ private fun HomeTab(
 @Composable
 private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, onOpen: (String) -> Unit) {
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { books.size })
-    // Cap each swipe to at most one page regardless of flick speed — a fast flick used to be able to
-    // fly through several covers in a row; touching down still cancels any in-flight fling as usual.
-    val flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
-        state = pagerState,
-        pagerSnapDistance = androidx.compose.foundation.pager.PagerSnapDistance.atMost(1),
-    )
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
     // Side padding sized so the focused page gets its full spec width, with whatever room is left
     // over used to peek the neighbours (never negative, even on narrow phones).
@@ -181,7 +175,8 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = peek),
         pageSpacing = 16.dp,
-        flingBehavior = flingBehavior,
+        // 기본 fling 동작 그대로 — 빠르게 스와이프하면 여러 장을 계속 넘어가다가, 손가락으로 다시
+        // 눌러야 멈춘다(한 장씩만 넘어가게 막았던 예전 pagerSnapDistance 제한을 없앴다).
     ) { page ->
         val distance = (pagerState.currentPage - page + pagerState.currentPageOffsetFraction)
             .let { if (it < 0) -it else it }.coerceIn(0f, 1f)
@@ -195,21 +190,25 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
         val coverShape = SketchbookCoverShape
         val titleSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverTitleCenterSp, Dimens.Home.coverTitleSideSp, distance)
         val dateSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverDateCenterSp, Dimens.Home.coverDateSideSp, distance)
-        // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 기본색을 보여준다(목록탭 CoverCard와 동일).
+        // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 (커스텀 지정 시) coverColor, 그것도
+        // 없으면 기본색을 보여준다(목록탭 CoverCard와 동일). coverVersion을 키에 넣어야 같은 id라도
+        // 표지 사진이 바뀌면 다시 읽어온다.
         var cover by remember(book.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
-        LaunchedEffect(book.id, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
+        LaunchedEffect(book.id, book.coverVersion, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
+        val stackColor = book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(fade).bounceClick { onOpen(book.id) }) {
                 Box(Modifier.width(w + 4.dp).height(h + 4.dp)) {
                     // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
                     Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape)
-                        .background(DefaultSketchbookCoverColor.copy(alpha = 0.5f)))
+                        .background(stackColor.copy(alpha = 0.5f)))
                     Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
-                        .background(DefaultSketchbookCoverColor.copy(alpha = 0.75f)))
+                        .background(stackColor.copy(alpha = 0.75f)))
                     // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
                     SketchbookCover(
                         modifier = Modifier.width(w).height(h)
                             .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
+                        coverColor = stackColor,
                         coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
                     ) {
                         if (book.shared) {

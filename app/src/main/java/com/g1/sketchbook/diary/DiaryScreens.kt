@@ -201,6 +201,8 @@ fun DiaryCalendarScreen(
                 "$year.${(month + 1).toString().padStart(2, '0')}", fontFamily = Cavorting, fontSize = Dimens.Calendar.yearMonthSp,
                 color = MaterialTheme.colorScheme.onSurface, maxLines = 1, modifier = Modifier.align(Alignment.Center),
             )
+            // 화살표 크기(너비/높이)는 Dimens.Calendar.arrowIconW/arrowIconH에서 조절.
+            // 화살표 획(선) 두께는 크기와 별개로 ChevronArrow 함수 안의 `w * 0.5f`에서 조절.
             Box(Modifier.align(Alignment.CenterStart).size(48.dp)
                 .bounceClick { if (month == 0) { month = 11; year-- } else month-- }, contentAlignment = Alignment.Center) {
                 ChevronArrow(pointLeft = true, modifier = Modifier.width(Dimens.Calendar.arrowIconW).height(Dimens.Calendar.arrowIconH))
@@ -222,7 +224,9 @@ fun DiaryCalendarScreen(
 private fun ChevronArrow(pointLeft: Boolean, modifier: Modifier, color: Color = MaterialTheme.colorScheme.onSurface) {
     Canvas(modifier) {
         val w = size.width; val h = size.height
-        val stroke = Stroke(width = w * 0.5f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        // 획 두께(선 굵기) — 박스 너비(w)의 50%. 크기(Dimens.Calendar.arrowIconW/H)와는 별개 값이라
+        // 두께만 바꾸고 싶으면 이 배율(0.5f)만 조절하면 된다.
+        val stroke = Stroke(width = w * 0.15f, cap = StrokeCap.Round, join = StrokeJoin.Round)
         val path = Path().apply {
             if (pointLeft) { moveTo(w, 0f); lineTo(0f, h / 2f); lineTo(w, h) }
             else { moveTo(0f, 0f); lineTo(w, h / 2f); lineTo(0f, h) }
