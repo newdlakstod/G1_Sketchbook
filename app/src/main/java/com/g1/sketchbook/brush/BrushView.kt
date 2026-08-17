@@ -59,6 +59,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var onEyedrop: ((Int) -> Unit)? = null
     /** Armed drag was released outside the canvas / cancelled — caller should hide its preview bubble. */
     var onEyedropCancel: (() -> Unit)? = null
+    /** Fires once per three-finger horizontal swipe past the threshold: +1 = next page, -1 = previous.
+     *  Purely a signal (no built-in animation) — the caller just calls goTo(page±dir) instantly. Two
+     *  fingers still pinch-zoom/pan as before; a third finger switches that gesture to page-turning
+     *  instead, so the two never fight over the same drag. */
+    var onThreeFingerSwipe: ((Int) -> Unit)? = null
     /** Set true to make the next touch sample a colour instead of drawing (toolbar eyedropper). Stays
      *  armed for the whole press-drag-release; disarmed automatically on release. */
     var eyedropArmed = false
@@ -99,6 +104,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var multiStartDist = 0f
     private var multiMoved = false
     private var multiTapFired = false
+    private var threeFingerSwipeFired = false
+    private val pageSwipeThresholdPx = 72f * resources.displayMetrics.density
 
     // Long-press detection — a stroke always starts on ACTION_DOWN (so a plain tap still draws a
     // dot); if the finger sits still past LONG_PRESS_MS without lifting, we undo that tentative dot
@@ -330,28 +337,45 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     multiStartDist = prevDist; multiStartMidX = prevMidX; multiStartMidY = prevMidY
                     multiDownTime = now; multiDownCount = 2; multiMoved = false; multiTapFired = false
                 } else if (e.pointerCount == 3) {
+                    // 3번째 손가락이 닿은 시점을 스와이프 기준점으로 다시 잡는다 — 2손가락 핀치 중
+                    // 3번째가 얹히는 경우에도 페이지 넘기기 판정이 그 순간부터 새로 시작되도록.
+                    multiStartMidX = midX(e); multiStartMidY = midY(e)
                     multiDownTime = now; multiDownCount = 3; multiMoved = false; multiTapFired = false
+                    threeFingerSwipeFired = false
                 }
             }
             MotionEvent.ACTION_MOVE -> {
                 if (pinching) {
                     // Pinch/pan math always reads the first two pointers (spacing/midX/midY use
-                    // index 0/1), regardless of whether a 3rd finger is also down — a 3rd finger
-                    // only matters for the TAP gesture above, not for the transform here.
+                    // index 0/1), regardless of whether a 3rd finger is also down.
                     val d = spacing(e); val mx = midX(e); val my = midY(e)
                     if (!multiMoved && (hypot(mx - multiStartMidX, my - multiStartMidY) > tapSlopPx ||
                             kotlin.math.abs(d - multiStartDist) > tapSlopPx)) multiMoved = true
-                    // Only apply the pinch/pan transform once we're sure this isn't a tap (past slop) —
-                    // otherwise the tiny natural hand tremor of placing/lifting 2-3 fingers for a tap
-                    // gesture (e.g. redo) nudges the canvas by a stray pixel or two every time.
-                    // Also skipped while locked — the toolbar's 잠금 toggle freezes zoom/pan (and
-                    // rotate, guarded in rotate() above) without touching 2-finger tap gestures.
-                    if (multiMoved && prevDist > 0f && !locked) {
-                        var ds = d / prevDist
-                        val ns = (userScale * ds).coerceIn(MIN_SCALE, MAX_SCALE); ds = ns / userScale; userScale = ns
-                        userM.postScale(ds, ds, mx, my)
-                        userM.postTranslate(mx - prevMidX, my - prevMidY)
-                        clampAndRefresh()
+                    if (e.pointerCount == 3) {
+                        // 3손가락 스와이프 = 페이지 넘기기. 핀치/팬과는 완전히 분리된 제스처라, 3번째
+                        // 손가락이 있는 동안은 확대/이동을 전혀 적용하지 않고 스와이프 판정만 한다
+                        // (같은 드래그가 캔버스도 밀고 페이지도 넘기면 둘 다 어색해짐).
+                        if (!threeFingerSwipeFired) {
+                            val dx = mx - multiStartMidX; val dy = my - multiStartMidY
+                            if (kotlin.math.abs(dx) > pageSwipeThresholdPx && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f) {
+                                threeFingerSwipeFired = true
+                                onThreeFingerSwipe?.invoke(if (dx < 0f) 1 else -1)
+                            }
+                        }
+                    } else if (e.pointerCount == 2) {
+                        // Only apply the pinch/pan transform once we're sure this isn't a tap (past
+                        // slop) — otherwise the tiny natural hand tremor of placing/lifting fingers for
+                        // a tap gesture (e.g. redo) nudges the canvas by a stray pixel or two every time.
+                        if (multiMoved && prevDist > 0f) {
+                            // 화면 잠금: 확대·축소는 막되 두 손가락 이동(팬)은 그대로 허용한다.
+                            if (!locked) {
+                                var ds = d / prevDist
+                                val ns = (userScale * ds).coerceIn(MIN_SCALE, MAX_SCALE); ds = ns / userScale; userScale = ns
+                                userM.postScale(ds, ds, mx, my)
+                            }
+                            userM.postTranslate(mx - prevMidX, my - prevMidY)
+                            clampAndRefresh()
+                        }
                     }
                     prevDist = d; prevMidX = mx; prevMidY = my
                 } else if (strokeStarted && !pinching) {

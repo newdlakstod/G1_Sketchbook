@@ -99,9 +99,9 @@ class SketchbookRepository(private val context: Context) {
         save(list().map { if (it.id == id) it.copy(fav = !it.fav) else it })
     }
 
-    /** 표지 길게 눌러 수정하기 — 이름/배경만 바꾼다(사이즈는 이미 그려둔 페이지 비율이 깨지므로 제외). */
-    fun updateNameAndBg(id: String, name: String, bgKey: String) {
-        save(list().map { if (it.id == id) it.copy(name = name.ifBlank { it.name }, bgKey = bgKey) else it })
+    /** 표지 길게 눌러 수정하기 — 이름만 바꾼다(사이즈·종이 재질은 이미 그려둔 페이지에 쓰이므로 제외). */
+    fun rename(id: String, name: String) {
+        save(list().map { if (it.id == id) it.copy(name = name.ifBlank { it.name }) else it })
     }
 
     fun delete(id: String) {
@@ -131,6 +131,48 @@ class SketchbookRepository(private val context: Context) {
 
     fun savePage(id: String, index: Int, bmp: Bitmap) {
         FileOutputStream(pageFile(id, index)).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    /** 페이지 순서 바꾸기(길게 눌러 드래그) — [order]\[새 위치\] = 그 자리에 와야 할 예전 인덱스.
+     *  파일을 직접 맞바꿔서 반영하므로 다른 코드는 그대로 인덱스로 읽기만 하면 된다. 중간에 원본을
+     *  덮어쓰지 않도록 전부 임시파일로 옮긴 뒤 최종 위치에 다시 쓴다. */
+    fun applyPageOrder(id: String, order: List<Int>) {
+        val dir = File(root, id).apply { mkdirs() }
+        val temps = order.mapIndexed { newIndex, oldIndex ->
+            val src = pageFile(id, oldIndex)
+            if (!src.exists()) null else File(dir, "reorder_tmp_$newIndex.png").also { src.copyTo(it, overwrite = true) }
+        }
+        for (i in order.indices) pageFile(id, i).delete()
+        temps.forEachIndexed { newIndex, tmp -> tmp?.let { it.copyTo(pageFile(id, newIndex), overwrite = true); it.delete() } }
+    }
+
+    /** 표지 디자인용 갤러리 이미지 — 페이지 그림과 별개로 book 폴더에 한 장만 둔다(없으면 기본색 표지). */
+    private fun coverFile(id: String): File {
+        val dir = File(root, id).apply { mkdirs() }
+        return File(dir, "cover.jpg")
+    }
+
+    fun loadCover(id: String): Bitmap? {
+        val f = coverFile(id)
+        return if (f.exists()) BitmapFactory.decodeFile(f.absolutePath) else null
+    }
+
+    /** 표지 그리드/캐러셀에 쓸 다운샘플 버전 — 원본 갤러리 사진 그대로 들고 있으면 목록에서 무겁다. */
+    fun loadCoverThumb(id: String, reqPx: Int = 400): Bitmap? {
+        val f = coverFile(id); if (!f.exists()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(f.absolutePath, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= reqPx) sample *= 2
+        return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+    }
+
+    fun saveCover(id: String, bmp: Bitmap) {
+        FileOutputStream(coverFile(id)).use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+    }
+
+    fun removeCover(id: String) {
+        coverFile(id).delete()
     }
 
     private fun save(books: List<Sketchbook>) {

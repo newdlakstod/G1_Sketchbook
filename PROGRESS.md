@@ -436,8 +436,39 @@
      `Share`. 내비 아이콘 크기 24dp→26dp(주석: "버튼아이콘 사이즈").
   - `compileDebugKotlin` 검증 완료.
 
+- **표지 이미지 갤러리 선택 · 스케치북 캔버스 8종 개선 · 버튼바 도킹** (v2.4.0, 2026-08-17):
+  1. **표지 = 갤러리 사진**: v2.3.0에서 "표지 수정"의 "배경"을 종이 재질(bgKey) 스와치로 잘못
+     구현했던 것을 재작업 — 표지 디자인은 그리기용 종이 재질과 무관하고 갤러리 사진으로 바꾸는
+     것이라는 피드백을 받아 `ActivityResultContracts.PickVisualMedia`로 갤러리에서 사진을 골라
+     표지 이미지로 저장(`SketchbookRepository.saveCover/loadCover/loadCoverThumb/removeCover`,
+     book 폴더에 `cover.jpg` 한 장). 이름 변경은 `rename()`으로 분리. `CoverCard`와 홈 캐러셀
+     둘 다 저장된 표지 이미지를 불러와 보여준다(`SketchbookCover`의 기존 `coverImage` 파라미터 활용).
+  2. **화면 잠금 중 두 손가락 이동 허용**: `BrushView`의 잠금이 확대/축소(scale)만 막고 이동
+     (translate)은 그대로 적용하도록 분리.
+  3. **브러시 색상/굵기/투명도 저장**: `SessionStore`에 저장해 앱을 다시 켜도 이어서 쓸 수 있게
+     (브러시 종류·지우개 여부는 저장 안 함, 매번 펜으로 시작). 개인·공유 캔버스가 같은 키를 공유.
+  4. **페이지 번호 표기 단순화**: 페이지 다이얼로그의 "1/15" → "1"만(직접 입력으로 이동하는 필드는
+     유지).
+  5. **페이지 순서 드래그 이동**: `PagePanel` 그리드에서 길게 눌러 드래그하면 실시간으로 자리가
+     바뀌고, 손을 떼면 실제 파일이 재배치된다(`SketchbookRepository.applyPageOrder` — 충돌 없이
+     바꾸려고 전부 임시파일로 옮긴 뒤 최종 위치에 다시 씀).
+  6. **세손가락 페이지 넘기기 재도입(애니메이션 없이)**: `BrushView`에 3손가락 수평 스와이프
+     감지(`onThreeFingerSwipe`)를 추가 — 두 손가락 핀치/팬과 완전히 분리된 제스처라 서로 안
+     겹친다. 페이지 전환 자체는 애니메이션 없이 즉시 반영(책장 넘김 효과는 v2.3.0에서 이미 삭제).
+  7. **버튼바 최소화**: 현재 브러시(탭→4개 미니 팝업)·색상(탭→기존 색상휠)만 남는 축소 모드
+     추가(`BrushControls`의 `collapsed`/`onToggleCollapsed`).
+  8. **버튼바 드래그 도킹 + 세로 모드**: 왼쪽 끝 손잡이(⋮⋮ 아이콘)를 길게 눌러 드래그하면 놓은
+     위치에서 가장 가까운 가장자리(상/하/좌/우)로 붙는다(`ToolbarDock`, 캔버스 위에 뜨는 오버레이라
+     캔버스 크기는 안 바뀜). 좌/우로 붙으면 내부 배치가 자동으로 세로(Column+verticalScroll)로
+     전환되고, 브러시 패널·색상휠·즐겨찾기 편집 팝업도 화면 밖으로 안 나가는 방향으로 열린다
+     (`AboveAnchor`/`BelowAnchor`/`SideAnchor`).
+  - 개인·공유 스케치북 캔버스 화면 둘 다 적용(그림일기 탭은 페이지 개념이 없어 제외).
+  - `compileDebugKotlin` 검증 완료.
+
 ## Next (Phase 2~4)
-- **Cover editor (deferred)**: Add persisted per-book cover color or image selection when the color-wheel/image-picker UI is implemented; the shared renderer already accepts `coverColor` and optional `coverImage`.
+- **Cover editor (색상 선택은 미착수)**: 표지 길게 눌러 수정 다이얼로그에서 갤러리 이미지 선택은
+  구현됨(아래 Done 참고). 커스텀 표지 "색상" 선택(컬러휠 등)은 아직 없음 — 공용 렌더러
+  (`SketchbookCover`)는 `coverColor` 파라미터를 이미 받으므로 UI만 추가하면 됨.
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
 - **Phase 3 — 그림일기 + 달력**: 개인 전용, 사용자당 1개, 날짜별 1장, 자정 잠금(이미지화). 달력(가로 4:3 / 세로 상단달력+하단일기), 이미지 저장.

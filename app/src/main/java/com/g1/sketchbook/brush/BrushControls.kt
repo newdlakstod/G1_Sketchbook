@@ -7,8 +7,10 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.indication
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,12 +33,15 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
+import androidx.compose.material.icons.filled.UnfoldLess
+import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -80,6 +85,16 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.ui.bounceClick
 import kotlin.math.roundToInt
 
+/** 버튼바를 붙여둘 화면 가장자리 — 길게 눌러 드래그하면 놓은 위치에서 가장 가까운 쪽으로 붙는다. */
+enum class ToolbarDock { TOP, BOTTOM, LEFT, RIGHT }
+
+fun ToolbarDock.alignment(): Alignment = when (this) {
+    ToolbarDock.TOP -> Alignment.TopCenter
+    ToolbarDock.BOTTOM -> Alignment.BottomCenter
+    ToolbarDock.LEFT -> Alignment.CenterStart
+    ToolbarDock.RIGHT -> Alignment.CenterEnd
+}
+
 val BrushPalette = listOf(
     0xFF1E2D4CL, 0xFF2B4C9BL, 0xFF4DABF7L, 0xFF4ECDC4L, 0xFF6E9646L,
     0xFFE0A53CL, 0xFFE05454L, 0xFFCE7A7AL, 0xFF9775FAL, 0xFFFFFFFFL,
@@ -112,6 +127,18 @@ fun BrushControls(
      *  mid-drawing; drawing itself is unaffected. Icon reflects current state. */
     locked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
+    /** 버튼바 최소화: 켜져 있으면 현재 브러시·색상 두 개만 보이는 작은 형태로 줄어든다(둘 다 탭하면
+     *  그 자리에서 바로 바뀜). onToggleCollapsed가 null이면 최소화 버튼 자체가 나타나지 않는다. */
+    collapsed: Boolean = false,
+    onToggleCollapsed: (() -> Unit)? = null,
+    /** 버튼바를 길게 눌러 드래그로 옮기기 — 왼쪽 끝 손잡이 아이콘에서만 반응한다(다른 버튼들과
+     *  터치 영역이 겹치지 않도록). 둘 다 null이면 손잡이가 나타나지 않는다. */
+    onDragBar: ((Offset) -> Unit)? = null,
+    onDragBarEnd: (() -> Unit)? = null,
+    /** 버튼바가 지금 어느 가장자리에 붙어있는지 — 좌/우면 세로로 눕고(내부 배치·스크롤 방향 전환),
+     *  팝업(브러시 패널·색상휠·즐겨찾기 편집)도 화면 밖으로 안 나가는 쪽으로 열린다. */
+    dock: ToolbarDock = ToolbarDock.BOTTOM,
+    modifier: Modifier = Modifier.fillMaxWidth(),
 ) {
     var colorWheelOpen by remember { mutableStateOf(false) }
     var editFavAt by remember { mutableIntStateOf(-1) } // -1 none, else favourites index being edited
@@ -120,7 +147,15 @@ fun BrushControls(
     // per-button local state + Popup turned out unreliable, this mirrors the known-good approach).
     var openBrushPanel by remember { mutableStateOf<BrushType?>(null) }
     var openEraserPanel by remember { mutableStateOf(false) }
+    var miniBrushPickerOpen by remember { mutableStateOf(false) }
     val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
+    val vertical = dock == ToolbarDock.LEFT || dock == ToolbarDock.RIGHT
+    val popupAnchor: PopupPositionProvider = when (dock) {
+        ToolbarDock.BOTTOM -> AboveAnchor(gap)
+        ToolbarDock.TOP -> BelowAnchor(gap)
+        ToolbarDock.LEFT -> SideAnchor(gap, toRight = true)
+        ToolbarDock.RIGHT -> SideAnchor(gap, toRight = false)
+    }
 
     if (confirmClear) {
         AlertDialog(
@@ -139,13 +174,55 @@ fun BrushControls(
     Surface(
         shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
         shadowElevation = 8.dp, tonalElevation = 2.dp,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+        modifier = modifier.padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
+        if (collapsed) {
+            val collapsedContent: @Composable () -> Unit = {
+                if (onDragBar != null && onDragBarEnd != null) DragHandle(onDragBar, onDragBarEnd)
+                // 현재 브러시(또는 지우개) 아이콘 — 탭하면 4개(+지우개) 미니 팝업에서 바로 고른다.
+                Box {
+                    Box(Modifier.size(48.dp).bounceClick { miniBrushPickerOpen = true }, contentAlignment = Alignment.Center) {
+                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경",
+                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(36.dp))
+                    }
+                    if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
+                        MiniBrushPopup(brush, erasing,
+                            onPick = { onBrush(it); miniBrushPickerOpen = false },
+                            onEraser = { onToggleErase(); miniBrushPickerOpen = false })
+                    }
+                }
+                // 현재 색상 — 탭하면 전체 툴바와 같은 색상휠이 뜬다.
+                Box {
+                    Box(
+                        Modifier.size(48.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() },
+                            onClickLabel = "현재 색상 — 탭해서 변경") { colorWheelOpen = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(Color(color))
+                            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
+                    }
+                    if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
+                        ColorPickerCard(color, onColor)
+                    }
+                }
+                onToggleCollapsed?.let { IconBtn(Icons.Filled.UnfoldMore, "버튼바 펼치기", onClick = it) }
+            }
+            if (vertical) {
+                Column(
+                    Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) { collapsedContent() }
+            } else {
+                Row(
+                    Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) { collapsedContent() }
+            }
+        } else {
+        val fullContent: @Composable () -> Unit = {
+            if (onDragBar != null && onDragBarEnd != null) { DragHandle(onDragBar, onDragBarEnd); ToolbarDivider(vertical) }
             onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
             // Page turning/thumbnail list/selection all live behind one button now — see PagePanel.
             onOpenPages?.let { IconBtn(Icons.Filled.Layers, "페이지", onClick = it) }
@@ -164,39 +241,39 @@ fun BrushControls(
                     tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
             }
             if (onBack != null || onOpenPages != null || onRotate != null ||
-                onToggleLock != null || onToggleFullscreen != null) VDivider()
+                onToggleLock != null || onToggleFullscreen != null) ToolbarDivider(vertical)
 
             // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
             // width/opacity panel (anchored + labelled per brush, not a single shared control).
-            BrushBtnWithPanel(!erasing && brush == BrushType.PEN, "펜", sizeDp, opacity, true, gap,
+            BrushBtnWithPanel(!erasing && brush == BrushType.PEN, "펜", sizeDp, opacity, true, popupAnchor,
                 panelOpen = openBrushPanel == BrushType.PEN,
                 setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PEN else null; if (o) openEraserPanel = false },
                 onClick = { onBrush(BrushType.PEN); openBrushPanel = null; openEraserPanel = false },
                 onSize = onSize, onOpacity = onOpacity) { t ->
                 Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
-            BrushBtnWithPanel(!erasing && brush == BrushType.PENCIL, "연필", sizeDp, opacity, true, gap,
+            BrushBtnWithPanel(!erasing && brush == BrushType.PENCIL, "연필", sizeDp, opacity, true, popupAnchor,
                 panelOpen = openBrushPanel == BrushType.PENCIL,
                 setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PENCIL else null; if (o) openEraserPanel = false },
                 onClick = { onBrush(BrushType.PENCIL); openBrushPanel = null; openEraserPanel = false },
                 onSize = onSize, onOpacity = onOpacity) { t ->
                 Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
-            BrushBtnWithPanel(!erasing && brush == BrushType.CRAYON, "크레파스", sizeDp, opacity, true, gap,
+            BrushBtnWithPanel(!erasing && brush == BrushType.CRAYON, "크레파스", sizeDp, opacity, true, popupAnchor,
                 panelOpen = openBrushPanel == BrushType.CRAYON,
                 setPanelOpen = { o -> openBrushPanel = if (o) BrushType.CRAYON else null; if (o) openEraserPanel = false },
                 onClick = { onBrush(BrushType.CRAYON); openBrushPanel = null; openEraserPanel = false },
                 onSize = onSize, onOpacity = onOpacity) { t ->
                 Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
-            BrushBtnWithPanel(!erasing && brush == BrushType.WATER, "수채화", sizeDp, opacity, true, gap,
+            BrushBtnWithPanel(!erasing && brush == BrushType.WATER, "수채화", sizeDp, opacity, true, popupAnchor,
                 panelOpen = openBrushPanel == BrushType.WATER,
                 setPanelOpen = { o -> openBrushPanel = if (o) BrushType.WATER else null; if (o) openEraserPanel = false },
                 onClick = { onBrush(BrushType.WATER); openBrushPanel = null; openEraserPanel = false },
                 onSize = onSize, onOpacity = onOpacity) { t ->
                 Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
-            BrushBtnWithPanel(erasing, "지우개", sizeDp, opacity, false, gap,
+            BrushBtnWithPanel(erasing, "지우개", sizeDp, opacity, false, popupAnchor,
                 panelOpen = openEraserPanel,
                 setPanelOpen = { o -> openEraserPanel = o; if (o) openBrushPanel = null },
                 onClick = { onToggleErase(); openBrushPanel = null; openEraserPanel = false },
@@ -204,7 +281,7 @@ fun BrushControls(
                 Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(52.dp))
             }
 
-            VDivider()
+            ToolbarDivider(vertical)
 
             // 5 favourites: tap to pick; tap the already-selected one again to open a colour wheel for it.
             // Touch area is the 48dp accessibility minimum, but the ripple itself is scoped to the
@@ -225,7 +302,7 @@ fun BrushControls(
                             .background(Color(c))
                             .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape))
                     }
-                    if (editFavAt == i) Popup(AboveAnchor(gap), { editFavAt = -1 }, PopupProperties(focusable = true)) {
+                    if (editFavAt == i) Popup(popupAnchor, { editFavAt = -1 }, PopupProperties(focusable = true)) {
                         ColorPickerCard(c) { newColor -> onColor(newColor); onEditFavorite(i, newColor) }
                     }
                 }
@@ -244,7 +321,7 @@ fun BrushControls(
                         .background(Brush.sweepGradient(HueWheel))
                         .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
                 }
-                if (colorWheelOpen) Popup(AboveAnchor(gap), { colorWheelOpen = false }, PopupProperties(focusable = true)) {
+                if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
                     ColorPickerCard(color, onColor)
                 }
             }
@@ -253,11 +330,76 @@ fun BrushControls(
                 tint = if (eyedropArmed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 onClick = onToggleEyedrop)
 
-            VDivider()
+            ToolbarDivider(vertical)
 
             IconBtn(Icons.AutoMirrored.Filled.Undo, "되돌리기", onClick = onUndo)
             IconBtn(Icons.AutoMirrored.Filled.Redo, "다시 실행", onClick = onRedo)
             IconBtn(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555), onClick = { confirmClear = true })
+            onToggleCollapsed?.let { ToolbarDivider(vertical); IconBtn(Icons.Filled.UnfoldLess, "버튼바 최소화", onClick = it) }
+        }
+        if (vertical) {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) { fullContent() }
+        } else {
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) { fullContent() }
+        }
+        }
+    }
+}
+
+/** 버튼바 길게 눌러 드래그로 옮길 때 잡는 손잡이 — 다른 버튼들과 터치 영역이 겹치지 않도록 전용
+ *  자리 하나에만 반응한다. 짧게 눌러도 아무 동작 없음(탭 기능은 없고 드래그 전용). */
+@Composable
+private fun DragHandle(onDrag: (Offset) -> Unit, onDragEnd: () -> Unit) {
+    Box(
+        Modifier.size(32.dp, 48.dp)
+            .pointerInput(Unit) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {},
+                    onDrag = { change, dragAmount -> change.consume(); onDrag(dragAmount) },
+                    onDragEnd = onDragEnd,
+                    onDragCancel = onDragEnd,
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) { Icon(Icons.Filled.DragIndicator, "버튼바 이동(길게 눌러 드래그)", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+}
+
+private fun currentToolIcon(brush: BrushType, erasing: Boolean): Int = when {
+    erasing -> R.drawable.brush_eraser
+    brush == BrushType.PEN -> R.drawable.brush_pen
+    brush == BrushType.PENCIL -> R.drawable.brush_pencil
+    brush == BrushType.CRAYON -> R.drawable.brush_crayon
+    else -> R.drawable.brush_water
+}
+
+/** 최소화 상태에서 브러시 아이콘을 탭하면 뜨는 4개(+지우개) 미니 픽커 — 전체 툴바의 굵기/투명도
+ *  패널 없이 종류만 빠르게 바꾼다(굵기·투명도를 조절하려면 버튼바를 펼쳐야 함). */
+@Composable
+private fun MiniBrushPopup(current: BrushType, erasing: Boolean, onPick: (BrushType) -> Unit, onEraser: () -> Unit) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
+        Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            listOf(
+                BrushType.PEN to R.drawable.brush_pen, BrushType.PENCIL to R.drawable.brush_pencil,
+                BrushType.CRAYON to R.drawable.brush_crayon, BrushType.WATER to R.drawable.brush_water,
+            ).forEach { (t, res) ->
+                val tint = if (!erasing && t == current) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                Box(Modifier.size(48.dp).bounceClick { onPick(t) }, contentAlignment = Alignment.Center) {
+                    Image(painterResource(res), null, colorFilter = ColorFilter.tint(tint), modifier = Modifier.size(38.dp))
+                }
+            }
+            val eraserTint = if (erasing) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+            Box(Modifier.size(48.dp).bounceClick { onEraser() }, contentAlignment = Alignment.Center) {
+                Image(painterResource(R.drawable.brush_eraser), null, colorFilter = ColorFilter.tint(eraserTint), modifier = Modifier.size(38.dp))
+            }
         }
     }
 }
@@ -397,12 +539,33 @@ private class AboveAnchor(private val gapPx: Int) : PopupPositionProvider {
     }
 }
 
+/** 버튼바가 위쪽 가장자리에 붙어있을 때용 — 팝업이 위로 열리면 화면 밖으로 나가므로 아래로 연다. */
+private class BelowAnchor(private val gapPx: Int) : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        val x = (anchorBounds.left + anchorBounds.width / 2 - popupContentSize.width / 2)
+            .coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+        val y = (anchorBounds.bottom + gapPx).coerceAtMost((windowSize.height - popupContentSize.height).coerceAtLeast(0))
+        return IntOffset(x, y)
+    }
+}
+
+/** 버튼바가 좌/우 가장자리에 세로로 붙어있을 때용 — 팝업을 화면 안쪽(왼쪽 도킹이면 오른쪽으로,
+ *  오른쪽 도킹이면 왼쪽으로)으로 연다. */
+private class SideAnchor(private val gapPx: Int, private val toRight: Boolean) : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        val x = if (toRight) anchorBounds.right + gapPx else anchorBounds.left - popupContentSize.width - gapPx
+        val y = (anchorBounds.top + anchorBounds.height / 2 - popupContentSize.height / 2)
+            .coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
+        return IntOffset(x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)), y)
+    }
+}
+
 /** Tap to select; tap again while already selected opens THIS brush's own width/opacity panel,
  *  anchored right above this icon (not a shared control), with the brush's name as the header.
  *  Open/closed state is hoisted by the caller (BrushControls) — mirrors the favourites-edit popup. */
 @Composable
 private fun BrushBtnWithPanel(
-    selected: Boolean, name: String, sizeDp: Float, opacity: Float, showOpacity: Boolean, gap: Int,
+    selected: Boolean, name: String, sizeDp: Float, opacity: Float, showOpacity: Boolean, anchor: PopupPositionProvider,
     panelOpen: Boolean, setPanelOpen: (Boolean) -> Unit,
     onClick: () -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
     icon: @Composable (Color) -> Unit,
@@ -416,7 +579,7 @@ private fun BrushBtnWithPanel(
             contentAlignment = Alignment.Center) {
             Box(Modifier.size(42.dp).clipToBounds(), contentAlignment = Alignment.Center) { icon(tint) }
         }
-        if (panelOpen) Popup(AboveAnchor(gap), { setPanelOpen(false) }, PopupProperties(focusable = true)) {
+        if (panelOpen) Popup(anchor, { setPanelOpen(false) }, PopupProperties(focusable = true)) {
             SlidersPanel(name, showOpacity, sizeDp, opacity, onSize, onOpacity)
         }
     }
@@ -428,8 +591,14 @@ private fun IconBtn(icon: ImageVector, desc: String, tint: Color = MaterialTheme
 }
 
 @Composable
-private fun VDivider() {
-    Spacer(Modifier.width(2.dp))
-    Box(Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant))
-    Spacer(Modifier.width(2.dp))
+private fun ToolbarDivider(vertical: Boolean) {
+    if (vertical) {
+        Spacer(Modifier.height(2.dp))
+        Box(Modifier.height(1.dp).width(24.dp).background(MaterialTheme.colorScheme.outlineVariant))
+        Spacer(Modifier.height(2.dp))
+    } else {
+        Spacer(Modifier.width(2.dp))
+        Box(Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant))
+        Spacer(Modifier.width(2.dp))
+    }
 }

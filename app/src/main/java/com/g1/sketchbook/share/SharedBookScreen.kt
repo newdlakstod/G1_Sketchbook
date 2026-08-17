@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
@@ -61,12 +62,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
+import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.bgDrawable
 import com.g1.sketchbook.ui.theme.Dimens
@@ -76,6 +79,7 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /** How the (up to 4) canvases are laid out. GRID auto-switches between a simple 2-pane split (2
  *  people) and a 2x2 grid (3-4 people) based on how many are actually in the session — no manual
@@ -106,15 +110,17 @@ fun SharedBookScreen(
     val density = LocalDensity.current.density
 
     var view by remember { mutableStateOf<BrushView?>(null) }
+    // 색상/굵기/투명도는 SessionStore에 저장(개인 스케치북과 동일한 키)해 앱을 다시 켜도, 개인·공유
+    // 화면을 오가도 이어서 쓸 수 있게 한다.
+    val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
-    var color by remember { mutableLongStateOf(0xFF1E2D4CL) }
+    var color by remember { mutableLongStateOf(session.brushColor) }
     var erasing by remember { mutableStateOf(false) }
-    val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
-    val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
-    var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
+    val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
+    val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
+    var eraserSize by remember { mutableFloatStateOf(session.eraserSize) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
-    val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var favorites by remember { mutableStateOf(session.favoriteColors) }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
@@ -123,6 +129,9 @@ fun SharedBookScreen(
     var pagesOpen by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(false) }
+    var toolbarCollapsed by remember { mutableStateOf(false) }
+    var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
+    var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var others by remember { mutableStateOf<List<ShareRepository.Slot>>(emptyList()) }
@@ -156,7 +165,7 @@ fun SharedBookScreen(
     // Apply brush settings via an effect rather than AndroidView.update: the pane is wrapped in
     // movableContent, and after it's moved (rotation / view-mode change) update() stops re-observing
     // state — so selections would silently stop applying. This effect always re-syncs.
-    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed, locked) {
+    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed, locked, page) {
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
         v.erasing = erasing; v.locked = locked
@@ -165,8 +174,12 @@ fun SharedBookScreen(
         v.longPressAction = session.longPressAction
         v.eyedropArmed = eyedropArmed
         v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
-        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
+        v.onEyedrop = { c ->
+            val col = c.toLong() and 0xFFFFFFFFL
+            color = col; session.brushColor = col; erasing = false; eyedropArmed = false; eyedropPreview = null
+        }
         v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
+        v.onThreeFingerSwipe = { dir -> goTo(page + dir) }
         v.onStrokeEnd = {
             val pg = page
             v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
@@ -209,6 +222,7 @@ fun SharedBookScreen(
         }
 
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
+            val density2 = LocalDensity.current
             val landscape = maxWidth > maxHeight
             val mine = remember {
                 movableContentOf<Modifier> { m ->
@@ -313,27 +327,61 @@ fun SharedBookScreen(
                     }
                 }
             }
-        }
 
-        BrushControls(
-            brush, color, sizeDp, opacity, erasing,
-            onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
-            onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
-            onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
-            onUndo = { view?.undo() }, onRedo = { view?.redo() },
-            onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
-            onRotate = { view?.rotate() },
-            onOpenPages = { pagesOpen = true },
-            favorites = favorites,
-            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
-            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
-            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
-            locked = locked, onToggleLock = { locked = !locked },
-        )
+            // 버튼바: 캔버스 분할 영역 위에 떠 있는 오버레이라 패널 레이아웃은 그대로다. 손잡이를
+            // 길게 눌러 드래그하면 놓은 위치에서 가장 가까운 가장자리로 옮겨 붙는다.
+            val barModifier = Modifier
+                .align(toolbarDock.alignment())
+                .let { if (toolbarDock == com.g1.sketchbook.brush.ToolbarDock.TOP || toolbarDock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM) it.fillMaxWidth() else it }
+                .offset { IntOffset(toolbarDragPx.x.roundToInt(), toolbarDragPx.y.roundToInt()) }
+            BrushControls(
+                brush, color, sizeDp, opacity, erasing,
+                onBrush = { brush = it; erasing = false },
+                onColor = { color = it; erasing = false; session.brushColor = it },
+                onSize = { if (erasing) { eraserSize = it; session.eraserSize = it } else { sizeByBrush[brush] = it; session.setBrushSize(brush, it) } },
+                onOpacity = { if (!erasing) { opacityByBrush[brush] = it; session.setBrushOpacity(brush, it) } }, onToggleErase = { erasing = !erasing },
+                onUndo = { view?.undo() }, onRedo = { view?.redo() },
+                onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
+                onRotate = { view?.rotate() },
+                onOpenPages = { pagesOpen = true },
+                favorites = favorites,
+                onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+                eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
+                fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+                locked = locked, onToggleLock = { locked = !locked },
+                collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
+                onDragBar = { d -> toolbarDragPx += d },
+                onDragBarEnd = {
+                    val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
+                    val baseX = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.LEFT -> 0f; com.g1.sketchbook.brush.ToolbarDock.RIGHT -> cwPx; else -> cwPx / 2f }
+                    val baseY = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.TOP -> 0f; com.g1.sketchbook.brush.ToolbarDock.BOTTOM -> chPx; else -> chPx / 2f }
+                    val x = baseX + toolbarDragPx.x; val y = baseY + toolbarDragPx.y
+                    val distances = mapOf(
+                        com.g1.sketchbook.brush.ToolbarDock.LEFT to x,
+                        com.g1.sketchbook.brush.ToolbarDock.RIGHT to (cwPx - x),
+                        com.g1.sketchbook.brush.ToolbarDock.TOP to y,
+                        com.g1.sketchbook.brush.ToolbarDock.BOTTOM to (chPx - y),
+                    )
+                    toolbarDock = distances.minByOrNull { it.value }?.key ?: toolbarDock
+                    toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
+                },
+                dock = toolbarDock,
+                modifier = barModifier,
+            )
+        }
     }
     if (pagesOpen) {
-        com.g1.sketchbook.sketchbook.PagePanel(sbRepo, book.id, page, pageCount,
-            onSelect = { p -> goTo(p); pagesOpen = false }, onDismiss = { pagesOpen = false })
+        com.g1.sketchbook.sketchbook.PagePanel(
+            sbRepo, book.id, page, pageCount,
+            onSelect = { p -> goTo(p); pagesOpen = false },
+            onReorder = { order ->
+                saveLocal()
+                sbRepo.applyPageOrder(book.id, order)
+                val newPage = order.indexOf(page)
+                if (newPage != -1 && newPage != page) { page = newPage; view?.loadContent(sbRepo.loadPage(book.id, newPage)); pushMine() }
+            },
+            onDismiss = { pagesOpen = false },
+        )
     }
 }
 

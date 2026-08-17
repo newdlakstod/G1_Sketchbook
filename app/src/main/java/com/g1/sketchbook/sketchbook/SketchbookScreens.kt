@@ -1,7 +1,13 @@
 package com.g1.sketchbook.sketchbook
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -21,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
@@ -74,6 +81,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -82,6 +91,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.share.ShareRepository
@@ -92,10 +102,13 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
+import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 fun bgDrawable(key: String) = when (key) {
     "drawing" -> R.drawable.paper_drawing
@@ -197,6 +210,7 @@ fun SketchbookTab(
     }
     SketchbookListScreen(
         books = books,
+        repo = repo,
         initialShowShared = initialShowShared,
         onNewPersonal = { wizardType = WType.PERSONAL; creating = true },
         onNewShared = { wizardType = WType.SHARED_NEW; creating = true },
@@ -204,7 +218,11 @@ fun SketchbookTab(
         onOpen = { onOpenBook(it.id) },
         onDelete = { repo?.delete(it.id); refresh++ },
         onToggleFav = { repo?.toggleFav(it.id); refresh++ },
-        onEditBook = { book, name, bgKey -> repo?.updateNameAndBg(book.id, name, bgKey); refresh++ },
+        onEditBook = { book, name, newCover, removeCover ->
+            repo?.rename(book.id, name)
+            if (newCover != null) repo?.saveCover(book.id, newCover) else if (removeCover) repo?.removeCover(book.id)
+            refresh++
+        },
     )
 }
 
@@ -395,6 +413,7 @@ private fun WizardChoice(icon: ImageVector, title: String, onClick: () -> Unit) 
 @Composable
 private fun SketchbookListScreen(
     books: List<Sketchbook>,
+    repo: SketchbookRepository?,
     initialShowShared: Boolean = false,
     onNewPersonal: () -> Unit = {},
     onNewShared: () -> Unit = {},
@@ -402,7 +421,7 @@ private fun SketchbookListScreen(
     onOpen: (Sketchbook) -> Unit,
     onDelete: (Sketchbook) -> Unit,
     onToggleFav: (Sketchbook) -> Unit,
-    onEditBook: (Sketchbook, String, String) -> Unit,
+    onEditBook: (Sketchbook, String, Bitmap?, Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val session = remember { com.g1.sketchbook.data.SessionStore(context) }
@@ -446,7 +465,7 @@ private fun SketchbookListScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     gridItems(shown, key = { it.id }) { b ->
-                        CoverCard(b, { onOpen(b) }, { editing = b })
+                        CoverCard(b, repo, { onOpen(b) }, { editing = b })
                     }
                 }
             }
@@ -472,8 +491,9 @@ private fun SketchbookListScreen(
         val current = books.firstOrNull { it.id == target.id } ?: target
         EditCoverDialog(
             book = current,
+            repo = repo,
             onCancel = { editing = null },
-            onSave = { name, bgKey -> onEditBook(current, name, bgKey); editing = null },
+            onSave = { name, newCover, removeCover -> onEditBook(current, name, newCover, removeCover); editing = null },
             onToggleFav = { onToggleFav(current) },
             onDelete = { editing = null; pendingDelete = current },
         )
@@ -481,7 +501,10 @@ private fun SketchbookListScreen(
 }
 
 @Composable
-private fun CoverCard(book: Sketchbook, onOpen: () -> Unit, onEdit: () -> Unit) {
+private fun CoverCard(book: Sketchbook, repo: SketchbookRepository?, onOpen: () -> Unit, onEdit: () -> Unit) {
+    // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 기본색을 보여준다.
+    var cover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(book.id, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
     // Same cover ratio as the home carousel (Dimens.Home.coverRatio) — every note cover keeps one
     // fixed proportion across the whole app, whichever screen shows it.
     Box(Modifier.aspectRatio(Dimens.Home.coverRatio)) {
@@ -490,6 +513,7 @@ private fun CoverCard(book: Sketchbook, onOpen: () -> Unit, onEdit: () -> Unit) 
             modifier = Modifier.fillMaxSize()
                 .shadow(12.dp, SketchbookCoverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
                 .bounceClick(onClick = onOpen, onLongClick = onEdit),
+            coverImage = cover?.let { BitmapPainter(it.asImageBitmap()) },
         ) {
             // Scrim so the cream text stays readable regardless of the cover's own colour (some covers,
             // e.g. the light mauve one, put light text under ~2:1 contrast without this).
@@ -506,23 +530,42 @@ private fun CoverCard(book: Sketchbook, onOpen: () -> Unit, onEdit: () -> Unit) 
     }
 }
 
-/** 표지 길게 눌러 여는 수정 다이얼로그 — 이름/배경 재질에 더해 즐겨찾기 토글과 삭제도 여기서 한다
- *  (예전엔 표지 위 아이콘 두 개였지만, 표지를 깔끔하게 비우면서 이 다이얼로그로 옮겼다). 사이즈는
- *  이미 그려둔 페이지의 비율이 깨질 수 있어 수정 대상에서 제외. */
+/** 표지 길게 눌러 여는 수정 다이얼로그 — 이름, 갤러리 사진으로 고르는 표지 이미지, 즐겨찾기
+ *  토글, 삭제를 한 곳에서 처리한다(예전엔 표지 위 아이콘 두 개였지만, 표지를 깔끔하게 비우면서
+ *  이 다이얼로그로 옮겼다). 종이 재질(bgKey)은 그림 그릴 때 쓰는 캔버스 배경이라 표지 디자인과는
+ *  별개이고, 사이즈도 이미 그려둔 페이지 비율이 깨질 수 있어 여기서 건드리지 않는다. */
 @Composable
 private fun EditCoverDialog(
     book: Sketchbook,
+    repo: SketchbookRepository?,
     onCancel: () -> Unit,
-    onSave: (String, String) -> Unit,
+    onSave: (name: String, newCover: Bitmap?, removeCover: Boolean) -> Unit,
     onToggleFav: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val context = LocalContext.current
     var name by remember(book.id) { mutableStateOf(book.name) }
-    var bgKey by remember(book.id) { mutableStateOf(book.bgKey) }
+    // 이미 저장된 표지 사진(있으면) 먼저 불러온다.
+    var existingCover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(book.id, repo) { existingCover = withContext(Dispatchers.IO) { repo?.loadCover(book.id) } }
+    // 갤러리에서 새로 고른 사진(저장 전 미리보기) — "기본색으로"를 누르면 기존 사진도 지우도록 표시.
+    var pickedCover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
+    var removeRequested by remember(book.id) { mutableStateOf(false) }
+    val previewCover = pickedCover ?: existingCover.takeUnless { removeRequested }
+
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
+        if (uri != null) {
+            decodeSampledBitmap(context, uri, 1024)?.let { pickedCover = it; removeRequested = false }
+        }
+    }
+
     Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize()) {
-            Image(painterResource(bgDrawable(bgKey)), "배경 미리보기", contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize())
+            if (previewCover != null) {
+                Image(previewCover.asImageBitmap(), "표지 미리보기", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            } else {
+                Box(Modifier.fillMaxSize().background(DefaultSketchbookCoverColor))
+            }
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.30f)))
             Box(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = Dimens.Screen.bottomMargin),
                 contentAlignment = Alignment.Center) {
@@ -548,25 +591,39 @@ private fun EditCoverDialog(
                     OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
                         placeholder = { Text("스케치북 이름 입력") }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(18.dp))
-                    Text("배경", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
-                    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
-                        items(Catalog.backgrounds) { bg ->
-                            val on = bg.key == bgKey
-                            Image(painterResource(bgDrawable(bg.key)), bg.label, contentScale = ContentScale.Crop,
-                                modifier = Modifier.size(48.dp).clip(CircleShape).clickable { bgKey = bg.key }
-                                    .border(if (on) 3.dp else 1.dp,
-                                        if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape))
+                    Text("표지 이미지", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+                            Text("갤러리에서 선택")
+                        }
+                        if (previewCover != null) {
+                            TextButton(onClick = { pickedCover = null; removeRequested = true }) { Text("기본색으로") }
                         }
                     }
                     Spacer(Modifier.height(20.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         TextButton(onClick = onCancel) { Text("취소") }
-                        TextButton(onClick = { onSave(name, bgKey) }, enabled = name.isNotBlank()) { Text("저장", fontWeight = FontWeight.Bold) }
+                        TextButton(onClick = { onSave(name, pickedCover, removeRequested) }, enabled = name.isNotBlank()) {
+                            Text("저장", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** 갤러리 원본은 화면·저장용으로 쓰기엔 너무 커서, 긴 변이 [maxDim]을 넘지 않도록 다운샘플링해
+ *  디코드한다(표지 그림과 같은 원리, `SketchbookRepository.loadPageThumb`와 동일 패턴). */
+private fun decodeSampledBitmap(context: Context, uri: Uri, maxDim: Int): Bitmap? {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= maxDim || bounds.outHeight / (sample * 2) >= maxDim) sample *= 2
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    return resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
 }
 
 @Composable
@@ -582,15 +639,17 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     var view by remember { mutableStateOf<BrushView?>(null) }
+    // 색상/굵기/투명도는 SessionStore에 저장해 앱을 다시 켜도 이어서 쓸 수 있게 한다(브러시 종류
+    // 자체나 지우개 여부는 저장하지 않고 매번 펜으로 시작).
+    val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
-    var color by remember { mutableLongStateOf(0xFF1E2D4CL) }
+    var color by remember { mutableLongStateOf(session.brushColor) }
     var erasing by remember { mutableStateOf(false) }
-    val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
-    val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
-    var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
+    val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
+    val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
+    var eraserSize by remember { mutableFloatStateOf(session.eraserSize) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
-    val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var favorites by remember { mutableStateOf(session.favoriteColors) }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
@@ -599,6 +658,9 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var pagesOpen by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(false) }
+    var toolbarCollapsed by remember { mutableStateOf(false) }
+    var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
+    var toolbarDragPx by remember { mutableStateOf(Offset.Zero) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
@@ -616,11 +678,12 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             else -> { saveCurrent(); onBack() }
         }
     }
-    Column(
+    androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .let { if (fullscreen) it else it.systemBarsPadding() },
     ) {
-        Box(Modifier.weight(1f).fillMaxWidth().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding)) {
+        val density2 = LocalDensity.current
+        Box(Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding)) {
             // BrushView fills the whole area and fits/auto-rotates the fixed-size page inside it.
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
@@ -640,18 +703,29 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.longPressAction = session.longPressAction
                     v.eyedropArmed = eyedropArmed
                     v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
-                    v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
+                    v.onEyedrop = { c ->
+                        val col = c.toLong() and 0xFFFFFFFFL
+                        color = col; session.brushColor = col; erasing = false; eyedropArmed = false; eyedropPreview = null
+                    }
                     v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
+                    v.onThreeFingerSwipe = { dir -> goTo(page + dir) }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
         }
+        // 버튼바: 기본은 하단에 붙지만(떠 있는 오버레이라 캔버스 크기는 안 바뀜), 손잡이를 길게 눌러
+        // 드래그하면 놓은 위치에서 가장 가까운 가장자리(상/하/좌/우)로 옮겨 붙는다.
+        val barModifier = Modifier
+            .align(toolbarDock.alignment())
+            .let { if (toolbarDock == com.g1.sketchbook.brush.ToolbarDock.TOP || toolbarDock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM) it.fillMaxWidth() else it }
+            .offset { IntOffset(toolbarDragPx.x.roundToInt(), toolbarDragPx.y.roundToInt()) }
         BrushControls(
             brush, color, sizeDp, opacity, erasing,
-            onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
-            onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
-            onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
+            onBrush = { brush = it; erasing = false },
+            onColor = { color = it; erasing = false; session.brushColor = it },
+            onSize = { if (erasing) { eraserSize = it; session.eraserSize = it } else { sizeByBrush[brush] = it; session.setBrushSize(brush, it) } },
+            onOpacity = { if (!erasing) { opacityByBrush[brush] = it; session.setBrushOpacity(brush, it) } }, onToggleErase = { erasing = !erasing },
             onUndo = { view?.undo() }, onRedo = { view?.redo() }, onClear = { view?.clearCanvas(); saveCurrent() },
             onRotate = { view?.rotate() },
             onOpenPages = { pagesOpen = true },
@@ -660,9 +734,37 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
             locked = locked, onToggleLock = { locked = !locked },
+            collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
+            onDragBar = { d -> toolbarDragPx += d },
+            onDragBarEnd = {
+                val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
+                val baseX = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.LEFT -> 0f; com.g1.sketchbook.brush.ToolbarDock.RIGHT -> cwPx; else -> cwPx / 2f }
+                val baseY = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.TOP -> 0f; com.g1.sketchbook.brush.ToolbarDock.BOTTOM -> chPx; else -> chPx / 2f }
+                val x = baseX + toolbarDragPx.x; val y = baseY + toolbarDragPx.y
+                val distances = mapOf(
+                    com.g1.sketchbook.brush.ToolbarDock.LEFT to x,
+                    com.g1.sketchbook.brush.ToolbarDock.RIGHT to (cwPx - x),
+                    com.g1.sketchbook.brush.ToolbarDock.TOP to y,
+                    com.g1.sketchbook.brush.ToolbarDock.BOTTOM to (chPx - y),
+                )
+                toolbarDock = distances.minByOrNull { it.value }?.key ?: toolbarDock
+                toolbarDragPx = Offset.Zero
+            },
+            dock = toolbarDock,
+            modifier = barModifier,
         )
     }
     if (pagesOpen) {
-        PagePanel(repo, book.id, page, pageCount, onSelect = { p -> goTo(p); pagesOpen = false }, onDismiss = { pagesOpen = false })
+        PagePanel(
+            repo, book.id, page, pageCount,
+            onSelect = { p -> goTo(p); pagesOpen = false },
+            onReorder = { order ->
+                saveCurrent()
+                repo.applyPageOrder(book.id, order)
+                val newPage = order.indexOf(page)
+                if (newPage != -1 && newPage != page) { page = newPage; view?.loadContent(repo.loadPage(book.id, newPage)) }
+            },
+            onDismiss = { pagesOpen = false },
+        )
     }
 }

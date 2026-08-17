@@ -41,6 +41,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +52,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +69,8 @@ import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Dimens
 import com.g1.sketchbook.ui.theme.ThemeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun MainScreen(
@@ -116,10 +120,9 @@ private fun HomeTab(
     onOpenBook: (String) -> Unit,
     previewBooks: List<Sketchbook>? = null,
 ) {
-    val allBooks = previewBooks ?: run {
-        val ctx = LocalContext.current
-        remember(ctx) { SketchbookRepository(ctx).list() }
-    }
+    val context = LocalContext.current
+    val repo = if (previewBooks == null) remember(context) { SketchbookRepository(context) } else null
+    val allBooks = previewBooks ?: remember(repo) { repo!!.list() }
     // 우상단 개인/공유 아이콘 버튼으로 노트를 전환해서 봄 — 스케치북 리스트 탭의 개인/공유받음
     // 필터와 같은 개념, 홈 캐러셀에도 적용.
     var showShared by remember { mutableStateOf(false) }
@@ -151,7 +154,7 @@ private fun HomeTab(
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                 }
             } else {
-                HomeCarousel(books, onOpenBook)
+                HomeCarousel(books, repo, onOpenBook)
             }
         }
     }
@@ -161,7 +164,7 @@ private fun HomeTab(
  *  in smaller and dimmer on either side. Tapping any cover opens it. */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
+private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, onOpen: (String) -> Unit) {
     val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { books.size })
     // Cap each swipe to at most one page regardless of flick speed — a fast flick used to be able to
     // fly through several covers in a row; touching down still cancels any in-flight fling as usual.
@@ -192,6 +195,9 @@ private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
         val coverShape = SketchbookCoverShape
         val titleSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverTitleCenterSp, Dimens.Home.coverTitleSideSp, distance)
         val dateSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverDateCenterSp, Dimens.Home.coverDateSideSp, distance)
+        // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 기본색을 보여준다(목록탭 CoverCard와 동일).
+        var cover by remember(book.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
+        LaunchedEffect(book.id, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(fade).bounceClick { onOpen(book.id) }) {
                 Box(Modifier.width(w + 4.dp).height(h + 4.dp)) {
@@ -204,6 +210,7 @@ private fun HomeCarousel(books: List<Sketchbook>, onOpen: (String) -> Unit) {
                     SketchbookCover(
                         modifier = Modifier.width(w).height(h)
                             .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
+                        coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
                     ) {
                         if (book.shared) {
                             Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
