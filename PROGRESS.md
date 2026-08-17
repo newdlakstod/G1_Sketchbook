@@ -4,6 +4,24 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **지우개 불투명도·블러 + 브러시 두께 재보정** (v2.7.0, 2026-08-17):
+  - `brush/BrushView.kt`: 지우개 페인트(`eraseFill`/`eraseStroke`)를 `PorterDuff.CLEAR`에서
+    `DST_OUT`으로 바꿔 `paint.alpha`가 실제로 반영되게 함(CLEAR는 알파 무시하고 항상 완전히 지움).
+    `eraserBlur` 필드 추가, 0보다 크면 `BlurMaskFilter`로 지우개 경계를 부드럽게.
+  - `brush/BrushControls.kt`: 지우개 패널에 불투명도 슬라이더를 켜고, "경계 블러" 슬라이더를
+    세 번째 줄로 추가(`BlurOn` 아이콘, 0~32 범위, 기존과 동일한 30단계 슬라이더).
+  - `SizeRange`(2~48→4~96)·`BlurRange`(0~16→0~32)·`Dimens.Brush.*` 기본값을 2배로 상향 — 지난
+    세션에서 획 굵기를 캔버스 픽셀 고정값으로 바꾸며 화면 밀도·zoom 증폭이 빠져, 예전 범위 그대로면
+    캔버스에서 거의 안 보일 만큼 얇았음.
+  - `data/SessionStore.kt`: `eraserOpacity`/`eraserBlur` 영구 저장 추가(`eraserSize`와 동일 패턴).
+  - `SketchbookScreens.kt`/`SharedBookScreen.kt`/`DiaryScreens.kt`: 지우개 전용 불투명도 상태를
+    신설(기존엔 지우개일 때 무조건 `100f` 고정이라 사실상 죽어있던 값이었음) — 실제로 조절되게
+    연결하고, 블러 값도 매 프레임 `BrushView`에 전달.
+  - `preview/BrushCanvasPreview.kt`, `share/SharedBookPreviewScreen.kt`: 지우개 전용 불투명도·블러
+    상태를 추가해 Preview에서도 실제 화면과 동일하게 동작하도록 배선.
+  - 에뮬레이터에 실제 설치해 검증: 최대 굵기 펜 획, 블러 지우개 경계, 지우개→브러시 전환 모두
+    정상 동작 확인(원격 코드 리딩만으로는 재현 안 되던 버그 리포트였음 — 사용자가 확인했던 건
+    이번 수정 전 예전 빌드였을 가능성이 높음).
 - **최소화 버튼바 위치 조절 + Preview 도킹/드래그 배선** (v2.6.1, 2026-08-17):
   - `SketchbookScreens.kt`/`SharedBookScreen.kt`: 최소화 상태일 땐 가로 도킹(상/하)이어도 폭을 안
     채우고(버튼 개수만큼만 감싸도록 함), 화면 중앙에 고정되던 것을 그립 드래그로 도킹된 가장자리를

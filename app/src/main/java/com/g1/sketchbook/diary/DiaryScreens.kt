@@ -64,7 +64,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,7 +92,6 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
     val ctx = LocalContext.current
     val repo = if (previewMode) null else remember(ctx) { DiaryRepository(ctx) }
     val scope = rememberCoroutineScope()
-    val density = LocalDensity.current.density
     var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
     var color by remember { mutableLongStateOf(0xFF1E2D4CL) }
@@ -101,8 +99,10 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
     val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
     var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
+    var eraserOpacity by remember { mutableFloatStateOf(100f) }
+    var eraserBlur by remember { mutableFloatStateOf(0f) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
-    val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
+    val opacity = if (erasing) eraserOpacity else opacityByBrush[brush] ?: 100f
     val session = if (previewMode) null else remember(ctx) { com.g1.sketchbook.data.SessionStore(ctx) }
     var favorites by remember(session) {
         mutableStateOf(session?.favoriteColors ?: com.g1.sketchbook.data.SessionStore.DefaultFavorites)
@@ -131,8 +131,8 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
                         }
                     },
                     update = { v ->
-                        v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-                        v.erasing = erasing
+                        v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
+                        v.erasing = erasing; v.eraserBlur = eraserBlur
                         v.twoFingerTapAction = session?.twoFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
                         v.threeFingerTapAction = session?.threeFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
                         v.longPressAction = session?.longPressAction ?: com.g1.sketchbook.brush.GestureAction.NONE
@@ -149,7 +149,9 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
         BrushControls(brush, color, sizeDp, opacity, erasing,
             onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
             onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
-            onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
+            onOpacity = { if (erasing) eraserOpacity = it else opacityByBrush[brush] = it },
+            onToggleErase = { erasing = !erasing },
+            eraserBlur = eraserBlur, onEraserBlur = { eraserBlur = it },
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
             onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo?.save(date, b) } } },
             onBack = onBack, onRotate = { view?.rotate() },

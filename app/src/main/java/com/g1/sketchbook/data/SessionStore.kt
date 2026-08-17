@@ -70,6 +70,14 @@ class SessionStore(context: Context) {
         get() = prefs.getFloat(KEY_ERASER_SIZE, Dimens.Brush.eraserWidth)
         set(value) = prefs.edit().putFloat(KEY_ERASER_SIZE, value).apply()
 
+    var eraserOpacity: Float
+        get() = prefs.getFloat(KEY_ERASER_OPACITY, 100f)
+        set(value) = prefs.edit().putFloat(KEY_ERASER_OPACITY, value).apply()
+
+    var eraserBlur: Float
+        get() = prefs.getFloat(KEY_ERASER_BLUR, 0f)
+        set(value) = prefs.edit().putFloat(KEY_ERASER_BLUR, value).apply()
+
     private fun defaultBrushSize(type: BrushType): Float = when (type) {
         BrushType.PEN -> Dimens.Brush.penWidth
         BrushType.PENCIL -> Dimens.Brush.pencilWidth
@@ -90,6 +98,8 @@ class SessionStore(context: Context) {
         private const val KEY_BRUSH_SIZE_PREFIX = "brush_size_"
         private const val KEY_BRUSH_OPACITY_PREFIX = "brush_opacity_"
         private const val KEY_ERASER_SIZE = "eraser_size"
+        private const val KEY_ERASER_OPACITY = "eraser_opacity"
+        private const val KEY_ERASER_BLUR = "eraser_blur"
         val DefaultFavorites = listOf(0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L)
     }
 }

@@ -89,10 +89,12 @@ object Dimens {
 
     /** 브러시 종류별 기본 굵기(dp) + 지우개 기본 굵기 */
     object Brush {
-        val penWidth = 10f
-        val pencilWidth = 12f
-        val crayonWidth = 16f
-        val waterWidth = 20f
-        val eraserWidth = 24f
+        // 캔버스 px 기준 굵기(2026-08-17, BrushControls.SizeRange=4~96과 같은 스케일로 2배 상향 —
+        // strokeSize가 화면 밀도/fitScale과 무관해지면서 예전 값 그대로면 캔버스에서 너무 얇았음).
+        val penWidth = 20f
+        val pencilWidth = 24f
+        val crayonWidth = 32f
+        val waterWidth = 40f
+        val eraserWidth = 48f
     }
 }

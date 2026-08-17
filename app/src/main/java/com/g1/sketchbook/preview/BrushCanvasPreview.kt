@@ -46,13 +46,15 @@ private fun BrushCanvasPreview() {
     var sizeDp by remember { mutableFloatStateOf(20f) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
+    var eraserOpacity by remember { mutableFloatStateOf(100f) }
+    var eraserBlur by remember { mutableFloatStateOf(0f) }
+    val effectiveOpacity = if (erasing) eraserOpacity else opacity
     var locked by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     var collapsed by remember { mutableStateOf(false) }
     var dock by remember { mutableStateOf(ToolbarDock.BOTTOM) }
     var dragPx by remember { mutableStateOf(Offset.Zero) }
     var collapsedOffsetPx by remember { mutableStateOf(0f) }
-    val density = LocalDensity.current.density
 
     DaymoryTheme(mode = ThemeMode.LIGHT) {
         // 실제 화면과 같은 구조: 캔버스가 전체를 채우고, 버튼바는 그 위에 떠 있는 오버레이
@@ -71,9 +73,10 @@ private fun BrushCanvasPreview() {
                 update = { view ->
                     view.brush = brush
                     view.color = color.toInt()
-                    view.strokeSize = sizeDp * density
-                    view.opacity = opacity / 100f
+                    view.strokeSize = sizeDp
+                    view.opacity = effectiveOpacity / 100f
                     view.erasing = erasing
+                    view.eraserBlur = eraserBlur
                 },
             )
             val horizontalDock = dock == ToolbarDock.TOP || dock == ToolbarDock.BOTTOM
@@ -94,13 +97,15 @@ private fun BrushCanvasPreview() {
                 brush = brush,
                 color = color,
                 sizeDp = sizeDp,
-                opacity = opacity,
+                opacity = effectiveOpacity,
                 erasing = erasing,
                 onBrush = { brush = it },
                 onColor = { color = it },
                 onSize = { sizeDp = it },
-                onOpacity = { opacity = it },
+                onOpacity = { if (erasing) eraserOpacity = it else opacity = it },
                 onToggleErase = { erasing = !erasing },
+                eraserBlur = eraserBlur,
+                onEraserBlur = { eraserBlur = it },
                 onUndo = {},
                 onRedo = {},
                 onClear = {},

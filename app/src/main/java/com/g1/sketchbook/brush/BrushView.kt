@@ -2,6 +2,7 @@ package com.g1.sketchbook.brush
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -37,8 +38,14 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     var brush = BrushType.PEN
     var color = 0xFF1E2D4C.toInt()
-    var strokeSize = 20f      // diameter in screen px
+    // 캔버스 픽셀 기준 고정 지름 — 화면 밀도/줌(fitScale)과 무관하게 항상 같은 실제(종이 기준 mm) 굵기로
+    // 찍힌다. 그래서 같은 단계라도 큰 캔버스(A3 등)에서는 화면에 맞춰 더 축소해서 보여주는 만큼
+    // 화면상으로는 더 얇게 보임 — 실제 펜으로 큰 종이에 그리는 것과 같은 체감.
+    var strokeSize = 20f      // diameter in canvas px
     var opacity = 1f
+    // 지우개 전용 부드러움(경계 블러) 반경, 캔버스 px — 0이면 기존처럼 또렷한 경계.
+    // 브러시 획에는 쓰이지 않음(지우개만의 개념이라 strokeSize/opacity처럼 공유 필드로 두지 않음).
+    var eraserBlur = 0f
     var drawEnabled = true
     var erasing = false
     /** "화면 잠금" toggle from the toolbar — when true, blocks pinch zoom/pan and the 90° rotate
@@ -130,8 +137,10 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pen = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
-    private val eraseStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
-    private val eraseFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR) }
+    // DST_OUT(CLEAR 아님)이라 paint.alpha가 실제로 "얼마나 지울지"에 반영됨(불투명도) — CLEAR는 항상
+    // 완전히 지워서 알파값을 무시하기 때문에 바꿈. 블러(eraserBlur)는 stroke마다 maskFilter로 적용.
+    private val eraseStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) }
+    private val eraseFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) }
     private val compositeP = Paint()
     private val paperPaint = Paint(Paint.FILTER_BITMAP_FLAG)   // smooth, full-quality paper scaling
     private val paperM = Matrix()                              // places/rotates the paper texture to cover the page
@@ -469,11 +478,18 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         compositeP.alpha = (opacity.coerceIn(0f, 1f) * 255).toInt(); c.drawBitmap(sb, 0f, 0f, compositeP)
     }
 
-    private fun r0() = (strokeSize / 2f) / fitScale   // base radius in canvas px
+    private fun r0() = strokeSize / 2f   // base radius in canvas px — already canvas-px, no fitScale
+
+    /** 지우개 페인트에 현재 불투명도·블러를 반영 — DST_OUT이라 alpha가 낮을수록 덜 지워지고,
+     *  eraserBlur가 0보다 크면 경계가 부드러워짐(선명하게 딱 잘리지 않음). */
+    private fun applyEraseStyle(paint: Paint) {
+        paint.alpha = (opacity.coerceIn(0f, 1f) * 255).toInt()
+        paint.maskFilter = if (eraserBlur > 0f) BlurMaskFilter(eraserBlur, BlurMaskFilter.Blur.NORMAL) else null
+    }
 
     private fun strokeStart(x: Float, y: Float) {
         when {
-            erasing -> content?.drawCircle(x, y, max(1f, strokeSize / fitScale / 2f), eraseFill)
+            erasing -> { applyEraseStyle(eraseFill); content?.drawCircle(x, y, max(1f, strokeSize / 2f), eraseFill) }
             brush == BrushType.PEN -> { penDot(x, y); composite() }
             brush == BrushType.WATER -> { stampWater(x, y, r0() * scaleFor()); composite() }
             else -> stampDispatch(x, y, r0() * scaleFor())
@@ -481,7 +497,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
     private fun strokeMove(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         when {
-            erasing -> { eraseStroke.strokeWidth = max(1f, strokeSize / fitScale); content?.drawLine(x0, y0, x1, y1, eraseStroke) }
+            erasing -> {
+                eraseStroke.strokeWidth = max(1f, strokeSize)
+                applyEraseStyle(eraseStroke)
+                content?.drawLine(x0, y0, x1, y1, eraseStroke)
+            }
             brush == BrushType.PEN -> { penSeg(x0, y0, x1, y1, speed); composite() }
             brush == BrushType.WATER -> { seg(x0, y0, x1, y1, speed); composite() }
             else -> seg(x0, y0, x1, y1, speed)

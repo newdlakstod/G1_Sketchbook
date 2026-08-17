@@ -62,6 +62,9 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
     var sizeDp by remember { mutableFloatStateOf(Dimens.Brush.penWidth) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
+    var eraserOpacity by remember { mutableFloatStateOf(100f) }
+    var eraserBlur by remember { mutableFloatStateOf(0f) }
+    val effectiveOpacity = if (erasing) eraserOpacity else opacity
     var locked by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     var collapsed by remember { mutableStateOf(false) }
@@ -138,12 +141,14 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
                     }
                 }
             BrushControls(
-                brush, color, sizeDp, opacity, erasing,
+                brush, color, sizeDp, effectiveOpacity, erasing,
                 onBrush = { brush = it; erasing = false },
                 onColor = { color = it; erasing = false },
                 onSize = { sizeDp = it },
-                onOpacity = { opacity = it },
+                onOpacity = { if (erasing) eraserOpacity = it else opacity = it },
                 onToggleErase = { erasing = !erasing },
+                eraserBlur = eraserBlur,
+                onEraserBlur = { eraserBlur = it },
                 onUndo = {}, onRedo = {}, onClear = {},
                 onOpenPages = {},
                 onRotate = {},

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragIndicator
@@ -119,6 +120,9 @@ fun BrushControls(
     brush: BrushType, color: Long, sizeDp: Float, opacity: Float, erasing: Boolean,
     onBrush: (BrushType) -> Unit, onColor: (Long) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
     onToggleErase: () -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onClear: () -> Unit,
+    /** 지우개 전용 경계 블러(부드러움) 정도 — 브러시에는 없는 지우개만의 슬라이더. 0이면 또렷한 경계. */
+    eraserBlur: Float = 0f,
+    onEraserBlur: (Float) -> Unit = {},
     onBack: (() -> Unit)? = null,
     onRotate: (() -> Unit)? = null,
     /** Opens the page list/turn panel — a single dedicated entry point (system back already exits,
@@ -302,11 +306,12 @@ fun BrushControls(
                     onSize = onSize, onOpacity = onOpacity) { t ->
                     Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                 }
-                BrushBtnWithPanel(erasing, sizeDp, opacity, false, sizePopupAnchor,
+                BrushBtnWithPanel(erasing, sizeDp, opacity, true, sizePopupAnchor,
                     panelOpen = openEraserPanel,
                     setPanelOpen = { o -> openEraserPanel = o; if (o) openBrushPanel = null },
                     onClick = { onToggleErase(); openBrushPanel = null; openEraserPanel = false },
-                    onSize = onSize, onOpacity = onOpacity) { t ->
+                    onSize = onSize, onOpacity = onOpacity,
+                    showBlur = true, blur = eraserBlur, onBlur = onEraserBlur) { t ->
                     Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                 }
             }
@@ -464,9 +469,13 @@ fun EyedropFloatingPreview(colorArgb: Int, xPx: Float, yPx: Float, modifier: Mod
 
 /** Width (and, unless erasing, opacity) sliders for ONE specific brush — opened by tapping that
  *  brush's icon again while it's already selected (each brush keeps its own width/opacity, not a
- *  shared value). 팝업 자체가 화면 가장자리에서 20dp 띄워서 뜨도록 anchor 쪽(sizePopupAnchor)에서 처리한다. */
+ *  shared value). 팝업 자체가 화면 가장자리에서 20dp 띄워서 뜨도록 anchor 쪽(sizePopupAnchor)에서 처리한다.
+ *  showBlur/blur/onBlur은 지우개 전용 — 다른 브러시는 showBlur=false로 호출해 이 줄이 안 보인다. */
 @Composable
-private fun SlidersPanel(showOpacity: Boolean, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
+private fun SlidersPanel(
+    showOpacity: Boolean, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
+    showBlur: Boolean = false, blur: Float = 0f, onBlur: (Float) -> Unit = {},
+) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Column(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
             // 굵기 표시는 실제 dp가 아니라 이 슬라이더 안에서의 1~30 단계 번호(브러시 종류와 무관, 위치 기준).
@@ -475,13 +484,21 @@ private fun SlidersPanel(showOpacity: Boolean, sizeDp: Float, opacity: Float, on
                 Spacer(Modifier.height(5.dp))
                 IconSliderRow(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
             }
+            if (showBlur) {
+                Spacer(Modifier.height(5.dp))
+                IconSliderRow(Icons.Filled.BlurOn, "경계 블러", "${blur.toInt()}", blur, BlurRange, onBlur)
+            }
         }
     }
 }
 
 // 슬라이드 단계 수(30단계) = steps(양 끝 제외 중간값 개수) + 2
 private const val SliderStepCount = 28
-private val SizeRange = 2f..48f
+// 캔버스 px 기준 굵기 범위 — strokeSize가 화면 밀도/fitScale 나누기 없이 캔버스에 그대로 찍히는
+// 값으로 바뀌면서(2026-08-17), 예전 2~48(화면 dp 기준, 실제로는 밀도·fitScale로 몇 배 증폭되던 값)
+// 그대로 두면 캔버스에서 거의 안 보일 만큼 얇아져서 2배로 올림. Dimens.Brush.* 기본값도 같이 올렸음.
+private val SizeRange = 4f..96f
+private val BlurRange = 0f..32f
 private val SliderAccentColor = Color(0xFFE85555)
 private val SliderThumbSize = 30.dp
 private val SliderThumbTouchSize = 40.dp
@@ -675,6 +692,8 @@ private fun BrushBtnWithPanel(
     selected: Boolean, sizeDp: Float, opacity: Float, showOpacity: Boolean, anchor: PopupPositionProvider,
     panelOpen: Boolean, setPanelOpen: (Boolean) -> Unit,
     onClick: () -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
+    // 지우개 전용 — 다른 브러시 버튼 호출부는 그냥 기본값(showBlur=false)을 쓴다.
+    showBlur: Boolean = false, blur: Float = 0f, onBlur: (Float) -> Unit = {},
     icon: @Composable (Color) -> Unit,
 ) {
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
@@ -685,7 +704,7 @@ private fun BrushBtnWithPanel(
         Box(Modifier.size(ButtonTapSize).bounceClick { if (selected) setPanelOpen(!panelOpen) else onClick() },
             contentAlignment = Alignment.Center) { icon(tint) }
         if (panelOpen) Popup(anchor, { setPanelOpen(false) }, PopupProperties(focusable = true)) {
-            SlidersPanel(showOpacity, sizeDp, opacity, onSize, onOpacity)
+            SlidersPanel(showOpacity, sizeDp, opacity, onSize, onOpacity, showBlur, blur, onBlur)
         }
     }
 }

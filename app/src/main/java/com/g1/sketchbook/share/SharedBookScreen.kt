@@ -111,7 +111,6 @@ fun SharedBookScreen(
     val book = remember(bookId) { sbRepo.get(bookId) }
     if (book == null) { LaunchedEffect(Unit) { onBack() }; return }
     val scope = rememberCoroutineScope()
-    val density = LocalDensity.current.density
 
     var view by remember { mutableStateOf<BrushView?>(null) }
     // 색상/굵기/투명도는 SessionStore에 저장(개인 스케치북과 동일한 키)해 앱을 다시 켜도, 개인·공유
@@ -123,8 +122,10 @@ fun SharedBookScreen(
     val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
     val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
     var eraserSize by remember { mutableFloatStateOf(session.eraserSize) }
+    var eraserOpacity by remember { mutableFloatStateOf(session.eraserOpacity) }
+    var eraserBlur by remember { mutableFloatStateOf(session.eraserBlur) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
-    val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
+    val opacity = if (erasing) eraserOpacity else opacityByBrush[brush] ?: 100f
     var favorites by remember { mutableStateOf(session.favoriteColors) }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
@@ -174,8 +175,8 @@ fun SharedBookScreen(
     // state — so selections would silently stop applying. This effect always re-syncs.
     LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed, locked, page) {
         val v = view ?: return@LaunchedEffect
-        v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-        v.erasing = erasing; v.locked = locked
+        v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
+        v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
         v.twoFingerTapAction = session.twoFingerTapAction
         v.threeFingerTapAction = session.threeFingerTapAction
         v.longPressAction = session.longPressAction
@@ -359,7 +360,9 @@ fun SharedBookScreen(
                 onBrush = { brush = it; erasing = false },
                 onColor = { color = it; erasing = false; session.brushColor = it },
                 onSize = { if (erasing) { eraserSize = it; session.eraserSize = it } else { sizeByBrush[brush] = it; session.setBrushSize(brush, it) } },
-                onOpacity = { if (!erasing) { opacityByBrush[brush] = it; session.setBrushOpacity(brush, it) } }, onToggleErase = { erasing = !erasing },
+                onOpacity = { if (erasing) { eraserOpacity = it; session.eraserOpacity = it } else { opacityByBrush[brush] = it; session.setBrushOpacity(brush, it) } },
+                onToggleErase = { erasing = !erasing },
+                eraserBlur = eraserBlur, onEraserBlur = { eraserBlur = it; session.eraserBlur = it },
                 onUndo = { view?.undo() }, onRedo = { view?.redo() },
                 onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
                 onRotate = { view?.rotate() },
