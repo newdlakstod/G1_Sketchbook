@@ -13,15 +13,24 @@ android {
         applicationId = "com.g1.sketchbook"
         minSdk = 24
         targetSdk = 35
-        versionCode = 94
-        versionName = "2.2.1"
+        versionCode = 95
+        versionName = "2.3.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
     signingConfigs {
         // Sideloaded APKs install more reliably when signed with the legacy V1 (JAR) scheme
         // as well as V2/V3 — some devices' package installers reject V2-only APKs.
+        //
+        // storeFile is pinned to a checked-in keystore (standard debug credentials) so every
+        // build — local machine or CI runner — signs with the same key. Without this, each
+        // environment falls back to its own auto-generated ~/.android/debug.keystore, and an
+        // APK built on a different key than what's already installed fails to install/update.
         getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
@@ -65,7 +74,6 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
 
@@ -77,8 +85,6 @@ dependencies {
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
 
-    implementation(libs.coil.compose)
-    implementation(libs.coil.gif)
-
+    implementation(libs.androidx.ui.tooling.preview)
     debugImplementation(libs.androidx.ui.tooling)
 }

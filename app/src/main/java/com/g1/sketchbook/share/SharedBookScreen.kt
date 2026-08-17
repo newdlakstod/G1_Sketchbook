@@ -4,9 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,13 +64,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.bgDrawable
-import com.g1.sketchbook.sketchbook.playPageTurn
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -111,7 +107,7 @@ fun SharedBookScreen(
 
     var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
-    var color by remember { mutableStateOf(0xFF1E2D4CL) }
+    var color by remember { mutableLongStateOf(0xFF1E2D4CL) }
     var erasing by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
@@ -125,15 +121,8 @@ fun SharedBookScreen(
     var page by remember { mutableIntStateOf(0) }
     val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
     var pagesOpen by remember { mutableStateOf(false) }
-    var turnSnapshot by remember { mutableStateOf<Bitmap?>(null) }
-    val turnProgress = remember { Animatable(0f) }
-    var dragBaseSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(false) }
-    // 페이지 넘기기 모드: on, single-finger swipe turns pages and drawing/zoom/pan are fully disabled
-    // (see BrushView.pageTurnMode) — keeps page-turning and normal canvas interaction mutually
-    // exclusive so turning pages while zoomed can't shift the pinch/pan state.
-    var pageTurnMode by remember { mutableStateOf(false) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var others by remember { mutableStateOf<List<ShareRepository.Slot>>(emptyList()) }
@@ -159,30 +148,7 @@ fun SharedBookScreen(
     }
     fun goTo(p: Int) {
         if (p == page || p !in 0 until pageCount) return
-        val dir = if (p > page) 1f else -1f
-        val snap = view?.captureScreenBitmap()
         saveLocal(); page = p; view?.loadContent(sbRepo.loadPage(book.id, p)); pushMine()
-        if (snap != null) {
-            turnSnapshot = snap
-            scope.launch { turnProgress.playPageTurn(dir); turnSnapshot = null }
-        }
-    }
-    fun onPageDragProgress(p: Float) {
-        if (dragBaseSnapshot == null) { dragBaseSnapshot = view?.captureScreenBitmap(); turnSnapshot = dragBaseSnapshot }
-        scope.launch { turnProgress.snapTo(p) }
-    }
-    fun onPageDragEnd(commit: Int) {
-        dragBaseSnapshot = null
-        val target = page + commit
-        if (commit == 0 || target !in 0 until pageCount) {
-            scope.launch { turnProgress.animateTo(0f, tween(220, easing = FastOutSlowInEasing)); turnSnapshot = null }
-        } else {
-            scope.launch {
-                turnProgress.animateTo(commit.toFloat(), tween(160, easing = FastOutSlowInEasing))
-                saveLocal(); page = target; view?.loadContent(sbRepo.loadPage(book.id, target)); pushMine()
-                turnSnapshot = null; turnProgress.snapTo(0f)
-            }
-        }
     }
 
     // Share my current page as soon as the canvas is ready.
@@ -190,10 +156,10 @@ fun SharedBookScreen(
     // Apply brush settings via an effect rather than AndroidView.update: the pane is wrapped in
     // movableContent, and after it's moved (rotation / view-mode change) update() stops re-observing
     // state — so selections would silently stop applying. This effect always re-syncs.
-    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed, locked, pageTurnMode) {
+    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed, locked) {
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-        v.erasing = erasing; v.locked = locked; v.pageTurnMode = pageTurnMode
+        v.erasing = erasing; v.locked = locked
         v.twoFingerTapAction = session.twoFingerTapAction
         v.threeFingerTapAction = session.threeFingerTapAction
         v.longPressAction = session.longPressAction
@@ -201,8 +167,6 @@ fun SharedBookScreen(
         v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
         v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
         v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
-        v.onPageDragProgress = { p -> onPageDragProgress(p) }
-        v.onPageDragEnd = { commit -> onPageDragEnd(commit) }
         v.onStrokeEnd = {
             val pg = page
             v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
@@ -212,7 +176,6 @@ fun SharedBookScreen(
     com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
     BackHandler {
         when {
-            pageTurnMode -> { pageTurnMode = false; fullscreen = false }
             fullscreen -> fullscreen = false
             else -> { saveLocal(); onBack() }
         }
@@ -222,30 +185,26 @@ fun SharedBookScreen(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .let { if (fullscreen) it else it.systemBarsPadding() },
     ) {
-        // 페이지 넘기기 모드에서는 상단 헤더(나가기/제목/보기모드)도 함께 숨김 — 캔버스만 남기고
-        // 우상단 확인 버튼으로만 빠져나갈 수 있음.
-        if (!pageTurnMode) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clickable { saveLocal(); onBack() }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "나가기")
-                }
-                Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                    Text(book.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-                    Text(
-                        when {
-                            others.isEmpty() -> "상대를 기다리는 중… · 코드 $code"
-                            others.size == 1 -> "${others[0].name} 님과 함께"
-                            else -> "${others.size}명과 함께"
-                        },
-                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                    )
-                }
-                // 최대화 모드 안의 "..."+스위치가 참가자 선택을 대신하므로, 여기 헤더에는 GRID/
-                // MAXIMIZE 두 모드만 고른다.
-                SegGroup {
-                    SegChip("분할", mode == ViewMode.GRID) { mode = ViewMode.GRID }
-                    SegChip("최대화", mode == ViewMode.MAXIMIZE) { mode = ViewMode.MAXIMIZE }
-                }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clickable { saveLocal(); onBack() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "나가기")
+            }
+            Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                Text(book.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                Text(
+                    when {
+                        others.isEmpty() -> "상대를 기다리는 중… · 코드 $code"
+                        others.size == 1 -> "${others[0].name} 님과 함께"
+                        else -> "${others.size}명과 함께"
+                    },
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                )
+            }
+            // 최대화 모드 안의 "..."+스위치가 참가자 선택을 대신하므로, 여기 헤더에는 GRID/
+            // MAXIMIZE 두 모드만 고른다.
+            SegGroup {
+                SegChip("분할", mode == ViewMode.GRID) { mode = ViewMode.GRID }
+                SegChip("최대화", mode == ViewMode.MAXIMIZE) { mode = ViewMode.MAXIMIZE }
             }
         }
 
@@ -267,18 +226,6 @@ fun SharedBookScreen(
                             update = { /* brush state is applied via LaunchedEffect (movableContent-safe) */ },
                         )
                         eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
-                        com.g1.sketchbook.sketchbook.PageTurnOverlay(turnSnapshot, turnProgress.value)
-                        // 페이지 넘기기 모드의 유일한 탈출구 — 헤더/툴바가 숨겨져 있는 동안 이 버튼이 대신함.
-                        // (별도 Box로 감싸 — PaneFrame이 이미 이 content를 Box 안에서 호출하지만, 여러
-                        // 겹의 movableContent 람다를 거치므로 정렬 modifier의 receiver를 여기서 직접 확보.)
-                        if (pageTurnMode) {
-                            Box(Modifier.fillMaxSize()) {
-                                com.g1.sketchbook.brush.PageTurnConfirmButton(
-                                    onConfirm = { pageTurnMode = false; fullscreen = false },
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 8.dp),
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -368,24 +315,21 @@ fun SharedBookScreen(
             }
         }
 
-        if (!pageTurnMode) {
-            BrushControls(
-                brush, color, sizeDp, opacity, erasing,
-                onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
-                onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
-                onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
-                onUndo = { view?.undo() }, onRedo = { view?.redo() },
-                onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
-                onRotate = { view?.rotate() },
-                onOpenPages = { pagesOpen = true },
-                favorites = favorites,
-                onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
-                eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
-                fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
-                locked = locked, onToggleLock = { locked = !locked },
-                pageTurnMode = pageTurnMode, onTogglePageTurnMode = { pageTurnMode = true; fullscreen = true },
-            )
-        }
+        BrushControls(
+            brush, color, sizeDp, opacity, erasing,
+            onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
+            onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
+            onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
+            onUndo = { view?.undo() }, onRedo = { view?.redo() },
+            onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
+            onRotate = { view?.rotate() },
+            onOpenPages = { pagesOpen = true },
+            favorites = favorites,
+            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
+            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+            locked = locked, onToggleLock = { locked = !locked },
+        )
     }
     if (pagesOpen) {
         com.g1.sketchbook.sketchbook.PagePanel(sbRepo, book.id, page, pageCount,
@@ -394,12 +338,12 @@ fun SharedBookScreen(
 }
 
 @Composable
-private fun SegGroup(content: @Composable RowScope.() -> Unit) {
+internal fun SegGroup(content: @Composable RowScope.() -> Unit) {
     Row(Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant), content = content)
 }
 
 @Composable
-private fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
+internal fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.clip(RoundedCornerShape(8.dp))
             .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
@@ -414,7 +358,7 @@ private fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
  *  pane gets a subtle accent border. Small generic person-icon avatar next to the name — Slot has no
  *  synced emoji, so every participant (including me) gets the same neutral circle. */
 @Composable
-private fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, content: @Composable () -> Unit) {
+internal fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, content: @Composable () -> Unit) {
     Column(modifier) {
         Row(Modifier.padding(start = 4.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -442,7 +386,7 @@ private fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, conten
  *  Others' panes are plain images (no BrushView), so unlike `mine` they don't need movableContentOf:
  *  moving between grid/maximize layouts is cheap to just re-render. */
 @Composable
-private fun ParticipantBitmap(slot: ShareRepository.Slot?): Bitmap? {
+private fun participantBitmap(slot: ShareRepository.Slot?): Bitmap? {
     var bmp by remember(slot?.uid) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(slot?.updatedAt, slot?.snapshot) {
         val s = slot?.snapshot
@@ -456,7 +400,7 @@ private fun ParticipantBitmap(slot: ShareRepository.Slot?): Bitmap? {
  *  renders a plain empty box instead once there's already at least one other participant). */
 @Composable
 private fun OtherPane(slot: ShareRepository.Slot?, code: String, modifier: Modifier) {
-    val bmp = ParticipantBitmap(slot)
+    val bmp = participantBitmap(slot)
     PaneFrame(modifier, slot?.name ?: "상대", accent = false) {
         if (bmp != null) {
             Image(bmp.asImageBitmap(), "${slot?.name ?: "상대"} 그림", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)

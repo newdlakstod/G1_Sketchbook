@@ -17,7 +17,6 @@ class DiaryRepository(context: Context) {
     private val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
     fun today(): String = fmt.format(java.util.Date())
-    fun isLocked(date: String): Boolean = date != today()
 
     private fun file(date: String) = File(dir, "$date.png")
     fun hasEntry(date: String) = file(date).exists()

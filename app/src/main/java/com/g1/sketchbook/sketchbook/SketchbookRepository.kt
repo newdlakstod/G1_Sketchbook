@@ -38,7 +38,6 @@ object Catalog {
         Background("kraft", "크라프트지"),
     )
     fun size(key: String) = sizes.firstOrNull { it.key == key } ?: sizes[1]
-    fun background(key: String) = backgrounds.firstOrNull { it.key == key } ?: backgrounds[0]
 }
 
 data class Sketchbook(
@@ -54,16 +53,17 @@ data class Sketchbook(
 ) {
     val size get() = Catalog.size(sizeKey)
     /** "2026.08.16" — shown under cover thumbnails (home carousel, sketchbook list). */
-    val dateLabel: String get() = sketchbookDateFormat.format(java.util.Date(createdAt))
+    val dateLabel: String get() = java.text.SimpleDateFormat(
+        "yyyy.MM.dd",
+        java.util.Locale.getDefault(),
+    ).format(java.util.Date(createdAt))
 }
-
-private val sketchbookDateFormat = java.text.SimpleDateFormat("yyyy.MM.dd", java.util.Locale.getDefault())
 
 const val MAX_PAGES = 15
 
 /**
  * Local-first persistence for personal sketchbooks: metadata in SharedPreferences (JSON), page
- * images as PNG files under filesDir/sketchbooks/{id}/page_{i}.png. (Sharing/realtime comes later.)
+ * images as PNG files under filesDir/sketchbooks/{id}/page_{i}.png.
  */
 class SketchbookRepository(private val context: Context) {
     private val prefs = context.getSharedPreferences("g1_sketchbooks", Context.MODE_PRIVATE)
@@ -95,12 +95,13 @@ class SketchbookRepository(private val context: Context) {
         return sb
     }
 
-    fun setPageCount(id: String, count: Int) {
-        save(list().map { if (it.id == id) it.copy(pageCount = count.coerceIn(1, MAX_PAGES)) else it })
-    }
-
     fun toggleFav(id: String) {
         save(list().map { if (it.id == id) it.copy(fav = !it.fav) else it })
+    }
+
+    /** 표지 길게 눌러 수정하기 — 이름/배경만 바꾼다(사이즈는 이미 그려둔 페이지 비율이 깨지므로 제외). */
+    fun updateNameAndBg(id: String, name: String, bgKey: String) {
+        save(list().map { if (it.id == id) it.copy(name = name.ifBlank { it.name }, bgKey = bgKey) else it })
     }
 
     fun delete(id: String) {

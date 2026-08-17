@@ -4,6 +4,19 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **메인 탭 타이틀·액션 고정 배치** (2026-08-17): `MainTabPage`를 시안의 고정 구역
+  `상단 60dp → daymory 25dp → 여백 40dp → 타이틀 80dp → 액션 60dp`로 재구성했다.
+  화면별 액션 유무나 크기가 헤더 높이를 바꾸지 않으므로 Home/List/share/Diary/Other 타이틀의
+  Y 좌표가 동일하다. 홈 토글, 공유 생성·참여, 오늘 일기 편집 버튼은 타이틀 아래 액션 영역의
+  오른쪽 아래(시안 빨간 점 위치)로 통일했고 월 이동 등 본문 컨트롤은 유지했다.
+  `assembleDebug lintDebug` 성공.
+- **불필요 코드·리소스 정리** (2026-08-17): 호출되지 않던 구 SessionStore 방/스케치북 목록,
+  `SketchbookRef`, `DuckWalk`, 미사용 Repository API·싱글턴·홈 콜백·헤더 아바타 분기·앱 내부
+  개발자 미리보기를 제거했다. Android Studio Preview 6개와 공유 캔버스 Preview 구현은
+  `app/src/debug`로 이동해 릴리스 소스에서 제외했다. 미사용 오리 GIF/PNG 3개, Coil·Navigation
+  Compose·Firebase Storage·WorkManager 카탈로그 항목, 미사용 import 47개와 상수·Manifest 중복을
+  정리했다. `assembleDebug testDebugUnitTest lintDebug` 성공(`testDebugUnitTest`는 테스트 소스가 없어
+  `NO-SOURCE`), Lint는 58건에서 버전/런처 아이콘 관련 41건으로 감소했다.
 - **Shared sketchbook cover component** (2026-08-17): Added `SketchbookCover.kt` and routed both the Home carousel and sketchbook list through it. All existing/new covers now default to `#FFBF2A`; solid-color covers receive a 20% black spine overlay, optional image covers receive a 70% black spine overlay, and the cover duck plus `Theme.kt` rotating `CoverColors` palette were removed. Added Korean tuning comments and `scripts/verify_sketchbook_cover.ps1`.
 - **Phase 0 — 브러시 엔진** (v1.7.x): `brush/BrushView.kt` (bitmap 백엔드 스탬프 엔진), `brush/BrushPlaygroundScreen.kt`.
   - 볼펜(레이어 합성, 불투명도 균일) · 연필(디스크 그레인, 직접 누적) · 크레파스(큰 입자 1.5×, 성김) · 수채화(Tyler-Hobbs 다각형, multiply 대신 레이어 합성).
@@ -397,6 +410,32 @@
   로그아웃 후 로그인 화면으로 돌아가고, 확인은 기존 `saveNickname`으로 저장한다. Preview 호출과
   `compileDebugKotlin testDebugUnitTest`를 검증했다.
 
+- **Android Studio Preview 카탈로그 표시 복구** (2026-08-17): 정리 과정에서
+  `app/src/debug/java`로 옮겼던 Preview 6개와 공유 화면 Preview 렌더러를
+  `app/src/main/java`로 복구했다. Android Studio의 일반 Project/Android 뷰에서 파일을 바로
+  열 수 있고, `ui-tooling-preview`도 main 컴파일에서 참조할 수 있도록 `implementation`으로
+  되돌렸다. `@Preview` 함수는 앱 실행 경로에서 호출되지 않으므로 실제 화면 동작에는 영향이 없다.
+
+- **액션영역 버튼 통일 · 홈 개인/공유 아이콘화 · 페이지 넘기기 모션 삭제 · 표지 편집 이동 · 내비 아이콘**
+  (v2.3.0, 2026-08-17):
+  1. **액션영역 아이콘 버튼 통일**: 다이어리 연필 아이콘 35dp→24dp, `MainTabLayout`의 `actions`
+     Row에 `LocalMinimumInteractiveComponentSize`를 32dp로 덮어써 터치 영역도 한 곳에서 통일
+     (`Dimens.Screen.actionButtonSize`).
+  2. **홈 탭 개인/공유 전환**: 우상단 `Switch`를 Person/Groups 아이콘 버튼 2개로 교체(선택 쪽만
+     primary 틴트).
+  3. **페이지 넘기기 기능 완전 삭제**: 툴바의 "페이지 넘기기 모드" 버튼, `BrushView`의 스와이프
+     드래그 턴 코드, 책장 넘김 플립 애니메이션(`PageTurnOverlay`/`playPageTurn`)을 개인·공유
+     캔버스 양쪽에서 전부 제거 — 페이지 전환은 이제 애니메이션 없이 즉시 반영된다. 대신
+     `PagePanel`(페이지 다이얼로그)에 페이지 번호를 직접 입력해 이동하는 필드를 추가했다.
+  4. **표지 길게 눌러 수정**: `CoverCard` 상단의 즐겨찾기·삭제 아이콘을 없애고, 길게 누르면 뜨는
+     `EditCoverDialog`(이름+배경, `SketchbookRepository.updateNameAndBg`)로 즐겨찾기 토글·삭제까지
+     옮겼다. `bounceClick`에 `onLongClick` 파라미터 추가.
+  5. **제스처 설정 아이콘화**: 두 손가락 탭/세 손가락 탭/길게 누르기 칩의 텍스트 라벨을 아이콘
+     (Block/Undo/Redo/Colorize)으로 교체, 접근성 라벨은 유지.
+  6. **하단 내비 share 탭 아이콘 교체**: `Groups`(사람 그룹, 다른 탭 대비 시각적으로 무거움) →
+     `Share`. 내비 아이콘 크기 24dp→26dp(주석: "버튼아이콘 사이즈").
+  - `compileDebugKotlin` 검증 완료.
+
 ## Next (Phase 2~4)
 - **Cover editor (deferred)**: Add persisted per-book cover color or image selection when the color-wheel/image-picker UI is implemented; the shared renderer already accepts `coverColor` and optional `coverImage`.
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
@@ -406,6 +445,11 @@
   - 남은 후보: 화면 디테일 다듬기, 공유 페이지 동기화 옵션(같은 페이지 함께 넘기기), 저장/내보내기 등.
 
 ## Decisions
+- 메인 탭의 브랜드·타이틀·액션 영역은 콘텐츠 크기에 따라 측정하지 않고 `Dimens.Screen`의
+  고정 높이를 사용한다. 화면별 액션은 `MainTabPage.actions`로만 전달해 타이틀 아래 우측에 둔다.
+- Android Studio Preview 카탈로그는 Android Studio에서 항상 발견할 수 있도록
+  `app/src/main/java/com/g1/sketchbook/preview`에 둔다. Preview는 실제 화면 Composable을
+  호출하되 앱 실행 경로에서는 호출하지 않으며, 샘플 데이터는 Preview 안에서만 사용한다.
 - Sketchbook cover rendering belongs to the shared `SketchbookCover` composable, not `Theme.kt`. A black overlay derives the spine from any selected color, while image covers use a fixed 70% black spine for consistent contrast.
 - Android Studio Preview는 별도 디자인 복사본이 아니라 실제 앱 Composable을 렌더링한다.
   디자인 수정은 각 실제 화면 `kt`에서 하고, `preview/*Previews.kt`는 표시할 화면 상태와 샘플
@@ -418,6 +462,9 @@
 - 버전 매 업로드마다 bump + 새 태그(vX.Y.Z), 덮어쓰기 금지.
 
 ## Open / Blockers
+- (해결됨 v2.3.0) `app/debug.keystore`를 의도적으로 Git에 추적 — 표준 디버그 키(storePassword
+  "android")라 민감정보 아님, 모든 빌드 환경이 동일 키로 서명해 설치/업데이트 충돌을 막는다.
+  릴리스 키는 여전히 저장소에 넣지 않는다.
 - **빌드 잠금**: VS Code Java/Kotlin 언어서버가 `app/build/.../R.jar`를 잠가 CLI 빌드가 IOException. 대응: 빌드 전 해당 java 프로세스(kotlinLanguageServer/redhat.java/.vscode\extensions) kill 후 R.jar 삭제(사용자가 권한 허용함). `.vscode/settings.json`에 Java 자동빌드/Gradle import off + build 감시 제외 넣음.
 - 빌드 JDK: standalone 없음 → Android Studio JBR. `JAVA_HOME=C:\Program Files\Android\Android Studio\jbr`.
 - (해결됨 v1.18.0) 구식 룸 기반 UI/데이터층 제거 완료. → v1.19.0에서 공유는 `share/*`로 새로 설계·구현(RTDB 재도입).

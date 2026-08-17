@@ -18,7 +18,7 @@ import androidx.compose.ui.input.pointer.pointerInput
  * Press feedback that springs the element's own shape (a gentle scale-down + bounce back) instead
  * of the default rectangular ripple — so a rounded button animates as a rounded button.
  */
-fun Modifier.bounceClick(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
+fun Modifier.bounceClick(enabled: Boolean = true, onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.92f else 1f,
@@ -32,6 +32,7 @@ fun Modifier.bounceClick(enabled: Boolean = true, onClick: () -> Unit): Modifier
     // value keeps re-evaluating that first, frozen `selected`). rememberUpdatedState keeps the
     // callback current without needing pointerInput to restart.
     val currentOnClick = rememberUpdatedState(onClick)
+    val currentOnLongClick = rememberUpdatedState(onLongClick)
     this
         .graphicsLayer { scaleX = scale; scaleY = scale }
         .pointerInput(enabled) {
@@ -39,6 +40,7 @@ fun Modifier.bounceClick(enabled: Boolean = true, onClick: () -> Unit): Modifier
             detectTapGestures(
                 onPress = { pressed = true; tryAwaitRelease(); pressed = false },
                 onTap = { currentOnClick.value() },
+                onLongPress = { currentOnLongClick.value?.invoke() },
             )
         }
 }

@@ -1,7 +1,9 @@
 package com.g1.sketchbook.auth
 
+import android.annotation.SuppressLint
 import android.content.Context
 import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import com.g1.sketchbook.data.await
@@ -22,6 +24,7 @@ class GoogleAuthClient(
 ) {
     val currentUser: FirebaseUser? get() = auth.currentUser
 
+    @SuppressLint("CredentialManagerSignInWithGoogle") // 타입 상수를 직접 검사하지만 Lint가 Kotlin 참조를 놓치는 오탐.
     suspend fun signIn(): Result<FirebaseUser> {
         return try {
             val googleIdOption = GetGoogleIdOption.Builder()
@@ -37,6 +40,12 @@ class GoogleAuthClient(
             val credentialManager = CredentialManager.create(context)
             val response = credentialManager.getCredential(context, request)
             val credential = response.credential
+
+            if (credential !is CustomCredential ||
+                credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+            ) {
+                return Result.failure(IllegalStateException("지원하지 않는 로그인 자격 증명"))
+            }
 
             val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
             val firebaseCredential = GoogleAuthProvider.getCredential(googleIdToken, null)

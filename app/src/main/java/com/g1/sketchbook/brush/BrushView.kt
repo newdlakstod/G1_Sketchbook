@@ -52,16 +52,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var twoFingerTapAction = GestureAction.NONE
     var threeFingerTapAction = GestureAction.NONE
     var longPressAction = GestureAction.NONE
-    /** "페이지 넘기기 모드" — while true, ALL touch input is dedicated to a single-finger left/right
-     *  swipe that live-follows the finger via [onPageDragProgress]/[onPageDragEnd] below; drawing and
-     *  pinch zoom/pan are both fully disabled. Turning pages while zoomed used to shift the pinch/pan
-     *  state unpredictably because drawing, zoom and page-turn gestures could all interleave — this
-     *  mode sidesteps that entirely by making page-turning and normal canvas interaction mutually
-     *  exclusive rather than trying to disambiguate them touch-by-touch. */
-    var pageTurnMode = false
-    private var swipeTurnActive = false
-    private var swipeTurnStartX = 0f
-    private var lastSwipeProgress = 0f
     /** Fires continuously while an armed eyedropper drag is in progress: sampled colour + screen pos,
      *  for a floating preview bubble the caller can render (no colour change until release). */
     var onEyedropPreview: ((Int, Float, Float) -> Unit)? = null
@@ -73,12 +63,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
      *  armed for the whole press-drag-release; disarmed automatically on release. */
     var eyedropArmed = false
     private var eyedropDragging = false
-
-    /** Fires continuously while [pageTurnMode]'s single-finger swipe is live-dragging: -1..1, sign =
-     *  direction (positive = toward next), magnitude = how far through the turn the drag currently is. */
-    var onPageDragProgress: ((Float) -> Unit)? = null
-    /** Fires once the finger lifts: -1/1 to commit a page turn in that direction, 0 to cancel/snap back. */
-    var onPageDragEnd: ((Int) -> Unit)? = null
 
     private var cw = 0; private var ch = 0
     private var contentBmp: Bitmap? = null
@@ -298,42 +282,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     /** Just the strokes (no paper) — the right thing to persist for a page you'll reload into the editor. */
     fun exportContent(): Bitmap? = contentBmp?.copy(Bitmap.Config.ARGB_8888, false)
 
-    /** Exactly what's currently on screen (paper+strokes, at the current pan/zoom/rotation), at the
-     *  view's own pixel size — used as the outgoing snapshot for the page-turn transition so the
-     *  animated overlay always matches whatever the user was actually looking at. */
-    fun captureScreenBitmap(): Bitmap? {
-        if (width <= 0 || height <= 0) return null
-        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        draw(Canvas(bmp))
-        return bmp
-    }
-
     // ---- touch (one finger draws, two fingers pinch-zoom/pan) ----
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!drawEnabled) return false
-        // Page-turning mode takes over touch input entirely: a single-finger left/right swipe drives
-        // the turn live (see [pageTurnMode] doc) — no drawing, no eyedrop, no pinch zoom/pan.
-        if (pageTurnMode) {
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { swipeTurnActive = false; swipeTurnStartX = e.x; lastSwipeProgress = 0f }
-                MotionEvent.ACTION_MOVE -> if (e.pointerCount == 1) {
-                    val dx = e.x - swipeTurnStartX
-                    if (!swipeTurnActive && kotlin.math.abs(dx) > tapSlopPx) swipeTurnActive = true
-                    if (swipeTurnActive) {
-                        lastSwipeProgress = (-dx / width.toFloat()).coerceIn(-1f, 1f)
-                        onPageDragProgress?.invoke(lastSwipeProgress)
-                    }
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (swipeTurnActive) {
-                        val commit = when { lastSwipeProgress > 0.25f -> 1; lastSwipeProgress < -0.25f -> -1; else -> 0 }
-                        onPageDragEnd?.invoke(commit)
-                    }
-                    swipeTurnActive = false
-                }
-            }
-            return true
-        }
         val now = System.currentTimeMillis()
         // Eyedropper: while armed (toolbar button) or already dragging, every touch is a colour pick,
         // never a stroke — handled entirely separately from drawing/gestures below.
@@ -350,6 +301,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     eyedropDragging = false; eyedropArmed = false
                     val picked = pickColorAt(e.x, e.y)
                     if (picked != null) { color = picked; onEyedrop?.invoke(picked) } else onEyedropCancel?.invoke()
+                    performClick()
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     eyedropDragging = false; eyedropArmed = false
@@ -425,8 +377,14 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 if (longPressPending) { longPressPending = false; removeCallbacks(longPressRunnable) }
                 if (strokeStarted) endStroke()
                 pinching = false; prevDist = 0f; multiDownCount = 0
+                if (e.actionMasked == MotionEvent.ACTION_UP) performClick()
             }
         }
+        return true
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
         return true
     }
 

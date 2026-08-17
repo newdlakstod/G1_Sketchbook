@@ -93,12 +93,6 @@ class ShareRepository {
         awaitClose { ref.removeEventListener(listener) }
     }
 
-    /** Leaves the session: a host tears it down for everyone; a guest just drops their slot. */
-    fun leaveSession(code: String, uid: String, isHost: Boolean) {
-        if (isHost) root.child(code).removeValue()
-        else root.child(code).child("slots").child(uid).removeValue()
-    }
-
     private suspend fun writeSlot(code: String, uid: String, name: String, role: String) {
         root.child(code).child("slots").child(uid).updateChildren(
             mapOf("name" to name, "role" to role, "updatedAt" to ServerValue.TIMESTAMP)

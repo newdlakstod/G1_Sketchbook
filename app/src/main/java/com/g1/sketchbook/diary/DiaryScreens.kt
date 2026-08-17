@@ -14,13 +14,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,21 +31,17 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -69,12 +63,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -99,22 +89,24 @@ import java.util.Calendar
 // ---------------- 그림일기 편집 (full-screen A4 editor for one date) ----------------
 
 @Composable
-fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
+fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = false) {
     val ctx = LocalContext.current
-    val repo = remember { DiaryRepository(ctx) }
+    val repo = if (previewMode) null else remember(ctx) { DiaryRepository(ctx) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
-    var color by remember { mutableStateOf(0xFF1E2D4CL) }
+    var color by remember { mutableLongStateOf(0xFF1E2D4CL) }
     var erasing by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
     var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) 100f else opacityByBrush[brush] ?: 100f
-    val session = remember { com.g1.sketchbook.data.SessionStore(ctx) }
-    var favorites by remember { mutableStateOf(session.favoriteColors) }
+    val session = if (previewMode) null else remember(ctx) { com.g1.sketchbook.data.SessionStore(ctx) }
+    var favorites by remember(session) {
+        mutableStateOf(session?.favoriteColors ?: com.g1.sketchbook.data.SessionStore.DefaultFavorites)
+    }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     val size = remember { Catalog.size("a4") }
@@ -134,21 +126,21 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
                         BrushView(c).also { v ->
                             v.paper = BitmapFactory.decodeResource(c.resources, R.drawable.paper_watercolor)
                             v.initCanvas(cw, ch)
-                            v.loadContent(repo.load(date))
+                            v.loadContent(repo?.load(date))
                             view = v
                         }
                     },
                     update = { v ->
                         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
                         v.erasing = erasing
-                        v.twoFingerTapAction = session.twoFingerTapAction
-                        v.threeFingerTapAction = session.threeFingerTapAction
-                        v.longPressAction = session.longPressAction
+                        v.twoFingerTapAction = session?.twoFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
+                        v.threeFingerTapAction = session?.threeFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
+                        v.longPressAction = session?.longPressAction ?: com.g1.sketchbook.brush.GestureAction.NONE
                         v.eyedropArmed = eyedropArmed
                         v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
                         v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
                         v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
-                        v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(date, b) } } }
+                        v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo?.save(date, b) } } }
                     },
                 )
                 eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
@@ -159,10 +151,13 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
             onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
             onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
-            onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo.save(date, b) } } },
+            onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo?.save(date, b) } } },
             onBack = onBack, onRotate = { view?.rotate() },
             favorites = favorites,
-            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+            onEditFavorite = { i, c ->
+                val nf = favorites.toMutableList(); nf[i] = c; favorites = nf
+                session?.let { it.favoriteColors = nf }
+            },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed })
     }
 }
@@ -173,36 +168,39 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit) {
  *  Tapping the grid opens the clean full-screen calendar (slides 3/4). */
 @Composable
 fun DiaryCalendarScreen(
-    avatar: String = "🦆",
     onOpenDiary: (String) -> Unit,
     onOpenCalendar: (Int, Int) -> Unit,
-    onGoSettings: () -> Unit = {},
+    previewMarkedDates: Set<String>? = null,
 ) {
     val ctx = LocalContext.current
-    val repo = remember { DiaryRepository(ctx) }
-    val today = remember { repo.today() }
+    val repo = if (previewMarkedDates == null) remember(ctx) { DiaryRepository(ctx) } else null
+    val today = remember(repo) { repo?.today() ?: "2026-08-17" }
     val now = remember { Calendar.getInstance() }
-    var year by remember { mutableIntStateOf(now.get(Calendar.YEAR)) }
-    var month by remember { mutableIntStateOf(now.get(Calendar.MONTH)) } // 0-based
-    var marked by remember { mutableStateOf<Set<String>>(emptySet()) }
-    LaunchedEffect(year, month) { marked = withContext(Dispatchers.IO) { datesWithDiary(repo, year, month) } }
+    var year by remember { mutableIntStateOf(if (previewMarkedDates == null) now.get(Calendar.YEAR) else 2026) }
+    var month by remember { mutableIntStateOf(if (previewMarkedDates == null) now.get(Calendar.MONTH) else 7) } // 0-based
+    var marked by remember(previewMarkedDates) { mutableStateOf(previewMarkedDates ?: emptySet()) }
+    LaunchedEffect(year, month, repo) {
+        if (repo != null) marked = withContext(Dispatchers.IO) { datesWithDiary(repo, year, month) }
+    }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = Dimens.Calendar.sideMargin)) {
-        Spacer(Modifier.height(Dimens.Calendar.topSpacer))
-        com.g1.sketchbook.ui.main.TabHeader(avatar, onAvatar = onGoSettings)
-        Spacer(Modifier.height(Dimens.Screen.titleGap))
-        Text("A piece of today", fontFamily = Cavorting, fontSize = Dimens.Screen.titleSp,
-            color = com.g1.sketchbook.ui.theme.DaymoryTeal, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(Dimens.Calendar.topTitleGap))
+    com.g1.sketchbook.ui.main.MainTabPage(
+        title = "A piece of today",
+        actions = {
+            IconButton(onClick = { onOpenDiary(today) }) {
+                Icon(
+                    Icons.Filled.Edit,
+                    "오늘 일기 그리기",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(Dimens.Calendar.editIcon),
+                )
+            }
+        },
+    ) {
         Box(Modifier.fillMaxWidth()) {
             Text(
                 "$year.${(month + 1).toString().padStart(2, '0')}", fontFamily = Cavorting, fontSize = Dimens.Calendar.yearMonthSp,
                 color = MaterialTheme.colorScheme.onSurface, maxLines = 1, modifier = Modifier.align(Alignment.Center),
             )
-            IconButton(onClick = { onOpenDiary(today) }, modifier = Modifier.align(Alignment.TopEnd)) {
-                Icon(Icons.Filled.Edit, "오늘 일기 그리기", tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(Dimens.Calendar.editIcon))
-            }
             Box(Modifier.align(Alignment.CenterStart).size(48.dp)
                 .bounceClick { if (month == 0) { month = 11; year-- } else month-- }, contentAlignment = Alignment.Center) {
                 ChevronArrow(pointLeft = true, modifier = Modifier.width(Dimens.Calendar.arrowIconW).height(Dimens.Calendar.arrowIconH))
@@ -214,7 +212,6 @@ fun DiaryCalendarScreen(
         }
         Spacer(Modifier.height(Dimens.Calendar.titleGap))
         AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth())
-        Spacer(Modifier.height(Dimens.Calendar.bottomMargin))
     }
 }
 
@@ -238,7 +235,6 @@ private val WeekHeaders = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
 private val FullWeekdays = listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 private val MonthNames = listOf("January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December")
-private const val A4_RATIO = 210f / 297f   // portrait A4 (w/h), matches the diary canvas
 private val TodayPink = Color(0xFFE3B7B7)
 private val DiaryDot = Color(0xFF8FA07E)
 
@@ -297,12 +293,20 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
 /** Slides 3 & 4 — clean, bar-less full-screen: a bordered 6×7 month (day thumbnails); tapping a day
  *  swaps the grid for that day's sketch inside a hand-drawn frame. Kept UI-free so it can be captured. */
 @Composable
-fun CleanCalendarScreen(year: Int, month: Int, onBack: () -> Unit) {
+fun CleanCalendarScreen(
+    year: Int,
+    month: Int,
+    onBack: () -> Unit,
+    previewDetailDate: String? = null,
+    previewMode: Boolean = false,
+) {
     val ctx = LocalContext.current
-    val repo = remember { DiaryRepository(ctx) }
+    val repo = if (previewMode) null else remember(ctx) { DiaryRepository(ctx) }
     var thumbs by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
-    LaunchedEffect(year, month) { thumbs = withContext(Dispatchers.IO) { buildThumbs(repo, year, month) } }
-    var detailDate by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(year, month, repo) {
+        if (repo != null) thumbs = withContext(Dispatchers.IO) { buildThumbs(repo, year, month) }
+    }
+    var detailDate by remember(previewDetailDate) { mutableStateOf(previewDetailDate) }
 
     BackHandler { if (detailDate != null) detailDate = null else onBack() }
 
@@ -362,8 +366,8 @@ private fun CleanGrid(year: Int, month: Int, thumbs: Map<String, ImageBitmap>, m
 }
 
 @Composable
-private fun CleanDetailBody(repo: DiaryRepository, date: String, modifier: Modifier) {
-    val bmp = remember(date) { repo.load(date) }
+private fun CleanDetailBody(repo: DiaryRepository?, date: String, modifier: Modifier) {
+    val bmp = remember(date, repo) { repo?.load(date) }
     val parts = date.split("-")
     val d = parts[2].toInt()
     val cal = remember(date) { Calendar.getInstance().apply { set(parts[0].toInt(), parts[1].toInt() - 1, d) } }

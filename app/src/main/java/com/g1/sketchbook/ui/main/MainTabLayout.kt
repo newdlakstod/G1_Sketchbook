@@ -18,18 +18,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -49,7 +50,7 @@ import com.g1.sketchbook.ui.theme.Pretendard
 private val NavIcons = listOf(
     Icons.Filled.Home,
     Icons.Filled.Book,
-    Icons.Filled.Groups,
+    Icons.Filled.Share,
     Icons.Filled.CalendarMonth,
     Icons.Filled.Settings,
 )
@@ -84,11 +85,7 @@ internal fun MainTabLayout(
 @Composable
 fun MainTabPage(
     title: String,
-    avatar: String,
-    onAvatar: () -> Unit,
     modifier: Modifier = Modifier,
-    showAvatar: Boolean = false,
-    contentGap: Dp = Dimens.Screen.contentGap,
     contentSidePadding: Dp = Dimens.Screen.sideMargin,
     contentFillsRemaining: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
@@ -100,18 +97,36 @@ fun MainTabPage(
             .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin),
     ) {
         Column(Modifier.padding(horizontal = Dimens.Screen.sideMargin)) {
-            MainTabHeader(avatar, onAvatar, showAvatar = showAvatar, actions = actions)
+            // 시안의 25dp 브랜드 영역을 고정해 오른쪽 버튼 유무가 타이틀을 밀지 않게 한다.
+            MainTabHeader(Modifier.height(Dimens.Screen.headerHeight))
             Spacer(Modifier.height(Dimens.Screen.titleGap))
-            Text(
-                title,
-                fontFamily = Cavorting,
-                fontSize = Dimens.Screen.titleSp,
-                color = DaymoryTeal,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Box(
+                Modifier.fillMaxWidth().height(Dimens.Screen.titleAreaHeight),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    title,
+                    fontFamily = Cavorting,
+                    fontSize = Dimens.Screen.titleSp,
+                    color = DaymoryTeal,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            // 화면별 액션은 모두 타이틀 아래 60dp 영역의 오른쪽 아래에 놓는다.
+            Box(Modifier.fillMaxWidth().height(Dimens.Screen.actionAreaHeight)) {
+                // 각 화면의 IconButton은 손대지 않고, 여기서 터치 영역 기본값(48dp)만
+                // Dimens.Screen.actionButtonSize로 한 번에 덮어써서 버튼 크기를 통일한다.
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dimens.Screen.actionButtonSize) {
+                    Row(
+                        Modifier.align(Alignment.BottomEnd).padding(bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        content = actions,
+                    )
+                }
+            }
         }
-        Spacer(Modifier.height(contentGap))
         val bodyModifier = Modifier.fillMaxWidth().padding(horizontal = contentSidePadding)
         if (contentFillsRemaining) {
             Column(bodyModifier.weight(1f), content = content)
@@ -123,18 +138,9 @@ fun MainTabPage(
 
 @Composable
 private fun MainTabHeader(
-    avatar: String,
-    onAvatar: () -> Unit,
     modifier: Modifier = Modifier,
-    showAvatar: Boolean = false,
-    actions: @Composable RowScope.() -> Unit = {},
 ) {
     Box(modifier.fillMaxWidth()) {
-        if (showAvatar) {
-            Box(
-                Modifier.align(Alignment.CenterStart).size(32.dp).bounceClick(onClick = onAvatar),
-            ) { HeaderAvatar(avatar, 32.dp) }
-        }
         Text(
             "daymory",
             fontFamily = BodoniMTBlack,
@@ -142,22 +148,6 @@ private fun MainTabHeader(
             color = Color.Black,
             modifier = Modifier.align(Alignment.Center),
         )
-        Row(
-            Modifier.align(Alignment.CenterEnd),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            content = actions,
-        )
-    }
-}
-
-@Composable
-private fun HeaderAvatar(emoji: String, size: Dp) {
-    Box(
-        Modifier.size(size).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(emoji.ifBlank { "🦆" }, fontSize = (size.value * 0.52f).sp)
     }
 }
 
@@ -202,7 +192,7 @@ private fun NavigationItem(
         Modifier.width(Dimens.Screen.navItemSize).bounceClick { onTab(index) },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, NavDescs[index], tint = tint, modifier = Modifier.size(24.dp))
+        Icon(icon, NavDescs[index], tint = tint, modifier = Modifier.size(26.dp)) // 버튼아이콘 사이즈
         Spacer(Modifier.height(3.dp))
         Text(
             NavLabels[index],

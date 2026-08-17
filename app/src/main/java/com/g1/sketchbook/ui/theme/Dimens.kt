@@ -16,9 +16,12 @@ object Dimens {
     object Screen {
         val topMargin = 60.dp       // 탭 타이틀 위 상단 여백 (00_탭화면 레이아웃 시안)
         val bottomMargin = 45.dp    // 하단 네비게이션 바 위 여백
+        val headerHeight = 25.dp    // 상단 daymory 브랜드 영역 높이
         val titleSp = 61.sp         // 탭 타이틀 글자 크기 (Cavorting, 가운데 정렬)
-        val titleGap = 40.dp        // 상단 여백 ~ 타이틀 사이 간격
-        val contentGap = 60.dp      // 타이틀 ~ 본문 사이 간격
+        val titleGap = 40.dp        // 브랜드 영역 ~ 타이틀 영역 사이 여백
+        val titleAreaHeight = 80.dp // 모든 탭의 타이틀이 같은 좌표를 쓰는 고정 영역
+        val actionAreaHeight = 60.dp // 타이틀 아래 우측 버튼 영역(시안의 빨간 점 위치)
+        val actionButtonSize = 32.dp // 액션영역 IconButton 터치 영역 크기(기본 48dp 대신 통일 적용)
         val sideMargin = 45.dp      // 본문 좌우 여백 (탭 화면 공통)
         val navItemSize = 60.dp     // 하단 네비게이션 아이템 크기
         // 네비게이션 바 영역이 화면 하단 끝부터 총 60dp가 되도록(아이콘 24dp+간격 3dp+라벨 1줄
@@ -28,8 +31,8 @@ object Dimens {
 
     /** 온보딩 (Splash/Login) */
     object Onboarding {
-        val titleSp = 87.sp         // "daymory" 타이틀 — 화면 폭에 맞춰 줄어들 수 있는 최대값(고정 아님)
-        val subtitleSp = 24.sp      // "Draw together, keep the little days" 부제
+        val titleSp = 120.sp         // "daymory" 타이틀 — 화면 폭에 맞춰 줄어들 수 있는 최대값(고정 아님)
+        val subtitleSp = 27.sp      // "Draw together, keep the little days" 부제
         val ctaSp = 21.sp           // "enter" / "Google 계정으로 로그인" 버튼 글자 크기
         val duckMaxWidth = 275.dp   // 이 값 하나만 바꾸면 오리가 정비율로 커지거나 작아짐
         const val duckAspectRatio = 275f / 400f
@@ -37,7 +40,6 @@ object Dimens {
 
     /** 홈 탭 (타이틀 크기·위치는 Screen 공용값 사용) */
     object Home {
-        val actionIcon = 56.dp          // 새 노트/공유/참여 원형 아이콘 버튼 지름 (명시 안 됨, 추정치)
         val carouselCenterW = 182.dp    // 캐러셀 가운데(포커스) 노트 너비
         val carouselCenterH = 275.dp    // 캐러셀 가운데(포커스) 노트 높이
         val carouselSideW = 145.dp      // 캐러셀 옆(비포커스) 노트 너비
@@ -52,24 +54,19 @@ object Dimens {
 
     /** 새 스케치북 만들기 화면 (팝업 카드 — 이름/사이즈/배경을 한 화면에서 선택) */
     object Wizard {
-        val titleSp = 78.sp
         val cardWidth = 280.dp      // 카드 최대 너비
         val cardRadius = 28.dp      // 카드 모서리 둥글기
     }
 
     /** 일기달력 탭 (슬라이드 2, DiaryCalendarScreen / AiryCalendar) */
     object Calendar {
-        val topSpacer = Screen.topMargin   // 탭 타이틀 위 상단 여백 — 다른 탭과 동일
-        val bottomMargin = Screen.bottomMargin  // 하단 네비게이션 바 위 여백 — 다른 탭과 동일
-        val sideMargin = Screen.sideMargin // 좌우 여백 — 다른 탭 화면과 동일 템플릿
-        val topTitleGap = 16.dp     // "A piece of today" 탭 타이틀 ~ 연월 사이 간격
         val titleGap = 24.dp        // 연월 타이틀과 달력 그리드 사이 간격
-        val yearMonthSp = 78.sp     // "2026.01" 형식 연월 표기 글자 크기(연도/월 이름 분리 표기 대신 한 줄로 통합)
+        val yearMonthSp = 40.sp     // "2026.01" 형식 연월 표기 글자 크기(연도/월 이름 분리 표기 대신 한 줄로 통합)
         val weekdaySp = 26.sp       // 요일(Sun..Sat) 글자 크기
         val daySp = 21.sp           // 날짜 숫자 크기
         val arrowIconW = 10.dp      // 이전/다음 달 화살표 너비 — Icon 크기가 아니라 직접 그리는 화살표(Canvas)의 크기
         val arrowIconH = 20.dp      // 이전/다음 달 화살표 높이
-        val editIcon = 35.dp        // 오늘 일기 편집(연필) 아이콘 크기
+        val editIcon = 24.dp        // 오늘 일기 편집(연필) 아이콘 크기 — 액션영역 아이콘 통일 기준(리스트 탭과 동일)
         val todayDisc = 38.dp       // 오늘 핑크 원 지름
     }
 

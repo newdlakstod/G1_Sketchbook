@@ -69,7 +69,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOut() {
         graph.authClient.signOut()
-        graph.sessionStore.currentRoomId = null
         _state.value = _state.value.copy(user = null, needsNickname = false)
     }
 

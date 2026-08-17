@@ -1,11 +1,7 @@
 package com.g1.sketchbook.sketchbook
 
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -13,7 +9,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,29 +25,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Login
-import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -60,16 +48,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,10 +81,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.g1.sketchbook.share.ShareRepository
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -184,18 +170,17 @@ private fun SizeIcon(key: String, color: Color, modifier: Modifier) {
 @Composable
 fun SketchbookTab(
     nickname: String,
-    avatar: String,
     myUid: String,
     onOpenBook: (String) -> Unit,
     initialShowShared: Boolean = false,
-    onGoSettings: () -> Unit = {},
     openWizardAs: WType? = null,
     onWizardOpened: () -> Unit = {},
+    previewBooks: List<Sketchbook>? = null,
 ) {
     val context = LocalContext.current
-    val repo = remember { SketchbookRepository(context) }
+    val repo = if (previewBooks == null) remember(context) { SketchbookRepository(context) } else null
     var refresh by remember { mutableIntStateOf(0) }
-    val books = remember(refresh) { repo.list() }
+    val books = previewBooks ?: remember(refresh) { repo!!.list() }
     var creating by remember { mutableStateOf(false) }
     var wizardType by remember { mutableStateOf<WType?>(null) }
 
@@ -212,14 +197,14 @@ fun SketchbookTab(
     }
     SketchbookListScreen(
         books = books,
-        avatar = avatar,
         initialShowShared = initialShowShared,
-        onGoSettings = onGoSettings,
+        onNewPersonal = { wizardType = WType.PERSONAL; creating = true },
         onNewShared = { wizardType = WType.SHARED_NEW; creating = true },
         onJoinShared = { wizardType = WType.SHARED_JOIN; creating = true },
         onOpen = { onOpenBook(it.id) },
-        onDelete = { repo.delete(it.id); refresh++ },
-        onToggleFav = { repo.toggleFav(it.id); refresh++ },
+        onDelete = { repo?.delete(it.id); refresh++ },
+        onToggleFav = { repo?.toggleFav(it.id); refresh++ },
+        onEditBook = { book, name, bgKey -> repo?.updateNameAndBg(book.id, name, bgKey); refresh++ },
     )
 }
 
@@ -231,13 +216,12 @@ enum class WType { PERSONAL, SHARED_NEW, SHARED_JOIN }
 private fun CreateWizard(
     nickname: String,
     myUid: String,
-    repo: SketchbookRepository,
+    repo: SketchbookRepository?,
     onDismiss: () -> Unit,
     onCreated: (Sketchbook) -> Unit,
     initialType: WType? = null,
 ) {
     val scope = rememberCoroutineScope()
-    val share = remember { com.g1.sketchbook.share.ShareRepository() }
     // A preset type (e.g. from the home screen's 새 노트/공유/참여 buttons) skips straight past
     // the "무엇을 만들까요?" step into the flow for that type.
     var step by remember { mutableStateOf(if (initialType == null) WStep.TYPE else if (initialType == WType.SHARED_JOIN) WStep.CODE else WStep.NAME) }
@@ -249,21 +233,25 @@ private fun CreateWizard(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    fun finishPersonal() { onCreated(repo.create(name, sizeKey, bgKey)) }
+    fun finishPersonal() { repo?.create(name, sizeKey, bgKey)?.let(onCreated) }
     fun finishSharedNew() {
+        val targetRepo = repo ?: return
         busy = true; error = null
         scope.launch {
+            val share = ShareRepository()
             runCatching { share.createSession(myUid, nickname) }.fold(
-                onSuccess = { c -> onCreated(repo.create(name, "a4", "watercolor", shared = true, code = c)) },
+                onSuccess = { c -> onCreated(targetRepo.create(name, "a4", "watercolor", shared = true, code = c)) },
                 onFailure = { busy = false; error = it.message ?: "공유 세션을 만들지 못했어요." },
             )
         }
     }
     fun finishJoin() {
+        val targetRepo = repo ?: return
         busy = true; error = null
         scope.launch {
+            val share = ShareRepository()
             share.joinSession(code, myUid, nickname).fold(
-                onSuccess = { onCreated(repo.create(name.ifBlank { "공유 스케치북" }, "a4", "watercolor", shared = true, code = code.uppercase())) },
+                onSuccess = { onCreated(targetRepo.create(name.ifBlank { "공유 스케치북" }, "a4", "watercolor", shared = true, code = code.uppercase())) },
                 onFailure = { busy = false; error = it.message ?: "참여하지 못했어요." },
             )
         }
@@ -407,60 +395,45 @@ private fun WizardChoice(icon: ImageVector, title: String, onClick: () -> Unit) 
 @Composable
 private fun SketchbookListScreen(
     books: List<Sketchbook>,
-    avatar: String = "🦆",
     initialShowShared: Boolean = false,
-    onGoSettings: () -> Unit = {},
+    onNewPersonal: () -> Unit = {},
     onNewShared: () -> Unit = {},
     onJoinShared: () -> Unit = {},
     onOpen: (Sketchbook) -> Unit,
     onDelete: (Sketchbook) -> Unit,
     onToggleFav: (Sketchbook) -> Unit,
+    onEditBook: (Sketchbook, String, String) -> Unit,
 ) {
     val context = LocalContext.current
     val session = remember { com.g1.sketchbook.data.SessionStore(context) }
     var pendingDelete by remember { mutableStateOf<Sketchbook?>(null) }
-    var showShared by remember { mutableStateOf(initialShowShared) }
+    var editing by remember { mutableStateOf<Sketchbook?>(null) }
+    val showShared = initialShowShared
     var columns by remember { mutableIntStateOf(session.gridColumns) }
     var columnMenuOpen by remember { mutableStateOf(false) }
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        // The outer tab Scaffold (MainScreen) already pads for the status bar; without this a
-        // second nested inset would push this tab's title lower than Home/Settings.
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-    ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()
-            .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin,
-                start = Dimens.Screen.sideMargin, end = Dimens.Screen.sideMargin)) {
-            com.g1.sketchbook.ui.main.TabHeader(avatar, onAvatar = onGoSettings) {
-                if (showShared) {
-                    IconButton(onClick = onNewShared) { Icon(Icons.Filled.Groups, "공유 스케치북 만들기") }
-                    IconButton(onClick = onJoinShared) { Icon(Icons.AutoMirrored.Filled.Login, "공유 스케치북 참여") }
-                }
+    com.g1.sketchbook.ui.main.MainTabPage(
+        title = if (showShared) "Draw together" else "Sketchbook list",
+        actions = {
+            if (showShared) {
+                IconButton(onClick = onNewShared) { Icon(Icons.Filled.GroupAdd, "공유 스케치북 만들기") }
+                IconButton(onClick = onJoinShared) { Icon(Icons.Filled.Key, "참여코드로 입장하기") }
+            } else {
+                IconButton(onClick = onNewPersonal) { Icon(Icons.Filled.Add, "스케치북 추가") }
             }
-            Spacer(Modifier.height(Dimens.Screen.titleGap))
-            Text(if (showShared) "Draw together" else "Sketchbook list", fontFamily = com.g1.sketchbook.ui.theme.Cavorting,
-                fontSize = Dimens.Screen.titleSp, color = com.g1.sketchbook.ui.theme.DaymoryTeal,
-                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FilterIconBtn(Icons.Filled.Person, "개인", !showShared) { showShared = false }
-                    FilterIconBtn(Icons.Filled.Groups, "공유받음", showShared) { showShared = true }
-                }
-                // 그리드 열 수(3/4/5) 설정 — 선택하면 즉시 반영 + 저장.
-                Box {
-                    IconButton(onClick = { columnMenuOpen = true }) { Icon(Icons.Filled.Menu, "목록 배열") }
-                    DropdownMenu(expanded = columnMenuOpen, onDismissRequest = { columnMenuOpen = false }) {
-                        (3..5).forEach { n ->
-                            DropdownMenuItem(
-                                text = { Text("${n}열", fontWeight = if (n == columns) FontWeight.Bold else FontWeight.Normal) },
-                                onClick = { columns = n; session.gridColumns = n; columnMenuOpen = false },
-                            )
-                        }
+            // 그리드 열 수(3/4/5) 설정 — 선택하면 즉시 반영 + 저장.
+            Box {
+                IconButton(onClick = { columnMenuOpen = true }) { Icon(Icons.Filled.Menu, "목록 배열") }
+                DropdownMenu(expanded = columnMenuOpen, onDismissRequest = { columnMenuOpen = false }) {
+                    (3..5).forEach { n ->
+                        DropdownMenuItem(
+                            text = { Text("${n}열", fontWeight = if (n == columns) FontWeight.Bold else FontWeight.Normal) },
+                            onClick = { columns = n; session.gridColumns = n; columnMenuOpen = false },
+                        )
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
+        },
+    ) {
             val shown = books.filter { it.shared == showShared }
             if (shown.isEmpty()) {
                 Text(if (showShared) "아직 공유받은 스케치북이 없어요." else "아직 스케치북이 없어요. 홈 화면에서 만들어보세요.",
@@ -472,12 +445,11 @@ private fun SketchbookListScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    itemsIndexed(shown, key = { _, b -> b.id }) { i, b ->
-                        CoverCard(b, { onOpen(b) }, { pendingDelete = b }, { onToggleFav(b) })
+                    gridItems(shown, key = { it.id }) { b ->
+                        CoverCard(b, { onOpen(b) }, { editing = b })
                     }
                 }
             }
-        }
     }
 
     pendingDelete?.let { target ->
@@ -493,23 +465,23 @@ private fun SketchbookListScreen(
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("취소") } },
         )
     }
-}
 
-/** 개인/공유받음 필터 토글 — 선택된 쪽은 원형 배경(nav 선택 표시와 같은 톤)으로 강조. */
-@Composable
-private fun FilterIconBtn(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.clip(CircleShape)
-            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-            .bounceClick(onClick = onClick).padding(10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, label, tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+    editing?.let { target ->
+        // books에서 최신 상태를 다시 찾아 쓴다 — 그래야 즐겨찾기를 토글해도 다이얼로그를 닫지 않고
+        // 별 아이콘이 바로 갱신된다(editing 자체는 다이얼로그를 연 시점의 스냅샷이라 갱신되지 않음).
+        val current = books.firstOrNull { it.id == target.id } ?: target
+        EditCoverDialog(
+            book = current,
+            onCancel = { editing = null },
+            onSave = { name, bgKey -> onEditBook(current, name, bgKey); editing = null },
+            onToggleFav = { onToggleFav(current) },
+            onDelete = { editing = null; pendingDelete = current },
+        )
     }
 }
 
 @Composable
-private fun CoverCard(book: Sketchbook, onOpen: () -> Unit, onDelete: () -> Unit, onToggleFav: () -> Unit) {
+private fun CoverCard(book: Sketchbook, onOpen: () -> Unit, onEdit: () -> Unit) {
     // Same cover ratio as the home carousel (Dimens.Home.coverRatio) — every note cover keeps one
     // fixed proportion across the whole app, whichever screen shows it.
     Box(Modifier.aspectRatio(Dimens.Home.coverRatio)) {
@@ -517,7 +489,7 @@ private fun CoverCard(book: Sketchbook, onOpen: () -> Unit, onDelete: () -> Unit
         SketchbookCover(
             modifier = Modifier.fillMaxSize()
                 .shadow(12.dp, SketchbookCoverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
-                .bounceClick(onClick = onOpen),
+                .bounceClick(onClick = onOpen, onLongClick = onEdit),
         ) {
             // Scrim so the cream text stays readable regardless of the cover's own colour (some covers,
             // e.g. the light mauve one, put light text under ~2:1 contrast without this).
@@ -531,15 +503,68 @@ private fun CoverCard(book: Sketchbook, onOpen: () -> Unit, onDelete: () -> Unit
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
             }
         }
-        IconButton(onClick = onToggleFav, modifier = Modifier.align(Alignment.TopStart).padding(2.dp).size(30.dp)
-            .clip(CircleShape).background(Color(0x33000000))) {
-            Icon(Icons.Filled.Star, "즐겨찾기",
-                tint = if (book.fav) Color(0xFFFFD43B) else Color(0xFFF3ECD9),
-                modifier = Modifier.size(18.dp))
-        }
-        IconButton(onClick = onDelete, modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(30.dp)
-            .clip(CircleShape).background(Color(0x33000000))) {
-            Icon(Icons.Filled.Delete, "삭제", tint = Color(0xFFF3ECD9), modifier = Modifier.size(16.dp))
+    }
+}
+
+/** 표지 길게 눌러 여는 수정 다이얼로그 — 이름/배경 재질에 더해 즐겨찾기 토글과 삭제도 여기서 한다
+ *  (예전엔 표지 위 아이콘 두 개였지만, 표지를 깔끔하게 비우면서 이 다이얼로그로 옮겼다). 사이즈는
+ *  이미 그려둔 페이지의 비율이 깨질 수 있어 수정 대상에서 제외. */
+@Composable
+private fun EditCoverDialog(
+    book: Sketchbook,
+    onCancel: () -> Unit,
+    onSave: (String, String) -> Unit,
+    onToggleFav: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var name by remember(book.id) { mutableStateOf(book.name) }
+    var bgKey by remember(book.id) { mutableStateOf(book.bgKey) }
+    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize()) {
+            Image(painterResource(bgDrawable(bgKey)), "배경 미리보기", contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize())
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.30f)))
+            Box(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = Dimens.Screen.bottomMargin),
+                contentAlignment = Alignment.Center) {
+                Column(
+                    Modifier.widthIn(max = Dimens.Wizard.cardWidth).fillMaxWidth()
+                        .clip(RoundedCornerShape(Dimens.Wizard.cardRadius))
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(20.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("표지 수정", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onToggleFav) {
+                                Icon(Icons.Filled.Star, "즐겨찾기",
+                                    tint = if (book.fav) Color(0xFFFFD43B) else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(onClick = onDelete) {
+                                Icon(Icons.Filled.Delete, "삭제", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
+                        placeholder = { Text("스케치북 이름 입력") }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(18.dp))
+                    Text("배경", fontWeight = FontWeight.Bold, fontSize = 13.sp); Spacer(Modifier.height(6.dp))
+                    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
+                        items(Catalog.backgrounds) { bg ->
+                            val on = bg.key == bgKey
+                            Image(painterResource(bgDrawable(bg.key)), bg.label, contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(48.dp).clip(CircleShape).clickable { bgKey = bg.key }
+                                    .border(if (on) 3.dp else 1.dp,
+                                        if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape))
+                        }
+                    }
+                    Spacer(Modifier.height(20.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = onCancel) { Text("취소") }
+                        TextButton(onClick = { onSave(name, bgKey) }, enabled = name.isNotBlank()) { Text("저장", fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
         }
     }
 }
@@ -558,7 +583,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     val density = LocalDensity.current.density
     var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
-    var color by remember { mutableStateOf(0xFF1E2D4CL) }
+    var color by remember { mutableLongStateOf(0xFF1E2D4CL) }
     var erasing by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
@@ -572,19 +597,8 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var page by remember { mutableIntStateOf(0) }
     val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
     var pagesOpen by remember { mutableStateOf(false) }
-    // Page-turn visuals: turnSnapshot is the outgoing page's exact on-screen capture; turnProgress
-    // (-1..1) drives PageTurnOverlay for BOTH the discrete (chevron/thumbnail/swipe-turn) and the
-    // interactive (페이지 넘기기 모드 single-finger drag) turn — snapTo for live drag-following,
-    // animateTo for the auto/settle animations.
-    var turnSnapshot by remember { mutableStateOf<Bitmap?>(null) }
-    val turnProgress = remember { Animatable(0f) }
-    var dragBaseSnapshot by remember { mutableStateOf<Bitmap?>(null) }
     var fullscreen by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(false) }
-    // 페이지 넘기기 모드: on, single-finger swipe turns pages and drawing/zoom/pan are fully disabled
-    // (see BrushView.pageTurnMode) — turning pages while zoomed used to shift the pinch/pan state
-    // unpredictably, so page-turning and normal canvas interaction are now made mutually exclusive.
-    var pageTurnMode by remember { mutableStateOf(false) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
@@ -592,40 +606,12 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     fun saveCurrent() { val v = view ?: return; val pg = page; val b = v.exportContent() ?: return; repo.savePage(book.id, pg, b) }
     fun goTo(p: Int) {
         if (p == page || p !in 0 until pageCount) return
-        val dir = if (p > page) 1f else -1f
-        // Snapshot exactly what's on screen right now (current zoom/pan/rotation included) so the
-        // outgoing page-turn animation always matches what the user was actually looking at.
-        val snap = view?.captureScreenBitmap()
         saveCurrent(); page = p; view?.loadContent(repo.loadPage(book.id, p))
-        if (snap != null) {
-            turnSnapshot = snap
-            scope.launch { turnProgress.playPageTurn(dir); turnSnapshot = null }
-        }
-    }
-    // Interactive page-turn-mode drag: follows the finger live, then either finishes the turn
-    // (commit) or springs back to rest (cancel) on release.
-    fun onPageDragProgress(p: Float) {
-        if (dragBaseSnapshot == null) { dragBaseSnapshot = view?.captureScreenBitmap(); turnSnapshot = dragBaseSnapshot }
-        scope.launch { turnProgress.snapTo(p) }
-    }
-    fun onPageDragEnd(commit: Int) {
-        dragBaseSnapshot = null
-        val target = page + commit
-        if (commit == 0 || target !in 0 until pageCount) {
-            scope.launch { turnProgress.animateTo(0f, tween(220, easing = FastOutSlowInEasing)); turnSnapshot = null }
-        } else {
-            scope.launch {
-                turnProgress.animateTo(commit.toFloat(), tween(160, easing = FastOutSlowInEasing))
-                saveCurrent(); page = target; view?.loadContent(repo.loadPage(book.id, target))
-                turnSnapshot = null; turnProgress.snapTo(0f)
-            }
-        }
     }
 
     com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
     BackHandler {
         when {
-            pageTurnMode -> { pageTurnMode = false; fullscreen = false }
             fullscreen -> fullscreen = false
             else -> { saveCurrent(); onBack() }
         }
@@ -648,7 +634,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 },
                 update = { v ->
                     v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp * density; v.opacity = opacity / 100f
-                    v.erasing = erasing; v.locked = locked; v.pageTurnMode = pageTurnMode
+                    v.erasing = erasing; v.locked = locked
                     v.twoFingerTapAction = session.twoFingerTapAction
                     v.threeFingerTapAction = session.threeFingerTapAction
                     v.longPressAction = session.longPressAction
@@ -656,41 +642,27 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
                     v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
                     v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
-                    v.onPageDragProgress = { p -> onPageDragProgress(p) }
-                    v.onPageDragEnd = { commit -> onPageDragEnd(commit) }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
-            PageTurnOverlay(turnSnapshot, turnProgress.value)
-            // 페이지 넘기기 모드의 유일한 탈출구 — 툴바가 숨겨져 있는 동안 이 버튼이 대신 그 역할을 함.
-            if (pageTurnMode) {
-                com.g1.sketchbook.brush.PageTurnConfirmButton(
-                    onConfirm = { pageTurnMode = false; fullscreen = false },
-                    modifier = Modifier.align(Alignment.TopEnd).padding(top = 28.dp, end = 20.dp),
-                )
-            }
         }
-        if (!pageTurnMode) {
-            BrushControls(
-                brush, color, sizeDp, opacity, erasing,
-                onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
-                onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
-                onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
-                onUndo = { view?.undo() }, onRedo = { view?.redo() }, onClear = { view?.clearCanvas(); saveCurrent() },
-                onRotate = { view?.rotate() },
-                onOpenPages = { pagesOpen = true },
-                favorites = favorites,
-                onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
-                eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
-                fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
-                locked = locked, onToggleLock = { locked = !locked },
-                pageTurnMode = pageTurnMode, onTogglePageTurnMode = { pageTurnMode = true; fullscreen = true },
-            )
-        }
+        BrushControls(
+            brush, color, sizeDp, opacity, erasing,
+            onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
+            onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
+            onOpacity = { if (!erasing) opacityByBrush[brush] = it }, onToggleErase = { erasing = !erasing },
+            onUndo = { view?.undo() }, onRedo = { view?.redo() }, onClear = { view?.clearCanvas(); saveCurrent() },
+            onRotate = { view?.rotate() },
+            onOpenPages = { pagesOpen = true },
+            favorites = favorites,
+            onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
+            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+            locked = locked, onToggleLock = { locked = !locked },
+        )
     }
     if (pagesOpen) {
         PagePanel(repo, book.id, page, pageCount, onSelect = { p -> goTo(p); pagesOpen = false }, onDismiss = { pagesOpen = false })
     }
 }
-

@@ -24,7 +24,7 @@ import com.g1.sketchbook.ui.theme.DaymoryTheme
 import com.g1.sketchbook.ui.theme.ThemeMode
 
 @Preview(
-    name = "Canvas editor",
+    name = "13 Personal canvas",
     showBackground = true,
     widthDp = 475,
     heightDp = 751,

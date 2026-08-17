@@ -143,6 +143,17 @@
   .mockup-btn.pill { border-radius: 999px; font-size: 10px; padding: 0 8px; white-space: nowrap; }
   .mockup-btn:active { cursor: grabbing; }
   .mockup-btn.selected { outline: 2px solid #2a6fdb; outline-offset: 2px; }
+  /* 실제 코드의 Switch(개인/공유 노트 전환) 자리 — mockup-btn과 같은 select/drag 동작을 쓰되
+     원형이 아니라 스위치 트랙 모양. */
+  .toggle-track {
+    position: absolute; border-radius: 999px; cursor: grab; user-select: none; z-index: 22;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+  }
+  .toggle-track:active { cursor: grabbing; }
+  .toggle-track.selected { outline: 2px solid #2a6fdb; outline-offset: 2px; }
+  .toggle-track .toggle-knob {
+    position: absolute; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35);
+  }
   .placeholder-card {
     position: absolute; border: 1px dashed #ccc; border-radius: 8px; display: flex;
     align-items: center; justify-content: center; color: #999; font-size: 10px; text-align: center;
@@ -479,6 +490,30 @@ function drawIconButton(id, x, y, w, h, iconOrText, label, shape, filled) {
   return b;
 }
 
+/** 실제 코드의 작은 Switch(개인/공유 노트 전환) 자리를 그린다 — 아이콘 버튼이 아니라
+ *  트랙+노브 모양. 위치/크기 보정은 다른 버튼과 동일한 elState를 공유. */
+function drawToggleSwitch(id, x, y, label) {
+  const st = elState(id);
+  const trackW = 34, trackH = 18;
+  st.naturalW = trackW; st.naturalH = trackH; st.naturalLabel = label;
+  if (st.removed) return null;
+  const fw = st.w ?? trackW, fh = st.h ?? trackH;
+  const track = el(null, 'toggle-track', {
+    left: (x + st.dx) + 'px', top: (y + st.dy) + 'px', width: fw + 'px', height: fh + 'px',
+    background: st.color || '#c8c8c0',
+  });
+  const knobSize = fh - 4;
+  const knob = el(null, 'toggle-knob', { width: knobSize + 'px', height: knobSize + 'px', left: '2px', top: '2px' });
+  track.appendChild(knob);
+  track.title = label + ' — 드래그로 위치 보정, 클릭하면 좌측에 세부 설정';
+  frame.appendChild(track);
+  const info = { type: 'button', id, label, custom: false };
+  attachSelect(track, info);
+  if (isSelected(info)) track.classList.add('selected');
+  dragFree(track, (dx, dy) => { st.dx += dx; st.dy += dy; });
+  return track;
+}
+
 /** 사용자가 "새 버튼 추가"로 만든, 실제 코드에는 없는 임의의 버튼들을 그린다 — 위치/크기/색상
  *  보정은 실제 버튼과 같은 elState를 쓰고, 글자(glyph)·이름은 cb 자체에 저장(인스펙터에서 수정). */
 function renderCustomButtons() {
@@ -576,7 +611,9 @@ function render() {
   const header = el(null, 'header-row', { top: y + 'px', left: s.sideMargin + 'px', right: s.sideMargin + 'px', height: '28px' });
   const avSt = elState('header.avatar');
   avSt.naturalW = 32; avSt.naturalH = 32;
-  if (!avSt.removed) {
+  // 실제 코드: HomeTab만 TabHeader(showAvatar = false)로 왼쪽 아바타를 안 그림(설정 진입은
+  // 하단 Other 탭으로). 다른 탭은 그대로 아바타를 보여준다.
+  if (tab !== 'home' && !avSt.removed) {
     const avSize = avSt.w ?? 32;
     const avatar = el(null, 'avatar-dot', {
       width: avSize + 'px', height: avSize + 'px', position: 'relative',
@@ -692,7 +729,7 @@ function renderHeaderActions() {
   const rightX = s.screenWidth - s.sideMargin;
   const y = s.topMargin;
   if (tab === 'home') {
-    drawIconButton('home.toggle', rightX - 32, y - 2, 32, 32, 'person', '개인/공유 노트 전환', 'circle', false);
+    drawToggleSwitch('home.toggle', rightX - 34, y + 5, '개인/공유 노트 전환 스위치');
   } else if (tab === 'share') {
     drawIconButton('share.newShared', rightX - 32 * 2 - 6, y - 2, 32, 32, 'groups', '공유 스케치북 만들기', 'circle', false);
     drawIconButton('share.join', rightX - 32, y - 2, 32, 32, 'login', '공유 스케치북 참여', 'circle', false);
@@ -700,18 +737,8 @@ function renderHeaderActions() {
 }
 
 function renderHomeCarousel(top, bottom) {
-  // 태그라인 아래 3개 액션 아이콘(새 노트/공유/참여) — 실제 코드: Row(Center), 간격 14dp.
-  const btnSize = 56, gap = 14;
-  const totalW = btnSize * 3 + gap * 2;
-  let bx = s.screenWidth / 2 - totalW / 2;
-  const rowY = top;
-  drawIconButton('home.add', bx, rowY, btnSize, btnSize, 'add', '새 노트 추가', 'circle', true);
-  bx += btnSize + gap;
-  drawIconButton('home.share', bx, rowY, btnSize, btnSize, 'share', '공유 스케치북 만들기', 'circle', true);
-  bx += btnSize + gap;
-  drawIconButton('home.join', bx, rowY, btnSize, btnSize, 'login', '공유 스케치북 참여', 'circle', true);
-
-  const carouselTop = rowY + btnSize + 28; // 실제 코드: Spacer(28dp) 이후 캐러셀
+  // 실제 코드: 타이틀 아래 +/공유/참여 원형 버튼 3개는 삭제됨 — 캐러셀이 contentGap 바로 다음에 옴.
+  const carouselTop = top;
   const areaH = bottom - carouselTop;
   const cy = carouselTop + areaH / 2;
   const cx = s.screenWidth / 2;

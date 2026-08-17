@@ -34,8 +34,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
@@ -114,10 +112,6 @@ fun BrushControls(
      *  mid-drawing; drawing itself is unaffected. Icon reflects current state. */
     locked: Boolean = false,
     onToggleLock: (() -> Unit)? = null,
-    /** 페이지 넘기기 모드: while on, a single-finger swipe turns pages and drawing/zoom/pan are fully
-     *  disabled — the only way to interactively turn pages now (see BrushView.pageTurnMode). */
-    pageTurnMode: Boolean = false,
-    onTogglePageTurnMode: (() -> Unit)? = null,
 ) {
     var colorWheelOpen by remember { mutableStateOf(false) }
     var editFavAt by remember { mutableIntStateOf(-1) } // -1 none, else favourites index being edited
@@ -155,10 +149,6 @@ fun BrushControls(
             onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
             // Page turning/thumbnail list/selection all live behind one button now — see PagePanel.
             onOpenPages?.let { IconBtn(Icons.Filled.Layers, "페이지", onClick = it) }
-            onTogglePageTurnMode?.let {
-                IconBtn(Icons.AutoMirrored.Filled.MenuBook, if (pageTurnMode) "페이지 넘기기 모드 종료" else "페이지 넘기기 모드",
-                    tint = if (pageTurnMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
-            }
             onRotate?.let {
                 // Dimmed (not disabled) while locked — BrushView.rotate() itself no-ops, this just
                 // signals why tapping does nothing instead of silently failing.
@@ -173,7 +163,7 @@ fun BrushControls(
                 IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "전체화면 종료" else "전체화면",
                     tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
             }
-            if (onBack != null || onOpenPages != null || onTogglePageTurnMode != null || onRotate != null ||
+            if (onBack != null || onOpenPages != null || onRotate != null ||
                 onToggleLock != null || onToggleFullscreen != null) VDivider()
 
             // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
@@ -289,23 +279,6 @@ fun EyedropFloatingPreview(colorArgb: Int, xPx: Float, yPx: Float, modifier: Mod
             .background(Color(colorArgb))
             .border(3.dp, Color.White, CircleShape),
     )
-}
-
-/** 페이지 넘기기 모드의 유일한 탈출구 — 툴바가 숨겨진 전체화면 위에 떠 있는 "확인" 버튼. 원하는
- *  페이지에 도착한 뒤 이걸 눌러야 다시 그림 그리기 모드(툴바 표시)로 돌아간다. Caller places it via
- *  `.align(Alignment.TopEnd)` inside its own Box. */
-@Composable
-fun PageTurnConfirmButton(onConfirm: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primary, shadowElevation = 10.dp,
-        modifier = modifier.bounceClick(onClick = onConfirm),
-    ) {
-        Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Check, "확인", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("확인", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        }
-    }
 }
 
 /** Width (and, unless erasing, opacity) sliders for ONE specific brush — opened by tapping that
