@@ -54,7 +54,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
@@ -122,7 +121,6 @@ fun SharedBookScreen(
     var erasing by remember { mutableStateOf(false) }
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
-    var fillCrayonStyle by remember { mutableStateOf(false) }
     var hasLassoSelection by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
     val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
@@ -175,11 +173,11 @@ fun SharedBookScreen(
     // Apply brush settings via an effect rather than AndroidView.update: the pane is wrapped in
     // movableContent, and after it's moved (rotation / view-mode change) update() stops re-observing
     // state — so selections would silently stop applying. This effect always re-syncs.
-    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, lassoActive, fillActive, fillCrayonStyle, eyedropArmed, locked, page) {
+    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, lassoActive, fillActive, eyedropArmed, locked, page) {
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
         v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
-        v.lassoMode = lassoActive; v.fillMode = fillActive; v.fillCrayonStyle = fillCrayonStyle
+        v.lassoMode = lassoActive; v.fillMode = fillActive
         v.onLassoSelectionChanged = { hasLassoSelection = it }
         v.twoFingerTapAction = session.twoFingerTapAction
         v.threeFingerTapAction = session.threeFingerTapAction
@@ -366,7 +364,6 @@ fun SharedBookScreen(
                 hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
                 fillActive = fillActive,
                 onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
-                fillCrayonStyle = fillCrayonStyle, onToggleFillStyle = { fillCrayonStyle = !fillCrayonStyle },
                 collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
                 onDragBar = { d -> toolbarDragPx += d },
                 onDragBarEnd = {
@@ -408,18 +405,21 @@ fun SharedBookScreen(
 
 /** 분할/최대화 아이콘 토글 — 화면버튼(ScreenControls)의 닫힌 상태 트리거와 같은 반투명 원형 버튼
  *  스타일로 그 왼쪽에 나란히 둔다(2026-08-20, 예전엔 "분할"/"최대화" 텍스트 세그먼트가 헤더 바에
- *  따로 있었음). 아이콘은 지금 모드를 보여주고, 탭하면 다른 모드로 바뀐다. */
+ *  따로 있었음). 아이콘은 지금 모드가 아니라 탭하면 "바뀔 모드"를 보여준다 — 그래야 눌렀을 때
+ *  뭐가 될지 미리 알 수 있다(2026-08-20, 처음엔 반대로 지금 모드를 보여주고 있었음).
+ *  반투명은 Modifier.alpha()(레이어 변환)가 아니라 Surface color 자체에 알파를 줘서 낸다 —
+ *  alpha()로 감싸면 그 레이어 크기에 맞춰 그림자까지 잘려버리는 문제가 있었다. */
 @Composable
 internal fun ModeToggleButton(gridMode: Boolean, onToggle: () -> Unit) {
     Box(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
         Surface(
-            shape = CircleShape, color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 8.dp, tonalElevation = 2.dp, modifier = Modifier.alpha(0.5f),
+            shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+            shadowElevation = 8.dp, tonalElevation = 2.dp,
         ) {
             Box(Modifier.padding(6.dp)) {
                 Box(Modifier.size(30.dp).bounceClick(onClick = onToggle), contentAlignment = Alignment.Center) {
                     Icon(
-                        if (gridMode) Icons.Filled.GridView else Icons.Filled.OpenInFull,
+                        if (gridMode) Icons.Filled.OpenInFull else Icons.Filled.GridView,
                         if (gridMode) "최대화 보기로 전환" else "분할 보기로 전환",
                     )
                 }

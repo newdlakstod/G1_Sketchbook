@@ -3,7 +3,9 @@ package com.g1.sketchbook.sketchbook
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -566,6 +568,7 @@ internal fun EditCoverDialog(
     onDelete: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var name by remember(book.id) { mutableStateOf(book.name) }
     // 이미 저장된 표지 사진(있으면) 먼저 불러온다.
     var existingCover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
@@ -573,15 +576,25 @@ internal fun EditCoverDialog(
     // 갤러리에서 새로 고른 사진(크롭 적용 후, 저장 전 미리보기) — 색상 버튼으로 색을 고르면 기존
     // 사진도 지우도록 표시(색/사진 둘 다 있으면 사진이 우선 표시되어 색 선택이 무의미해 보이므로).
     var pickedCover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
-    var removeRequested by remember(book.id) { mutableStateOf(false) }
-    var color by remember(book.id) { mutableStateOf(book.coverColor) }
+    var selection by remember(book.id) { mutableStateOf(CoverEditSelection(book.coverColor)) }
     var colorWheelOpen by remember { mutableStateOf(false) }
     // 갤러리에서 방금 고른 원본(크롭 전) — null이 아니면 범위 선택 다이얼로그가 뜬다.
     var rawPicked by remember { mutableStateOf<Bitmap?>(null) }
-    val previewCover = pickedCover ?: existingCover.takeUnless { removeRequested }
+    var imageLoading by remember { mutableStateOf(false) }
+    var imageError by remember { mutableStateOf<String?>(null) }
+    val previewCover = pickedCover ?: existingCover.takeUnless { selection.removeCover }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
-        if (uri != null) decodeSampledBitmap(context, uri, 1600)?.let { rawPicked = it }
+        if (uri != null) scope.launch {
+            imageLoading = true
+            imageError = null
+            val decoded = withContext(Dispatchers.IO) {
+                runCatching { decodeCoverBitmap(context, uri, 1600) }.getOrNull()
+            }
+            imageLoading = false
+            if (decoded != null) rawPicked = decoded
+            else imageError = "이미지를 불러오지 못했습니다. 다른 이미지를 선택해주세요."
+        }
     }
 
     // rawPicked·크롭 화면을 별도 Dialog로 새로 띄우지 않고 이 Dialog 하나 안에서 내용만 바꿔치기
@@ -592,7 +605,11 @@ internal fun EditCoverDialog(
         if (raw != null) {
             CoverImageCropContent(
                 source = raw, targetRatio = Dimens.Home.coverRatio,
-                onApply = { cropped -> pickedCover = cropped; removeRequested = false; rawPicked = null },
+                onApply = { cropped ->
+                    pickedCover = cropped
+                    selection = selection.imageApplied()
+                    rawPicked = null
+                },
                 onCancel = { rawPicked = null },
             )
             return@Dialog
@@ -619,7 +636,7 @@ internal fun EditCoverDialog(
                         modifier = Modifier.width(200.dp).aspectRatio(Dimens.Home.coverRatio)
                             .align(Alignment.CenterHorizontally)
                             .shadow(16.dp, SketchbookCoverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
-                        coverColor = color?.let { Color(it) } ?: DefaultSketchbookCoverColor,
+                        coverColor = selection.color?.let { Color(it) } ?: DefaultSketchbookCoverColor,
                         coverImage = previewCover?.let { BitmapPainter(it.asImageBitmap()) },
                     )
                     Spacer(Modifier.height(28.dp))
@@ -641,22 +658,77 @@ internal fun EditCoverDialog(
                         horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                     ) {
                         Box {
-                            CoverActionIcon(Icons.Filled.Palette, "색상 변경") { colorWheelOpen = !colorWheelOpen }
+                            CoverActionIcon(Icons.Filled.Palette, "색상 변경") {
+                                if (colorWheelOpen) {
+                                    selection = selection.cancelColor()
+                                    colorWheelOpen = false
+                                } else {
+                                    selection = selection.startColor(
+                                        DefaultSketchbookCoverColor.toArgb().toLong() and 0xFFFFFFFFL,
+                                    )
+                                    colorWheelOpen = true
+                                }
+                            }
                             if (colorWheelOpen) Popup(
                                 BelowCenterAnchor(with(LocalDensity.current) { 8.dp.roundToPx() }),
-                                { colorWheelOpen = false }, PopupProperties(focusable = true),
+                                {
+                                    selection = selection.cancelColor()
+                                    colorWheelOpen = false
+                                },
+                                PopupProperties(focusable = true),
                             ) {
-                                com.g1.sketchbook.brush.ColorPickerCard(color ?: (DefaultSketchbookCoverColor.toArgb().toLong() and 0xFFFFFFFFL)) {
-                                    color = it; colorWheelOpen = false
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    com.g1.sketchbook.brush.ColorPickerCard(selection.pendingColor!!) {
+                                        selection = selection.previewColor(it)
+                                    }
+                                    Row(
+                                        Modifier.width(248.dp).background(MaterialTheme.colorScheme.surface)
+                                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        TextButton(onClick = {
+                                            selection = selection.cancelColor()
+                                            colorWheelOpen = false
+                                        }) { Text("취소") }
+                                        TextButton(onClick = {
+                                            selection = selection.confirmColor()
+                                            pickedCover = null
+                                            colorWheelOpen = false
+                                        }) { Text("확인", fontWeight = FontWeight.Bold) }
+                                    }
                                 }
                             }
                         }
                         CoverActionIcon(Icons.Filled.AddPhotoAlternate, "이미지로 변경") {
-                            pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            if (!imageLoading) {
+                                imageError = null
+                                pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
                         }
                         if (previewCover != null) {
-                            CoverActionIcon(Icons.Filled.HideImage, "사진 빼기") { pickedCover = null; removeRequested = true }
+                            CoverActionIcon(Icons.Filled.HideImage, "사진 빼기") {
+                                pickedCover = null
+                                selection = selection.requestImageRemoval()
+                            }
                         }
+                    }
+                    if (imageLoading) {
+                        Text(
+                            "이미지를 불러오는 중…",
+                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    imageError?.let { message ->
+                        Text(
+                            message,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
                     Spacer(Modifier.height(20.dp))
                     HorizontalDivider()
@@ -681,13 +753,32 @@ internal fun EditCoverDialog(
                 ) {
                     TextButton(onClick = onCancel) { Text("취소") }
                     TextButton(
-                        onClick = { onSave(name, pickedCover, removeRequested, color) },
-                        enabled = name.isNotBlank(),
+                        onClick = { onSave(name, pickedCover, selection.removeCover, selection.color) },
+                        enabled = name.isNotBlank() && !imageLoading,
                     ) { Text("완료", fontWeight = FontWeight.Bold) }
                 }
             }
         }
     }
+}
+
+/** 표지 편집 중인 선택 상태. 색상휠은 [pendingColor]만 바꾸고 확인할 때만 실제 [color]에 반영한다. */
+internal data class CoverEditSelection(
+    val color: Long?,
+    val pendingColor: Long? = null,
+    val removeCover: Boolean = false,
+) {
+    fun startColor(defaultColor: Long) = copy(pendingColor = color ?: defaultColor)
+    fun previewColor(value: Long) = copy(pendingColor = value)
+    fun cancelColor() = copy(pendingColor = null)
+
+    fun confirmColor(): CoverEditSelection {
+        val confirmed = pendingColor ?: return this
+        return copy(color = confirmed, pendingColor = null, removeCover = true)
+    }
+
+    fun imageApplied() = copy(pendingColor = null, removeCover = false)
+    fun requestImageRemoval() = copy(pendingColor = null, removeCover = true)
 }
 
 /** 표지 변경/즐겨찾기/삭제 공용 — 원형 배경 위에 아이콘 하나만 두는 텍스트 없는 액션 버튼. */
@@ -788,7 +879,24 @@ private fun cropSelectedRegion(src: Bitmap, frameWpx: Float, frameHpx: Float, sc
 
 /** 갤러리 원본은 화면·저장용으로 쓰기엔 너무 커서, 긴 변이 [maxDim]을 넘지 않도록 다운샘플링해
  *  디코드한다(표지 그림과 같은 원리, `SketchbookRepository.loadPageThumb`와 동일 패턴). */
-private fun decodeSampledBitmap(context: Context, uri: Uri, maxDim: Int): Bitmap? {
+private fun decodeCoverBitmap(context: Context, uri: Uri, maxDim: Int): Bitmap? {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val source = ImageDecoder.createSource(context.contentResolver, uri)
+        return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+            val width = info.size.width
+            val height = info.size.height
+            val longest = maxOf(width, height)
+            if (longest > maxDim) {
+                val ratio = maxDim.toFloat() / longest
+                decoder.setTargetSize(
+                    (width * ratio).roundToInt().coerceAtLeast(1),
+                    (height * ratio).roundToInt().coerceAtLeast(1),
+                )
+            }
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+    }
+
     val resolver = context.contentResolver
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
@@ -820,7 +928,6 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     // 꺼진다(아래 onBrush/onToggleErase/onToggleLasso/onToggleFill이 서로를 끈다).
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
-    var fillCrayonStyle by remember { mutableStateOf(false) }
     var hasLassoSelection by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
     val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
@@ -877,7 +984,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 update = { v ->
                     v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
                     v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
-                    v.lassoMode = lassoActive; v.fillMode = fillActive; v.fillCrayonStyle = fillCrayonStyle
+                    v.lassoMode = lassoActive; v.fillMode = fillActive
                     v.onLassoSelectionChanged = { hasLassoSelection = it }
                     v.twoFingerTapAction = session.twoFingerTapAction
                     v.threeFingerTapAction = session.threeFingerTapAction
@@ -923,7 +1030,6 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
             fillActive = fillActive,
             onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
-            fillCrayonStyle = fillCrayonStyle, onToggleFillStyle = { fillCrayonStyle = !fillCrayonStyle },
             collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
             onDragBar = { d -> toolbarDragPx += d },
             onDragBarEnd = {

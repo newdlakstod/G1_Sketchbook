@@ -44,9 +44,7 @@ import androidx.compose.material.icons.filled.LineWeight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Opacity
-import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
-import androidx.compose.material.icons.filled.Texture
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.filled.UnfoldMore
@@ -69,7 +67,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -156,13 +153,9 @@ fun BrushControls(
     onToggleLasso: () -> Unit = {},
     hasLassoSelection: Boolean = false,
     onDeleteLassoSelection: () -> Unit = {},
-    /** 페인트통(채우기) 도구 — 켜져 있으면 탭한 지점과 이어진 같은 색 영역을 현재 색으로 채운다.
-     *  fillCrayonStyle이 true(기본)면 크레파스 질감으로, false면 매끈한 단색으로 채운다 — 페인트통이
-     *  켜져 있을 때만 스타일 전환 버튼이 나타난다. */
+    /** 페인트통(채우기) 도구 — 켜져 있으면 탭한 지점과 이어진 같은 색 영역을 현재 색으로 단색 채운다. */
     fillActive: Boolean = false,
     onToggleFill: () -> Unit = {},
-    fillCrayonStyle: Boolean = true,
-    onToggleFillStyle: () -> Unit = {},
     /** 버튼바 최소화: 켜져 있으면 현재 브러시·색상 두 개만 보이는 작은 형태로 줄어든다(둘 다 탭하면
      *  그 자리에서 바로 바뀜). onToggleCollapsed가 null이면 최소화 버튼 자체가 나타나지 않는다. */
     collapsed: Boolean = false,
@@ -334,11 +327,6 @@ fun BrushControls(
                 IconBtn(Icons.Filled.FormatColorFill, "페인트통",
                     tint = if (fillActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                     onClick = onToggleFill)
-                if (fillActive) {
-                    IconBtn(if (fillCrayonStyle) Icons.Filled.Texture else Icons.Filled.Circle,
-                        if (fillCrayonStyle) "채우기 스타일: 크레파스(탭하면 단색으로)" else "채우기 스타일: 단색(탭하면 크레파스로)",
-                        onClick = onToggleFillStyle)
-                }
             }
             add {
                 // 5 favourites: tap to pick; tap the already-selected one again to open a colour wheel for it.
@@ -447,11 +435,12 @@ fun ScreenControls(
     val edgeMargin = with(LocalDensity.current) { 12.dp.roundToPx() }
     Box(modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
         // 캔버스 위에 항상 떠 있는 오버레이라 그림을 가리지 않도록 평소엔 반투명(50%)으로 — 탭하면
-        // 펼쳐지는 팝업 내용물은 완전 불투명 그대로 둔다.
+        // 펼쳐지는 팝업 내용물은 완전 불투명 그대로 둔다. 반투명은 Modifier.alpha()가 아니라
+        // Surface color 자체에 알파를 줘서 낸다 — alpha()로 감싸면 그 레이어 크기에 맞춰 그림자까지
+        // 잘려버렸다(2026-08-20).
         Surface(
-            shape = CircleShape, color = MaterialTheme.colorScheme.surface,
+            shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
             shadowElevation = 8.dp, tonalElevation = 2.dp,
-            modifier = Modifier.alpha(0.5f),
         ) {
             Box(Modifier.padding(6.dp)) {
                 IconBtn(Icons.Filled.Tune, "화면 설정 열기", onClick = { expanded = true })

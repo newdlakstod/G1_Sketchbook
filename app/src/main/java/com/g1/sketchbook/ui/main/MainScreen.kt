@@ -56,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -257,12 +258,22 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                             } else 1f
                         }
                     }
-                    val w = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterW, Dimens.Home.carouselSideW, distance)
-                    val h = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterH, Dimens.Home.carouselSideH, distance)
+                    // 표지 레이아웃 크기는 항상 고정(기존 스펙 사이즈, Dimens.Home.carouselCenterW/H)
+                    // — distance에 따라 실제 레이아웃 폭까지 바뀌면 그 폭이 다시 LazyRow의 아이템
+                    // 위치(따라서 distance 자신)에 영향을 주는 자기참조 루프가 생겨 스크롤이 불안정해
+                    // 지고 가운데가 확실히 커 보이지도 않았다(2026-08-20). 대신 scale 변환으로만
+                    // 가운데를 키운다 — 레이아웃 크기는 그대로 두고 화면에 그려지는 크기만 바뀐다.
+                    val w = Dimens.Home.carouselCenterW
+                    val h = Dimens.Home.carouselCenterH
+                    val sideScale = Dimens.Home.carouselSideW / Dimens.Home.carouselCenterW
+                    val scale = androidx.compose.ui.util.lerp(1f, sideScale, distance)
                     val fade = 1f - distance * 0.5f
                     // Shadow strength follows proximity too — the focused cover "lifts forward", neighbours
                     // recede — so the size shrink alone doesn't have to carry the whole depth illusion.
-                    val elevation = androidx.compose.ui.unit.lerp(18.dp, 4.dp, distance)
+                    // 12dp로 상한을 낮춤(예전 18dp) — scale/alpha가 만드는 그래픽 레이어는 자기 레이아웃
+                    // 크기 밖으로는 그림자를 못 그리는데(아래 shadowSlack 참고), 너무 큰 elevation은
+                    // slack을 넉넉히 줘도 여전히 잘릴 수 있어 값 자체도 같이 낮췄다(2026-08-20).
+                    val elevation = androidx.compose.ui.unit.lerp(12.dp, 4.dp, distance)
                     val coverShape = SketchbookCoverShape
                     // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 (커스텀 지정 시) coverColor, 그것도
                     // 없으면 기본색을 보여준다(목록탭 CoverCard와 동일). coverVersion을 키에 넣어야 같은 id라도
@@ -271,25 +282,35 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     LaunchedEffect(book.id, book.coverVersion, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
                     val stackColor = book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor
                     Box(Modifier.fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        // scale()/alpha()는 graphicsLayer(오프스크린 레이어)를 만드는데, 그 레이어는 이
+                        // Box 자신의 레이아웃 크기로 딱 잘려서 그려진다 — 안쪽 SketchbookCover의 그림자가
+                        // w/h 밖으로 번져도 이 바깥 상자 크기(shadowSlack 없이는 겨우 +4dp) 밖으로는 못
+                        // 나가 잘렸다. shadowSlack만큼 여유를 주고, 원래 스택 겹침 비주얼은 안쪽 상자에
+                        // 그대로 둔 채 가운데 정렬해 넣는다(2026-08-20).
+                        val shadowSlack = 16.dp
                         Box(
-                            Modifier.width(w + 4.dp).height(h + 4.dp).alpha(fade)
+                            Modifier.width(w + 4.dp + shadowSlack).height(h + 4.dp + shadowSlack)
+                                .scale(scale).alpha(fade)
                                 .bounceClick(onLongClick = { onLongPress(book) }) { onOpen(book.id) },
+                            contentAlignment = Alignment.Center,
                         ) {
-                            // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
-                            Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape)
-                                .background(stackColor.copy(alpha = 0.5f)))
-                            Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
-                                .background(stackColor.copy(alpha = 0.75f)))
-                            // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
-                            SketchbookCover(
-                                modifier = Modifier.width(w).height(h)
-                                    .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
-                                coverColor = stackColor,
-                                coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
-                            ) {
-                                if (book.shared) {
-                                    Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
-                                        .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
+                            Box(Modifier.width(w + 4.dp).height(h + 4.dp)) {
+                                // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
+                                Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape)
+                                    .background(stackColor.copy(alpha = 0.5f)))
+                                Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
+                                    .background(stackColor.copy(alpha = 0.75f)))
+                                // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
+                                SketchbookCover(
+                                    modifier = Modifier.width(w).height(h)
+                                        .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
+                                    coverColor = stackColor,
+                                    coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
+                                ) {
+                                    if (book.shared) {
+                                        Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
+                                            .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
+                                    }
                                 }
                             }
                         }

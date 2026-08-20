@@ -13,8 +13,8 @@ android {
         applicationId = "com.g1.sketchbook"
         minSdk = 24
         targetSdk = 35
-        versionCode = 102
-        versionName = "2.8.0"
+        versionCode = 103
+        versionName = "2.8.1"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -87,4 +87,6 @@ dependencies {
 
     implementation(libs.androidx.ui.tooling.preview)
     debugImplementation(libs.androidx.ui.tooling)
+
+    testImplementation(kotlin("test"))
 }

@@ -103,7 +103,6 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
     var erasing by remember { mutableStateOf(false) }
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
-    var fillCrayonStyle by remember { mutableStateOf(false) }
     var hasLassoSelection by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
@@ -159,7 +158,7 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
                         update = { v ->
                             v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
                             v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
-                            v.lassoMode = lassoActive; v.fillMode = fillActive; v.fillCrayonStyle = fillCrayonStyle
+                            v.lassoMode = lassoActive; v.fillMode = fillActive
                             v.onLassoSelectionChanged = { hasLassoSelection = it }
                             v.twoFingerTapAction = session?.twoFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
                             v.threeFingerTapAction = session?.threeFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
@@ -204,7 +203,6 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
             hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
             fillActive = fillActive,
             onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
-            fillCrayonStyle = fillCrayonStyle, onToggleFillStyle = { fillCrayonStyle = !fillCrayonStyle },
             collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
             onDragBar = { d -> toolbarDragPx += d },
             onDragBarEnd = {

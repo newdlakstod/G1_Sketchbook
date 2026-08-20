@@ -75,7 +75,6 @@ private fun BrushCanvasPreview() {
     var erasing by remember { mutableStateOf(false) }
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
-    var fillCrayonStyle by remember { mutableStateOf(false) }
     var hasLassoSelection by remember { mutableStateOf(false) }
     var eraserOpacity by remember { mutableFloatStateOf(100f) }
     var eraserBlur by remember { mutableFloatStateOf(0f) }
@@ -114,7 +113,6 @@ private fun BrushCanvasPreview() {
                     v.eraserBlur = eraserBlur
                     v.lassoMode = lassoActive
                     v.fillMode = fillActive
-                    v.fillCrayonStyle = fillCrayonStyle
                     v.onLassoSelectionChanged = { hasLassoSelection = it }
                     v.eyedropArmed = eyedropArmed
                     v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
@@ -154,7 +152,6 @@ private fun BrushCanvasPreview() {
                 hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
                 fillActive = fillActive,
                 onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
-                fillCrayonStyle = fillCrayonStyle, onToggleFillStyle = { fillCrayonStyle = !fillCrayonStyle },
                 collapsed = collapsed,
                 onToggleCollapsed = { collapsed = !collapsed },
                 onDragBar = { d -> dragPx += d },

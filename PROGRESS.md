@@ -4,6 +4,60 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **v2.8.1 릴리스 준비** (2026-08-21): 메인탭 고정 레이아웃 정렬, 화면 버튼 그림자·분할 아이콘
+  수정, 페인트통 제스처 정리, Android Studio Preview 복구, 표지 색상 확인 단계와 갤러리 이미지
+  반영 오류 수정 및 회귀 테스트를 묶어 `versionCode 103` / `versionName 2.8.1`로 상향했다.
+- **표지 수정 색상 확인 단계 + 갤러리 이미지 반영 오류 수정** (2026-08-21, 버전 미상향):
+  `sketchbook/SketchbookScreens.kt`. 색상휠 조작값을 `CoverEditSelection.pendingColor`에만 보관하고
+  팝업의 `확인`을 눌러야 실제 표지 색과 미리보기에 반영되도록 변경했다. `취소`·바깥 터치는 원래
+  색을 유지하며, 색상을 확정하면 기존 이미지 표지는 제거 대상으로 전환한다. 갤러리 URI 디코딩은
+  메인 스레드의 `BitmapFactory` 단독 처리에서 IO 스레드 처리로 옮기고, Android 9 이상은 EXIF 방향과
+  최신 이미지 형식을 처리하는 `ImageDecoder`, 이전 버전은 기존 다운샘플 디코더를 사용한다. 성공하면
+  크롭 화면→표지 미리보기→최종 `완료` 저장으로 연결하고, 실패하면 조용히 무시하지 않고 오류 문구를
+  표시한다. `CoverEditSelectionTest` 2개를 RED→GREEN으로 추가했으며
+  `assembleDebug compileReleaseKotlin testDebugUnitTest lintDebug` 검증 완료.
+- **분할/최대화 아이콘 전환 표시 + 그림자 잘림 3곳 수정 + 페인트통 크레파스 삭제·제스처 버그 수정**
+  (2026-08-20, 버전 미상향):
+  1. `share/SharedBookScreen.kt`(`ModeToggleButton`): 아이콘이 "지금 모드"가 아니라 "탭하면 바뀔
+     모드"를 보여주도록 뒤집음(그리드 모드일 땐 최대화 아이콘, 최대화 모드일 땐 그리드 아이콘 —
+     기존 설명 문구와 실제로 맞게).
+  2. **그림자 잘림**(페이지 버튼/분할모드 버튼/홈화면 표지 공통 원인): `Modifier.alpha()`로 감싼
+     구성요소는 별도 오프스크린 그래픽 레이어가 생기는데, 그 레이어는 감싼 요소 자신의 레이아웃
+     크기로 딱 잘려서 그려진다 — 그림자는 원래 요소 경계 밖으로 번져야 하는데 그 레이어 밖으로는
+     못 나가 잘렸다.
+     - `brush/BrushControls.kt`의 `ScreenControls`(페이지 버튼): `Modifier.alpha(0.5f)` 대신
+       `Surface(color = ...surface.copy(alpha = 0.5f))`로 — 레이어 없이 색 자체에 알파를 줘서
+       그림자에 전혀 영향 없음. `share/SharedBookScreen.kt`의 `ModeToggleButton`(분할모드 버튼)도
+       동일하게 수정.
+     - `ui/main/MainScreen.kt`(`HomeCarousel`): 표지 스케일/페이드는 alpha() 유지가 불가피해서
+       대신 그 레이어 자체의 레이아웃 크기에 `shadowSlack`(16dp) 여유를 추가하고, 원래 스택-겹침
+       비주얼은 그 안에 가운데 정렬로 유지. elevation 상한도 18dp→12dp로 낮춰 안전 마진 확보.
+  3. `brush/BrushView.kt`: 페인트통 크레파스 질감 옵션(`fillCrayonStyle`/`crayonFillPixel`) 전체
+     삭제 — 항상 단색 채우기만. `brush/BrushControls.kt`의 스타일 전환 아이콘도 함께 삭제. 3개
+     실제 화면 + 프리뷰의 관련 상태·배선도 모두 제거.
+     **제스처 반응 안 함 버그**: `onTouchEvent`에서 `fillMode`가 켜져 있으면 무조건 `return true`로
+     모든 터치를 가로채고 있었음 — 핀치줌·멀티핑거 탭 제스처가 페인트통 선택 중엔 전혀 안 먹혔던
+     원인. 이 하이재킹 분기를 삭제하고, 일반 드로잉과 같은 흐름(`beginStroke`/`strokeMove`/
+     `endStroke`)을 타되 그 안에서만 fillMode를 다르게 처리하도록 재구성 — `beginStroke`는 fillMode면
+     아무것도 안 그리고 대기만, `strokeMove`도 무시, 두 번째 손가락이 닿으면(핀치 시작) 기존
+     `discardStroke()`가 그대로 타서 안전하게 취소되고 핀치가 정상 작동, 손을 뗄 때(`endStroke`)
+     비로소 `floodFillAt()` 한 번 실행. 이제 핀치줌·3손가락 스와이프 등이 페인트통 선택 중에도 그대로
+     작동한다.
+  - `compileDebugKotlin` 검증 완료. 그림자·제스처 체감은 실기기 확인 권장.
+- **홈 캐러셀: 표지 크기 고정(자기참조 버그 수정) + scale로만 가운데 확대** (2026-08-20, 버전
+  미상향): `ui/main/MainScreen.kt`(`HomeCarousel`). 지난 LazyRow 전환 때 표지 레이아웃 폭(`w`/`h`)
+  자체를 `distance`(화면 중심에서 거리)로 lerp했는데, `distance`는 `LazyListItemInfo.size`(그
+  아이템이 실제로 측정된 폭)에서 역산하는 값이라 — 폭이 distance를 정하고 distance가 다시 폭을
+  정하는 자기참조 루프가 생겨 크기가 원래 스펙(`Dimens.Home.carouselCenterW/H`)대로 안정적으로
+  안 나오고, 가운데가 뚜렷하게 커 보이지도 않았음. 참고 프로젝트(G1_BOOKLOG_rev1)를 다시 보니 거긴
+  레이아웃 폭을 고정해두고 `Modifier.scale()`(렌더링 시각 변환, 레이아웃엔 영향 없음)만 distance로
+  바꾸고 있었음 — 같은 방식으로 고쳐서 레이아웃 폭은 항상 고정 스펙 사이즈, 가운데↔옆 크기 차이는
+  `scale(lerp(1f, sideW/centerW, distance))` 하나로만 낸다(스크롤 중 레이아웃이 안 흔들려 스냅
+  계산도 같이 안정됨). `compileDebugKotlin` 검증 완료.
+- **v2.8.0 릴리스**: 이번 세션 작업 전체(화면버튼 재구성, 올가미/페인트통, 공유 캔버스 재구성,
+  표지 수정 시트 전면 개편, 홈 캐러셀 관성 스크롤, 갤러리 크롭 버그수정, 350dp 폭 등)를 커밋
+  `ed92121`로 묶어 `versionCode 102`/`versionName 2.8.0`으로 올림. 로컬 `assembleDebug` 성공 확인
+  후 태그 `v2.8.0` 푸시 → GitHub Actions(`release.yml`)가 APK 빌드 후 릴리스 자동 첨부.
 - **표지 수정 시트 폭 280dp→350dp** (2026-08-20, 버전 미상향): `sketchbook/SketchbookScreens.kt`+
   `ui/theme/Dimens.kt`. 이전엔 마법사 팝업과 같은 `Dimens.Wizard.cardWidth`(280dp)를 재사용하고
   있었는데, 그 값을 바꾸면 마법사 카드도 같이 바뀌므로 전용 상수 `Dimens.Home.editCoverCardWidth`

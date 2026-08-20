@@ -87,9 +87,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     /** 페인트통(채우기) 모드 — 켜져 있으면 손가락을 대는 즉시 그 지점과 이어진 같은 색 영역
      *  전체를 현재 색·불투명도로 채운다(정확히 같은 색만 — 허용오차 없음). */
     var fillMode: Boolean = false
-    /** 페인트통 채우기 스타일 — true면 [crayonFillPixel]로 크레파스 입자감, false(기본)면 매끈한
-     *  단색(source-over 알파합성 그대로). */
-    var fillCrayonStyle: Boolean = false
     /** 라소로 선택 영역이 생기면(true) / 없어지면(false) 알려준다 — 툴바의 "선택 지우기" 버튼을
      *  선택이 있을 때만 보여주는 용도. */
     var onLassoSelectionChanged: ((Boolean) -> Unit)? = null
@@ -431,13 +428,10 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             }
             return true
         }
-        // 페인트통: 손가락을 대는 즉시 그 지점과 이어진 같은 색 영역을 채운다(연속 드로잉이 아니라
-        // 한 번의 탭짜리 동작이라 ACTION_DOWN에서 바로 처리).
-        if (fillMode) {
-            if (e.actionMasked == MotionEvent.ACTION_DOWN) floodFillAt(e.x, e.y)
-            if (e.actionMasked == MotionEvent.ACTION_UP) performClick()
-            return true
-        }
+        // 페인트통은 여기서 따로 가로채지 않는다 — 일반 드로잉과 같은 흐름(아래 when)을 그대로 타되
+        // beginStroke/strokeMove/endStroke 안에서 fillMode일 때만 다르게 동작하도록 분기한다. 그래야
+        // 핀치줌(두 손가락)·멀티핑거 탭 제스처가 페인트통 선택 중에도 그대로 작동한다(예전엔 이 위치에서
+        // 무조건 true를 반환해 다른 제스처를 전부 막고 있었음, 2026-08-20).
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pinching = false
@@ -537,8 +531,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun midX(e: MotionEvent): Float = (e.getX(0) + e.getX(1)) / 2f
     private fun midY(e: MotionEvent): Float = (e.getY(0) + e.getY(1)) / 2f
 
-    /** Undo the in-progress stroke without recording it (used when a pinch takes over). */
+    /** Undo the in-progress stroke without recording it (used when a pinch takes over). Fill mode
+     *  never pushed an undo snapshot or touched the canvas in the first place (see [beginStroke]),
+     *  so there's nothing to undo here — just drop the pending tap. */
     private fun discardStroke() {
+        if (fillMode) { strokeStarted = false; invalidate(); return }
         base?.let { b -> content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) } }
         undo.removeLastOrNull()
         strokeStarted = false; base = null; invalidate()
@@ -622,10 +619,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         invalidate(); onStrokeEnd?.invoke()
     }
 
-    /** 페인트통: 터치한 지점과 정확히 같은 색으로 이어진 영역 전체를 찾아 현재 색·불투명도로
+    /** 페인트통: 터치한 지점과 정확히 같은 색으로 이어진 영역 전체를 찾아 현재 색·불투명도로 단색
      *  채운다(스캔라인 방식 flood fill — 픽셀 하나하나가 아니라 가로줄 구간 단위로 채워서 큰
-     *  캔버스에서도 감당할 수 있는 속도로 동작). 색은 단색으로 딱 채우지 않고 [crayonFillPixel]로
-     *  픽셀마다 살짝씩 다르게 칠해 크레파스로 칠한 듯한 입자감을 낸다(사용자 제공 시안 이미지 기준). */
+     *  캔버스에서도 감당할 수 있는 속도로 동작). */
     private fun floodFillAt(sx: Float, sy: Float) {
         val p = mapPoint(sx, sy)
         val x0 = p[0].toInt(); val y0 = p[1].toInt()
@@ -634,23 +630,14 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         val pixels = IntArray(cw * ch)
         bmp.getPixels(pixels, 0, cw, 0, 0, cw, ch)
         val target = pixels[y0 * cw + x0]
-        if (target == blendOver(target, color, opacity)) return   // opacity 0 등 실질적으로 변화 없는 경우만 건너뜀
+        val replacement = blendOver(target, color, opacity)
+        if (target == replacement) return
         pushUndo()
-        scanlineFill(pixels, cw, ch, x0, y0, target)
+        scanlineFill(pixels, cw, ch, x0, y0, target, replacement)
         bmp.setPixels(pixels, 0, cw, 0, 0, cw, ch)
         redo.clear()
         invalidate()
         onStrokeEnd?.invoke()
-    }
-
-    /** 페인트통이 채우는 낱개 픽셀 하나 — [fillCrayonStyle]이 꺼져 있으면 매끈한 단색으로 딱 채우고,
-     *  켜져 있으면(기본) 10%는 아예 건너뛰어(원래 색이 살짝 비침) 크레파스 특유의 자잘한 흰 틈을
-     *  만들고 나머지는 불투명도를 픽셀마다 조금씩 다르게(72~100%) 흔들어 왁스 질감처럼 보이게 한다. */
-    private fun crayonFillPixel(dst: Int): Int {
-        if (!fillCrayonStyle) return blendOver(dst, color, opacity)
-        if (rnd.nextFloat() < 0.10f) return dst
-        val a = (0.72f + rnd.nextFloat() * 0.28f) * opacity
-        return blendOver(dst, color, a)
     }
 
     /** 표준 source-over 알파 합성 — [srcColor]를 [srcAlpha01](0~1) 불투명도로 [dst] 위에 얹는다. */
@@ -669,7 +656,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         return (outAi shl 24) or (outR shl 16) or (outG shl 8) or outB
     }
 
-    private fun scanlineFill(pixels: IntArray, w: Int, h: Int, x0: Int, y0: Int, target: Int) {
+    private fun scanlineFill(pixels: IntArray, w: Int, h: Int, x0: Int, y0: Int, target: Int, replacement: Int) {
         val stack = ArrayDeque<IntArray>()
         stack.addLast(intArrayOf(x0, y0))
         while (stack.isNotEmpty()) {
@@ -680,7 +667,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             while (xl - 1 >= 0 && pixels[sy * w + xl - 1] == target) xl--
             var xr = sx
             while (xr + 1 < w && pixels[sy * w + xr + 1] == target) xr++
-            for (xx in xl..xr) pixels[sy * w + xx] = crayonFillPixel(pixels[sy * w + xx])
+            for (xx in xl..xr) pixels[sy * w + xx] = replacement
             if (sy - 1 >= 0) seedSpan(pixels, w, xl, xr, sy - 1, target, stack)
             if (sy + 1 < h) seedSpan(pixels, w, xl, xr, sy + 1, target, stack)
         }
@@ -696,8 +683,21 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         }
     }
 
-    private fun beginStroke(x: Float, y: Float) { pushUndo(); strokePrep(); strokeStart(x, y); strokeStarted = true; invalidate() }
-    private fun endStroke() { strokeStarted = false; base = null; redo.clear(); onStrokeEnd?.invoke(); invalidate() }
+    /** 페인트통은 손을 뗄 때(endStroke) 딱 한 번만 채운다 — 눌렀다고 바로 칠하지 않는 이유는, 두
+     *  손가락 핀치줌으로 이어질 수도 있는 손가락 하나짜리 터치를 다른 브러시들과 똑같이 "잠정적"으로
+     *  다뤄야 두 번째 손가락이 닿을 때 discardStroke()로 조용히 취소되고 핀치줌이 정상 작동하기
+     *  때문(예전엔 ACTION_DOWN에서 바로 채워서 핀치줌 등 다른 제스처를 아예 못 쓰게 막고 있었음,
+     *  2026-08-20). undo 스냅샷도 여기서 남기지 않는다 — floodFillAt이 실제로 채울 때 자체적으로
+     *  pushUndo()한다. */
+    private fun beginStroke(x: Float, y: Float) {
+        if (fillMode) { strokeStarted = true; return }
+        pushUndo(); strokePrep(); strokeStart(x, y); strokeStarted = true; invalidate()
+    }
+    private fun endStroke() {
+        strokeStarted = false; base = null
+        if (fillMode) { floodFillAt(downX, downY); return }   // floodFillAt이 자체적으로 pushUndo/redo.clear/invalidate/onStrokeEnd 처리
+        redo.clear(); onStrokeEnd?.invoke(); invalidate()
+    }
     private fun strokePrep() { strokeLayer?.drawColor(0, PorterDuff.Mode.CLEAR); base = contentBmp?.copy(Bitmap.Config.ARGB_8888, false) }
     private fun composite() {
         val c = content ?: return; val b = base ?: return; val sb = strokeBmp ?: return
@@ -723,6 +723,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         }
     }
     private fun strokeMove(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
+        if (fillMode) return   // 페인트통은 드래그로 아무것도 안 그림 — 손을 뗄 때 endStroke에서 한 번만 채운다.
         when {
             erasing -> {
                 eraseStroke.strokeWidth = max(1f, strokeSize)
