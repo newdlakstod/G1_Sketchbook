@@ -1,13 +1,19 @@
 package com.g1.sketchbook.ui.main
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,7 +21,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -28,6 +33,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -42,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,11 +63,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.brush.GestureAction
 import com.g1.sketchbook.data.SessionStore
+import com.g1.sketchbook.sketchbook.Catalog
 import com.g1.sketchbook.sketchbook.DefaultSketchbookCoverColor
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookCover
@@ -122,11 +131,15 @@ private fun HomeTab(
 ) {
     val context = LocalContext.current
     val repo = if (previewBooks == null) remember(context) { SketchbookRepository(context) } else null
-    val allBooks = previewBooks ?: remember(repo) { repo!!.list() }
+    var refresh by remember { mutableStateOf(0) }
+    val allBooks = previewBooks ?: remember(repo, refresh) { repo!!.list() }
     // 우상단 개인/공유 아이콘 버튼으로 노트를 전환해서 봄 — 스케치북 리스트 탭의 개인/공유받음
     // 필터와 같은 개념, 홈 캐러셀에도 적용.
     var showShared by remember { mutableStateOf(false) }
     val books = remember(allBooks, showShared) { allBooks.filter { it.shared == showShared } }
+    // 표지 길게 눌러 수정 — 목록탭(SketchbookListScreen)의 CoverCard와 같은 다이얼로그를 재사용.
+    var editing by remember { mutableStateOf<Sketchbook?>(null) }
+    var pendingDelete by remember { mutableStateOf<Sketchbook?>(null) }
     MainTabPage(
         title = "Draw your time",
         contentSidePadding = 0.dp,
@@ -154,76 +167,170 @@ private fun HomeTab(
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                 }
             } else {
-                HomeCarousel(books, repo, onOpenBook)
+                HomeCarousel(books, repo, onOpenBook, onLongPress = { editing = it })
             }
         }
+    }
+
+    pendingDelete?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("스케치북 삭제") },
+            text = { Text("'${target.name}' 을(를) 삭제할까요?\n안에 그린 그림도 함께 사라지고 되돌릴 수 없어요.") },
+            confirmButton = {
+                TextButton(onClick = { repo?.delete(target.id); refresh++; pendingDelete = null }) {
+                    Text("삭제", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("취소") } },
+        )
+    }
+
+    editing?.let { target ->
+        // books에서 최신 상태를 다시 찾아 쓴다 — 즐겨찾기 토글 등으로 갱신돼도 다이얼로그가 스냅샷에
+        // 머무르지 않도록(목록탭 EditCoverDialog 호출부와 동일 패턴).
+        val current = allBooks.firstOrNull { it.id == target.id } ?: target
+        com.g1.sketchbook.sketchbook.EditCoverDialog(
+            book = current,
+            repo = repo,
+            onCancel = { editing = null },
+            onSave = { name, newCover, removeCover, newColor ->
+                repo?.rename(current.id, name)
+                if (newCover != null) repo?.saveCover(current.id, newCover) else if (removeCover) repo?.removeCover(current.id)
+                repo?.setCoverColor(current.id, newColor)
+                refresh++; editing = null
+            },
+            onToggleFav = { repo?.toggleFav(current.id); refresh++ },
+            onDelete = { editing = null; pendingDelete = current },
+        )
     }
 }
 
 /** Swipeable carousel of sketchbook covers — the focused (centred) one is largest, neighbours peek
- *  in smaller and dimmer on either side. Tapping any cover opens it. */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+ *  in smaller and dimmer on either side. Tapping any cover opens it, long-pressing edits it (same
+ *  affordance as the list tab's CoverCard). Below the covers, a single title block always describes
+ *  whichever book is currently centred (2026-08-20, 시안 참고: G1_BOOKLOG_rev1의 HomeScreen.kt
+ *  ReadingPagerCarousel — LazyRow+snap fling으로 손을 떼기 전까지 관성이 끊기지 않게 하고, 가운데
+ *  인덱스 하나만 계산해서 그 아래 타이틀·점 인디케이터를 그리는 구조를 그대로 가져왔다). */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, onOpen: (String) -> Unit) {
-    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { books.size })
-    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
-    // Side padding sized so the focused page gets its full spec width, with whatever room is left
-    // over used to peek the neighbours (never negative, even on narrow phones).
-    val peek = ((maxWidth - Dimens.Home.carouselCenterW) / 2).coerceAtLeast(20.dp)
-    androidx.compose.foundation.pager.HorizontalPager(
-        state = pagerState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = peek),
-        pageSpacing = 16.dp,
-        // 기본 fling 동작 그대로 — 빠르게 스와이프하면 여러 장을 계속 넘어가다가, 손가락으로 다시
-        // 눌러야 멈춘다(한 장씩만 넘어가게 막았던 예전 pagerSnapDistance 제한을 없앴다).
-    ) { page ->
-        val distance = (pagerState.currentPage - page + pagerState.currentPageOffsetFraction)
-            .let { if (it < 0) -it else it }.coerceIn(0f, 1f)
-        val w = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterW, Dimens.Home.carouselSideW, distance)
-        val h = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterH, Dimens.Home.carouselSideH, distance)
-        val fade = 1f - distance * 0.5f
-        // Shadow strength follows proximity too — the focused cover "lifts forward", neighbours
-        // recede — so the size shrink alone doesn't have to carry the whole depth illusion.
-        val elevation = androidx.compose.ui.unit.lerp(18.dp, 4.dp, distance)
-        val book = books[page]
-        val coverShape = SketchbookCoverShape
-        val titleSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverTitleCenterSp, Dimens.Home.coverTitleSideSp, distance)
-        val dateSp = androidx.compose.ui.unit.lerp(Dimens.Home.coverDateCenterSp, Dimens.Home.coverDateSideSp, distance)
-        // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 (커스텀 지정 시) coverColor, 그것도
-        // 없으면 기본색을 보여준다(목록탭 CoverCard와 동일). coverVersion을 키에 넣어야 같은 id라도
-        // 표지 사진이 바뀌면 다시 읽어온다.
-        var cover by remember(book.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
-        LaunchedEffect(book.id, book.coverVersion, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
-        val stackColor = book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(fade).bounceClick { onOpen(book.id) }) {
-                Box(Modifier.width(w + 4.dp).height(h + 4.dp)) {
-                    // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
-                    Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape)
-                        .background(stackColor.copy(alpha = 0.5f)))
-                    Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
-                        .background(stackColor.copy(alpha = 0.75f)))
-                    // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
-                    SketchbookCover(
-                        modifier = Modifier.width(w).height(h)
-                            .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
-                        coverColor = stackColor,
-                        coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
-                    ) {
-                        if (book.shared) {
-                            Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
-                                .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
+private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, onOpen: (String) -> Unit, onLongPress: (Sketchbook) -> Unit) {
+    val listState = rememberLazyListState()
+    // HorizontalPager는 한 장을 넘기고 나면 관성이 그 장에서 뚝 끊기는 느낌이 있었다(손을 떼기 전까지
+    // 부드럽게 이어지지 않음) — LazyRow + snap fling behavior는 손을 뗄 때까지 관성 스크롤이 자연스럽게
+    // 이어지다가, 멈추는 순간에만 가장 가까운 표지로 스냅한다(참고 프로젝트와 동일 조합).
+    val snapFling = rememberSnapFlingBehavior(listState)
+    // 지금 화면 가운데에 가장 가까운 표지의 인덱스 — 아래 타이틀·점 인디케이터가 이 값 하나만 본다.
+    val centeredIndex by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val viewCenter = (info.viewportStartOffset + info.viewportEndOffset) / 2
+            info.visibleItemsInfo.minByOrNull { kotlin.math.abs(it.offset + it.size / 2 - viewCenter) }?.index ?: 0
+        }
+    }
+    val centeredBook = books.getOrNull(centeredIndex)
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxSize()) {
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            // Side padding sized so the focused cover gets its full spec width, with whatever room is
+            // left over used to peek the neighbours (never negative, even on narrow phones).
+            val peek = ((maxWidth - Dimens.Home.carouselCenterW) / 2).coerceAtLeast(20.dp)
+            LazyRow(
+                state = listState,
+                flingBehavior = snapFling,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = peek),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                itemsIndexed(books, key = { _, b -> b.id }) { index, book ->
+                    // 화면 중심에서 얼마나 떨어져 있는지(0=한가운데, 1=옆으로 완전히 밀려남) — 매
+                    // 프레임 레이아웃 정보에서 다시 계산해서 표지 크기·그림자·흐림 정도에 반영한다.
+                    val distance by remember(index) {
+                        derivedStateOf {
+                            val info = listState.layoutInfo
+                            val viewCenter = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                            val item = info.visibleItemsInfo.firstOrNull { it.index == index }
+                            if (item != null) {
+                                val itemCenter = item.offset + item.size / 2f
+                                val halfViewport = (info.viewportEndOffset - info.viewportStartOffset) / 2f
+                                (kotlin.math.abs(itemCenter - viewCenter) / halfViewport).coerceIn(0f, 1f)
+                            } else 1f
+                        }
+                    }
+                    val w = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterW, Dimens.Home.carouselSideW, distance)
+                    val h = androidx.compose.ui.unit.lerp(Dimens.Home.carouselCenterH, Dimens.Home.carouselSideH, distance)
+                    val fade = 1f - distance * 0.5f
+                    // Shadow strength follows proximity too — the focused cover "lifts forward", neighbours
+                    // recede — so the size shrink alone doesn't have to carry the whole depth illusion.
+                    val elevation = androidx.compose.ui.unit.lerp(18.dp, 4.dp, distance)
+                    val coverShape = SketchbookCoverShape
+                    // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 (커스텀 지정 시) coverColor, 그것도
+                    // 없으면 기본색을 보여준다(목록탭 CoverCard와 동일). coverVersion을 키에 넣어야 같은 id라도
+                    // 표지 사진이 바뀌면 다시 읽어온다.
+                    var cover by remember(book.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
+                    LaunchedEffect(book.id, book.coverVersion, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
+                    val stackColor = book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor
+                    Box(Modifier.fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier.width(w + 4.dp).height(h + 4.dp).alpha(fade)
+                                .bounceClick(onLongClick = { onLongPress(book) }) { onOpen(book.id) },
+                        ) {
+                            // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
+                            Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape)
+                                .background(stackColor.copy(alpha = 0.5f)))
+                            Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
+                                .background(stackColor.copy(alpha = 0.75f)))
+                            // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
+                            SketchbookCover(
+                                modifier = Modifier.width(w).height(h)
+                                    .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
+                                coverColor = stackColor,
+                                coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
+                            ) {
+                                if (book.shared) {
+                                    Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
+                                        .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
+                                }
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(6.dp))
-                Text(book.name, fontSize = titleSp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp))
-                Text(book.dateLabel, fontSize = dateSp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
-    }
+
+        // 가운데 표지 하나만의 정보 — 위: 스케치북 이름(큰 타이틀), 아래: 생성일·캔버스 사이즈·배경명
+        // (작은 타이틀). 캐러셀이 넘어갈 때마다 centeredIndex가 바뀌면서 이 블록만 다시 그려진다.
+        Spacer(Modifier.height(14.dp))
+        Text(
+            centeredBook?.name ?: "", fontSize = Dimens.Home.carouselTitleSp, fontWeight = FontWeight.Bold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            centeredBook?.let { b ->
+                val bgLabel = Catalog.backgrounds.firstOrNull { it.key == b.bgKey }?.label ?: b.bgKey
+                "${b.dateLabel} · ${b.size.label} · $bgLabel"
+            } ?: "",
+            fontSize = Dimens.Home.carouselSubtitleSp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        )
+
+        // 점 인디케이터 — 지금 몇 번째 스케치북인지 한눈에.
+        if (books.size > 1) {
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                repeat(books.size) { i ->
+                    val selected = i == centeredIndex
+                    Box(
+                        Modifier.size(if (selected) 8.dp else 5.dp).clip(CircleShape)
+                            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)),
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
     }
 }
 
@@ -347,6 +454,7 @@ private fun gestureActionLabel(a: GestureAction) = when (a) {
     GestureAction.UNDO -> "뒤로가기"
     GestureAction.REDO -> "앞으로가기"
     GestureAction.EYEDROP -> "색상 스포이드"
+    GestureAction.TOGGLE_TOOLBARS -> "브러시바 최소화/펼치기"
 }
 
 private fun gestureActionIcon(a: GestureAction): ImageVector = when (a) {
@@ -354,6 +462,7 @@ private fun gestureActionIcon(a: GestureAction): ImageVector = when (a) {
     GestureAction.UNDO -> Icons.AutoMirrored.Filled.Undo
     GestureAction.REDO -> Icons.AutoMirrored.Filled.Redo
     GestureAction.EYEDROP -> Icons.Filled.Colorize
+    GestureAction.TOGGLE_TOOLBARS -> Icons.Filled.UnfoldLess
 }
 
 /** One gesture's mapping: a label plus a chip row of the four possible actions. */

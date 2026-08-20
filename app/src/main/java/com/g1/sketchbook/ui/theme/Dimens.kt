@@ -46,10 +46,10 @@ object Dimens {
         val carouselSideH = 218.dp      // 캐러셀 옆(비포커스) 노트 높이
         /** 표지 가로세로 비율(가운데 노트 기준) — 스케치북 리스트 썸네일도 이 비율을 그대로 씀(고정 비율). */
         val coverRatio = (carouselCenterW / carouselCenterH)
-        val coverTitleCenterSp = 14.sp  // 가운데 노트 표지 하단 제목
-        val coverDateCenterSp = 12.sp   // 가운데 노트 표지 하단 날짜
-        val coverTitleSideSp = 12.sp    // 옆 노트 표지 하단 제목
-        val coverDateSideSp = 10.sp     // 옆 노트 표지 하단 날짜
+        // 캐러셀 아래 가운데 표지 하나만 보여주는 타이틀 — 큰 제목(이름)/작은 부제(생성일·사이즈·배경명).
+        val carouselTitleSp = 18.sp
+        val carouselSubtitleSp = 12.sp
+        val editCoverCardWidth = 350.dp  // 표지 수정 시트 최대 폭(Wizard.cardWidth와 별개 — 내용이 더 많음)
     }
 
     /** 새 스케치북 만들기 화면 (팝업 카드 — 이름/사이즈/배경을 한 화면에서 선택) */

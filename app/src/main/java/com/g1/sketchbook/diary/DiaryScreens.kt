@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,7 +32,6 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,6 +54,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -64,17 +65,21 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.roundToInt
 import kotlin.random.Random
 import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
+import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.sketchbook.Catalog
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Cavorting
@@ -96,6 +101,10 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
     var brush by remember { mutableStateOf(BrushType.PEN) }
     var color by remember { mutableLongStateOf(0xFF1E2D4CL) }
     var erasing by remember { mutableStateOf(false) }
+    var lassoActive by remember { mutableStateOf(false) }
+    var fillActive by remember { mutableStateOf(false) }
+    var fillCrayonStyle by remember { mutableStateOf(false) }
+    var hasLassoSelection by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
     var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
@@ -111,56 +120,109 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     val size = remember { Catalog.size("a4") }
     val cw = size.pxW(); val ch = size.pxH()
+    // 스케치북/공유노트와 동일한 오버레이+dock+드래그+최소화+잠금+전체화면 구조로 통일(2026-08-20,
+    // 예전엔 캔버스 아래 고정된 단순 바 하나뿐이었음). 다이어리는 하루 단위라 페이지 버튼만 없다.
+    var fullscreen by remember { mutableStateOf(false) }
+    var locked by remember { mutableStateOf(false) }
+    var toolbarCollapsed by remember { mutableStateOf(false) }
+    var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
+    var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
-    BackHandler { onBack() }
-    // Full-bleed canvas at A4 portrait ratio (opens full-screen, like a sketchbook).
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(Dimens.Canvas.outerPadding), contentAlignment = Alignment.Center) {
-            val ratio = cw.toFloat() / ch
-            val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
-            val h = w / ratio
-            Box(Modifier.width(w).height(h)) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { c ->
-                        BrushView(c).also { v ->
-                            v.paper = BitmapFactory.decodeResource(c.resources, R.drawable.paper_watercolor)
-                            v.initCanvas(cw, ch)
-                            v.loadContent(repo?.load(date))
-                            view = v
-                        }
-                    },
-                    update = { v ->
-                        v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
-                        v.erasing = erasing; v.eraserBlur = eraserBlur
-                        v.twoFingerTapAction = session?.twoFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
-                        v.threeFingerTapAction = session?.threeFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
-                        v.longPressAction = session?.longPressAction ?: com.g1.sketchbook.brush.GestureAction.NONE
-                        v.eyedropArmed = eyedropArmed
-                        v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
-                        v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
-                        v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
-                        v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo?.save(date, b) } } }
-                    },
-                )
-                eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
+    com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
+    BackHandler {
+        when {
+            fullscreen -> fullscreen = false
+            else -> onBack()
+        }
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .let { if (fullscreen) it else it.systemBarsPadding() },
+    ) {
+        val density2 = LocalDensity.current
+        Box(Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding), contentAlignment = Alignment.Center) {
+            BoxWithConstraints {
+                val ratio = cw.toFloat() / ch
+                val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
+                val h = w / ratio
+                Box(Modifier.width(w).height(h)) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { c ->
+                            BrushView(c).also { v ->
+                                v.paper = BitmapFactory.decodeResource(c.resources, R.drawable.paper_watercolor)
+                                v.initCanvas(cw, ch)
+                                v.loadContent(repo?.load(date))
+                                view = v
+                            }
+                        },
+                        update = { v ->
+                            v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
+                            v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
+                            v.lassoMode = lassoActive; v.fillMode = fillActive; v.fillCrayonStyle = fillCrayonStyle
+                            v.onLassoSelectionChanged = { hasLassoSelection = it }
+                            v.twoFingerTapAction = session?.twoFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
+                            v.threeFingerTapAction = session?.threeFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
+                            v.longPressAction = session?.longPressAction ?: com.g1.sketchbook.brush.GestureAction.NONE
+                            v.eyedropArmed = eyedropArmed
+                            v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
+                            v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
+                            v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
+                            v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
+                            v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo?.save(date, b) } } }
+                        },
+                    )
+                    eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
+                }
             }
         }
+        fun barModifier(dock: com.g1.sketchbook.brush.ToolbarDock, collapsed: Boolean, dragPx: androidx.compose.ui.geometry.Offset) = Modifier
+            .align(dock.alignment())
+            .let {
+                val horizontal = dock == com.g1.sketchbook.brush.ToolbarDock.TOP || dock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM
+                if (!collapsed && horizontal) it.fillMaxWidth() else it
+            }
+            .offset { androidx.compose.ui.unit.IntOffset(dragPx.x.roundToInt(), dragPx.y.roundToInt()) }
         BrushControls(brush, color, sizeDp, opacity, erasing,
-            onBrush = { brush = it; erasing = false }, onColor = { color = it; erasing = false },
+            onBrush = { brush = it; erasing = false; lassoActive = false; fillActive = false },
+            onColor = { color = it; erasing = false },
             onSize = { if (erasing) eraserSize = it else sizeByBrush[brush] = it },
             onOpacity = { if (erasing) eraserOpacity = it else opacityByBrush[brush] = it },
-            onToggleErase = { erasing = !erasing },
+            onToggleErase = { erasing = !erasing; if (erasing) { lassoActive = false; fillActive = false } },
             eraserBlur = eraserBlur, onEraserBlur = { eraserBlur = it },
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
             onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo?.save(date, b) } } },
-            onBack = onBack, onRotate = { view?.rotate() },
+            onBack = onBack,
             favorites = favorites,
             onEditFavorite = { i, c ->
                 val nf = favorites.toMutableList(); nf[i] = c; favorites = nf
                 session?.let { it.favoriteColors = nf }
             },
-            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed })
+            eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
+            lassoActive = lassoActive,
+            onToggleLasso = { lassoActive = !lassoActive; if (lassoActive) { erasing = false; fillActive = false } },
+            hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
+            fillActive = fillActive,
+            onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
+            fillCrayonStyle = fillCrayonStyle, onToggleFillStyle = { fillCrayonStyle = !fillCrayonStyle },
+            collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
+            onDragBar = { d -> toolbarDragPx += d },
+            onDragBarEnd = {
+                val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
+                toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, toolbarDragPx, cwPx, chPx)
+                toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
+            },
+            dock = toolbarDock,
+            modifier = barModifier(toolbarDock, toolbarCollapsed, toolbarDragPx),
+        )
+        // 화면버튼(회전/잠금/전체화면)은 가로/세로 상관없이 항상 우측 상단에 고정된 확장 버튼 —
+        // 탭하면 펼쳐지고 기능을 고르거나 밖을 탭하면 자동으로 닫힌다(2026-08-20).
+        com.g1.sketchbook.brush.ScreenControls(
+            onRotate = { view?.rotate() },
+            locked = locked, onToggleLock = { locked = !locked },
+            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+            modifier = Modifier.align(Alignment.TopEnd),
+        )
     }
 }
 
@@ -189,10 +251,10 @@ fun DiaryCalendarScreen(
         title = "A piece of today",
         actions = {
             IconButton(onClick = { onOpenDiary(today) }) {
-                Icon(
-                    Icons.Filled.Edit,
+                Image(
+                    painterResource(R.drawable.paint_palette_1),
                     "오늘 일기 그리기",
-                    tint = MaterialTheme.colorScheme.primary,
+                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
                     modifier = Modifier.size(Dimens.Calendar.editIcon),
                 )
             }

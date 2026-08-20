@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,16 +39,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
+import com.g1.sketchbook.brush.ScreenControls
 import com.g1.sketchbook.brush.ToolbarDock
 import com.g1.sketchbook.brush.alignment
+import com.g1.sketchbook.brush.nearestDock
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlin.math.roundToInt
 
 private enum class PreviewViewMode { GRID, MAXIMIZE }
-
-// 최소화된 버튼바가 도킹된 가장자리를 따라 미끄러질 때, 화면 밖으로 나가지 않게 남겨두는 여유
-// 폭/높이의 절반 정도(정확한 실측 대신 대략치 — 실제 화면의 같은 상수와 동일한 값).
-private val CollapsedBarHalfExtent = 90.dp
 
 /** Data-free rendering of the shared-canvas chrome for Android Studio Preview. */
 @Composable
@@ -70,43 +67,23 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
     var collapsed by remember { mutableStateOf(false) }
     var dock by remember { mutableStateOf(ToolbarDock.BOTTOM) }
     var dragPx by remember { mutableStateOf(Offset.Zero) }
-    var collapsedOffsetPx by remember { mutableStateOf(0f) }
 
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "나가기")
-            }
-            Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                Text("Draw Together", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
-                Text("3명과 함께 · 코드 DAY123", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            SegGroup {
-                SegChip("분할", mode == PreviewViewMode.GRID) { mode = PreviewViewMode.GRID }
-                SegChip("최대화", mode == PreviewViewMode.MAXIMIZE) { mode = PreviewViewMode.MAXIMIZE }
-            }
-        }
-
-        // 버튼바: 분할 패널 위에 떠 있는 오버레이(실제 SharedBookScreen과 동일 구조) — 패널 레이아웃
-        // 자체는 그대로 두고, dock/드래그 손잡이를 미리보기에서도 확인할 수 있게 BoxWithConstraints로 감쌈.
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
+        // 뒤로가기 버튼·헤더 바 없이 캔버스에 화면을 최대한 내준다(실제 SharedBookScreen과 동일,
+        // 2026-08-20) — 스케치북 이름은 아래에서 참가자 캔버스 위로 겹쳐 뜨는 라벨로 대신 그린다.
+        // 바깥 여백·칸 사이 간격 없음 — 구분은 각 칸의 테두리 선 하나로만.
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val density2 = LocalDensity.current
             when (mode) {
-                PreviewViewMode.GRID -> Column(
-                    Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PreviewViewMode.GRID -> Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.weight(1f).fillMaxWidth()) {
                         PreviewPane("Hana", false, Color(0xFFF2DCCB), Modifier.weight(1f).fillMaxHeight())
                         PreviewPane("Joon", false, Color(0xFFDCE6D6), Modifier.weight(1f).fillMaxHeight())
                     }
-                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.weight(1f).fillMaxWidth()) {
                         PreviewPane("Mina", false, Color(0xFFD8E2EB), Modifier.weight(1f).fillMaxHeight())
                         PreviewPane("나 · Minjun", true, Color(0xFFF7F1E4), Modifier.weight(1f).fillMaxHeight())
                     }
@@ -119,27 +96,31 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
                     ) {
                         PreviewPane("Hana", false, Color(0xFFF2DCCB), Modifier.fillMaxSize())
                     }
-                    Row(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // top padding 64dp: 화면버튼(ScreenControls)이 항상 우측 상단에 고정돼 있어
+                    // 이 참가자 선택 줄과 겹치지 않도록 그 아래로 내림(2026-08-20).
+                    Row(Modifier.align(Alignment.TopEnd).padding(top = 64.dp, start = 8.dp, end = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.MoreVert, "팝업에 표시할 참가자 선택")
                         Switch(checked = false, onCheckedChange = {})
                     }
                 }
             }
 
-            val horizontalDock = dock == ToolbarDock.TOP || dock == ToolbarDock.BOTTOM
-            val barModifier = Modifier
-                .align(dock.alignment())
-                .let { if (!collapsed && horizontalDock) it.fillMaxWidth() else it }
-                .offset {
-                    if (collapsed) {
-                        IntOffset(
-                            if (horizontalDock) collapsedOffsetPx.roundToInt() else 0,
-                            if (!horizontalDock) collapsedOffsetPx.roundToInt() else 0,
-                        )
-                    } else {
-                        IntOffset(dragPx.x.roundToInt(), dragPx.y.roundToInt())
-                    }
+            // 스케치북 이름 — 참가자 캔버스 맨 위에 떠서 겹치는 작은 라벨(실제 화면과 동일 구조).
+            Box(
+                Modifier.align(Alignment.TopCenter).padding(top = 6.dp)
+                    .background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text("Draw Together", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+
+            fun barModifier(barDock: ToolbarDock, barCollapsed: Boolean, barDragPx: Offset) = Modifier
+                .align(barDock.alignment())
+                .let {
+                    val horizontal = barDock == ToolbarDock.TOP || barDock == ToolbarDock.BOTTOM
+                    if (!barCollapsed && horizontal) it.fillMaxWidth() else it
                 }
+                .offset { IntOffset(barDragPx.x.roundToInt(), barDragPx.y.roundToInt()) }
             BrushControls(
                 brush, color, sizeDp, effectiveOpacity, erasing,
                 onBrush = { brush = it; erasing = false },
@@ -150,42 +131,29 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
                 eraserBlur = eraserBlur,
                 onEraserBlur = { eraserBlur = it },
                 onUndo = {}, onRedo = {}, onClear = {},
-                onOpenPages = {},
-                onRotate = {},
-                locked = locked,
-                onToggleLock = { locked = !locked },
-                fullscreen = fullscreen,
-                onToggleFullscreen = { fullscreen = !fullscreen },
                 collapsed = collapsed,
                 onToggleCollapsed = { collapsed = !collapsed },
-                onDragBar = { d ->
-                    if (collapsed) {
-                        val delta = if (horizontalDock) d.x else d.y
-                        val limitPx = with(density2) {
-                            (if (horizontalDock) maxWidth else maxHeight).toPx() / 2f - CollapsedBarHalfExtent.toPx()
-                        }
-                        collapsedOffsetPx = (collapsedOffsetPx + delta).coerceIn(-limitPx, limitPx)
-                    } else {
-                        dragPx += d
-                    }
-                },
+                onDragBar = { d -> dragPx += d },
                 onDragBarEnd = {
-                    if (!collapsed) {
-                        val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
-                        val baseX = when (dock) { ToolbarDock.LEFT -> 0f; ToolbarDock.RIGHT -> cwPx; else -> cwPx / 2f }
-                        val baseY = when (dock) { ToolbarDock.TOP -> 0f; ToolbarDock.BOTTOM -> chPx; else -> chPx / 2f }
-                        val x = baseX + dragPx.x; val y = baseY + dragPx.y
-                        val distances = mapOf(
-                            ToolbarDock.LEFT to x, ToolbarDock.RIGHT to (cwPx - x),
-                            ToolbarDock.TOP to y, ToolbarDock.BOTTOM to (chPx - y),
-                        )
-                        dock = distances.minByOrNull { it.value }?.key ?: dock
-                        dragPx = Offset.Zero
-                    }
+                    val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
+                    dock = nearestDock(dock, dragPx, cwPx, chPx)
+                    dragPx = Offset.Zero
                 },
                 dock = dock,
-                modifier = barModifier,
+                modifier = barModifier(dock, collapsed, dragPx),
             )
+            // 우측 상단: 분할/최대화 아이콘 토글 + 화면버튼, 실제 화면과 동일하게 한 줄에.
+            Row(Modifier.align(Alignment.TopEnd), verticalAlignment = Alignment.CenterVertically) {
+                ModeToggleButton(mode == PreviewViewMode.GRID) {
+                    mode = if (mode == PreviewViewMode.GRID) PreviewViewMode.MAXIMIZE else PreviewViewMode.GRID
+                }
+                ScreenControls(
+                    onOpenPages = {},
+                    onRotate = {},
+                    locked = locked, onToggleLock = { locked = !locked },
+                    fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+                )
+            }
         }
     }
 }

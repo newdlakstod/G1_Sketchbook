@@ -35,14 +35,19 @@ import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragIndicator
+import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LineWeight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Opacity
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
+import androidx.compose.material.icons.filled.Texture
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.AlertDialog
@@ -64,6 +69,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -99,6 +105,21 @@ fun ToolbarDock.alignment(): Alignment = when (this) {
     ToolbarDock.RIGHT -> Alignment.CenterEnd
 }
 
+/** 버튼바를 드래그로 놓은 위치에서 가장 가까운 화면 가장자리를 계산 — 펼친 상태든 최소화 상태든
+ *  동일하게 적용해 자유 2D 드래그 + 재도킹이 되게 한다(2026-08-20, 예전엔 최소화 상태만 지금
+ *  도킹된 가장자리의 축으로만 밀리는 특수 케이스였는데 통일함). [dragPx]는 [current] 기준 드래그
+ *  누적량, [containerWidthPx]/[containerHeightPx]는 바가 떠 있는 영역(px) 크기. */
+fun nearestDock(current: ToolbarDock, dragPx: Offset, containerWidthPx: Float, containerHeightPx: Float): ToolbarDock {
+    val baseX = when (current) { ToolbarDock.LEFT -> 0f; ToolbarDock.RIGHT -> containerWidthPx; else -> containerWidthPx / 2f }
+    val baseY = when (current) { ToolbarDock.TOP -> 0f; ToolbarDock.BOTTOM -> containerHeightPx; else -> containerHeightPx / 2f }
+    val x = baseX + dragPx.x; val y = baseY + dragPx.y
+    val distances = mapOf(
+        ToolbarDock.LEFT to x, ToolbarDock.RIGHT to (containerWidthPx - x),
+        ToolbarDock.TOP to y, ToolbarDock.BOTTOM to (containerHeightPx - y),
+    )
+    return distances.minByOrNull { it.value }?.key ?: current
+}
+
 val BrushPalette = listOf(
     0xFF1E2D4CL, 0xFF2B4C9BL, 0xFF4DABF7L, 0xFF4ECDC4L, 0xFF6E9646L,
     0xFFE0A53CL, 0xFFE05454L, 0xFFCE7A7AL, 0xFF9775FAL, 0xFFFFFFFFL,
@@ -114,7 +135,8 @@ private val HueWheel = listOf(
 // 겹쳐도 터치는 정상 동작하도록 의도된 것 — 실제 보이는 간격은 이 값과 spacedBy 둘이 함께 정한다.
 private val ButtonTapSize = 30.dp
 
-/** Single-row floating dock. Optional leading controls (back / pages / rotate) show when provided. */
+/** Single-row floating dock for brush/color/eraser tools. Page/rotate/lock/fullscreen live in the
+ *  separate [ScreenControls] surface now — this one only keeps `onBack` (used by the diary editor). */
 @Composable
 fun BrushControls(
     brush: BrushType, color: Long, sizeDp: Float, opacity: Float, erasing: Boolean,
@@ -124,21 +146,23 @@ fun BrushControls(
     eraserBlur: Float = 0f,
     onEraserBlur: (Float) -> Unit = {},
     onBack: (() -> Unit)? = null,
-    onRotate: (() -> Unit)? = null,
-    /** Opens the page list/turn panel — a single dedicated entry point (system back already exits,
-     *  so there's no separate "나가기" button here anymore for screens that pass this). */
-    onOpenPages: (() -> Unit)? = null,
     favorites: List<Long> = BrushPalette.take(5),
     onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
     eyedropArmed: Boolean = false,
     onToggleEyedrop: () -> Unit = {},
-    /** 전체화면: hides the system status/nav bars for more drawing room. Icon reflects current state. */
-    fullscreen: Boolean = false,
-    onToggleFullscreen: (() -> Unit)? = null,
-    /** 화면 잠금: freezes pinch zoom/pan and the 90° rotate button so they can't be nudged by accident
-     *  mid-drawing; drawing itself is unaffected. Icon reflects current state. */
-    locked: Boolean = false,
-    onToggleLock: (() -> Unit)? = null,
+    /** 올가미(라소) 선택 도구 — 켜져 있으면 손가락으로 영역을 그려 선택하고, 안쪽을 드래그해서
+     *  옮길 수 있다. hasLassoSelection이 true면 선택을 지우는 버튼이 추가로 나타난다. */
+    lassoActive: Boolean = false,
+    onToggleLasso: () -> Unit = {},
+    hasLassoSelection: Boolean = false,
+    onDeleteLassoSelection: () -> Unit = {},
+    /** 페인트통(채우기) 도구 — 켜져 있으면 탭한 지점과 이어진 같은 색 영역을 현재 색으로 채운다.
+     *  fillCrayonStyle이 true(기본)면 크레파스 질감으로, false면 매끈한 단색으로 채운다 — 페인트통이
+     *  켜져 있을 때만 스타일 전환 버튼이 나타난다. */
+    fillActive: Boolean = false,
+    onToggleFill: () -> Unit = {},
+    fillCrayonStyle: Boolean = true,
+    onToggleFillStyle: () -> Unit = {},
     /** 버튼바 최소화: 켜져 있으면 현재 브러시·색상 두 개만 보이는 작은 형태로 줄어든다(둘 다 탭하면
      *  그 자리에서 바로 바뀜). onToggleCollapsed가 null이면 최소화 버튼 자체가 나타나지 않는다. */
     collapsed: Boolean = false,
@@ -248,8 +272,9 @@ fun BrushControls(
                 ) { collapsedContent() }
             }
         } else {
-        val hasNav = onBack != null || onOpenPages != null || onRotate != null ||
-            onToggleLock != null || onToggleFullscreen != null
+        // 페이지/회전/잠금/전체화면은 별도 ScreenControls 서피스로 옮겼음(2026-08-20) — 여기 남은
+        // 건 onBack뿐(다이어리에서만 쓰임).
+        val hasNav = onBack != null
 
         // 버튼바를 구분선 기준 "그룹"으로 나눠서 그린다 — 그룹 안 버튼 간격(GroupButtonGap)과
         // 그룹-구분선 사이 간격(GroupDividerGap)을 서로 다른 Arrangement.spacedBy로 따로 조절하기
@@ -258,22 +283,6 @@ fun BrushControls(
             if (onDragBar != null && onDragBarEnd != null) add { DragHandle(onDragBar, onDragBarEnd) }
             if (hasNav) add {
                 onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
-                // Page turning/thumbnail list/selection all live behind one button now — see PagePanel.
-                onOpenPages?.let { IconBtn(Icons.Filled.Layers, "페이지", onClick = it) }
-                onRotate?.let {
-                    // Dimmed (not disabled) while locked — BrushView.rotate() itself no-ops, this just
-                    // signals why tapping does nothing instead of silently failing.
-                    IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전",
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (locked) 0.35f else 1f), onClick = it)
-                }
-                onToggleLock?.let {
-                    IconBtn(if (locked) Icons.Filled.Lock else Icons.Filled.LockOpen, if (locked) "화면 잠금 해제" else "화면 잠금",
-                        tint = if (locked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
-                }
-                onToggleFullscreen?.let {
-                    IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "전체화면 종료" else "전체화면",
-                        tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, onClick = it)
-                }
             }
             add {
                 // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
@@ -313,6 +322,22 @@ fun BrushControls(
                     onSize = onSize, onOpacity = onOpacity,
                     showBlur = true, blur = eraserBlur, onBlur = onEraserBlur) { t ->
                     Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                }
+                // 올가미(선택)·페인트통(채우기) — 굵기/불투명도 패널이 필요 없는 단순 토글이라
+                // 다른 브러시 버튼과 달리 팝업 없이 바로 켜고 끈다(스포이드 버튼과 같은 패턴).
+                IconBtn(Icons.Filled.Gesture, "올가미 선택",
+                    tint = if (lassoActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                    onClick = onToggleLasso)
+                if (hasLassoSelection) {
+                    IconBtn(Icons.Filled.Delete, "선택 영역 지우기", onClick = onDeleteLassoSelection)
+                }
+                IconBtn(Icons.Filled.FormatColorFill, "페인트통",
+                    tint = if (fillActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                    onClick = onToggleFill)
+                if (fillActive) {
+                    IconBtn(if (fillCrayonStyle) Icons.Filled.Texture else Icons.Filled.Circle,
+                        if (fillCrayonStyle) "채우기 스타일: 크레파스(탭하면 단색으로)" else "채우기 스타일: 단색(탭하면 크레파스로)",
+                        onClick = onToggleFillStyle)
                 }
             }
             add {
@@ -359,8 +384,9 @@ fun BrushControls(
                     }
                 }
                 // Eyedropper: arm it, then the next tap on the canvas picks that colour instead of drawing.
+                // 브러시 버튼과 같은 톤 — 비무장 시 흐린 회색, 무장 시 강조색으로 또렷하게 구분.
                 IconBtn(Icons.Filled.Colorize, "스포이드",
-                    tint = if (eyedropArmed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    tint = if (eyedropArmed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                     onClick = onToggleEyedrop)
             }
             add {
@@ -394,6 +420,72 @@ fun BrushControls(
                 }
             }
         }
+        }
+    }
+}
+
+/** 페이지/회전/화면잠금/전체화면 — 그림 자체가 아니라 "화면"을 다루는 버튼들만 모은 작은 확장 버튼
+ *  (2026-08-20, 예전엔 드래그로 옮기고 최소화할 수 있는 독립 바였는데, 화면 우측 상단 고정 + 항상
+ *  닫힌 상태로 시작하는 팝업 방식으로 교체). 버튼을 탭하면 아래로 펼쳐지고, 기능을 하나 고르거나
+ *  팝업 바깥을 탭하면 즉시 다시 닫힌다 — 펼침 상태 자체는 어디에도 남지 않는다. 4개 버튼 모두
+ *  nullable이라, 페이지 개념이 없는 화면(다이어리)은 onOpenPages만 null로 넘기면 자동으로 빠진다. */
+@Composable
+fun ScreenControls(
+    onOpenPages: (() -> Unit)? = null,
+    onRotate: (() -> Unit)? = null,
+    /** 화면 잠금: freezes pinch zoom/pan and the 90° rotate button so they can't be nudged by accident
+     *  mid-drawing; drawing itself is unaffected. Icon reflects current state. */
+    locked: Boolean = false,
+    onToggleLock: (() -> Unit)? = null,
+    /** 전체화면: hides the system status/nav bars for more drawing room. Icon reflects current state. */
+    fullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
+    val edgeMargin = with(LocalDensity.current) { 12.dp.roundToPx() }
+    Box(modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
+        // 캔버스 위에 항상 떠 있는 오버레이라 그림을 가리지 않도록 평소엔 반투명(50%)으로 — 탭하면
+        // 펼쳐지는 팝업 내용물은 완전 불투명 그대로 둔다.
+        Surface(
+            shape = CircleShape, color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 8.dp, tonalElevation = 2.dp,
+            modifier = Modifier.alpha(0.5f),
+        ) {
+            Box(Modifier.padding(6.dp)) {
+                IconBtn(Icons.Filled.Tune, "화면 설정 열기", onClick = { expanded = true })
+            }
+        }
+        if (expanded) {
+            Popup(BelowAnchor(gap, edgeMargin), { expanded = false }, PopupProperties(focusable = true)) {
+                Surface(
+                    shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 10.dp, tonalElevation = 3.dp,
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(15.dp),
+                    ) {
+                        onOpenPages?.let { open -> IconBtn(Icons.Filled.Layers, "페이지") { open(); expanded = false } }
+                        onRotate?.let { rotate ->
+                            // Dimmed (not disabled) while locked — BrushView.rotate() itself no-ops, this just
+                            // signals why tapping does nothing instead of silently failing.
+                            IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (locked) 0.35f else 1f)) { rotate(); expanded = false }
+                        }
+                        onToggleLock?.let { toggle ->
+                            IconBtn(if (locked) Icons.Filled.Lock else Icons.Filled.LockOpen, if (locked) "화면 잠금 해제" else "화면 잠금",
+                                tint = if (locked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) { toggle(); expanded = false }
+                        }
+                        onToggleFullscreen?.let { toggle ->
+                            IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "전체화면 종료" else "전체화면",
+                                tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) { toggle(); expanded = false }
+                        }
+                    }
+                }
+            }
         }
     }
 }

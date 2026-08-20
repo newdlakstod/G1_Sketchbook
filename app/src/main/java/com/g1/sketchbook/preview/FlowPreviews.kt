@@ -3,7 +3,6 @@ package com.g1.sketchbook.preview
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.g1.sketchbook.diary.CleanCalendarScreen
-import com.g1.sketchbook.diary.DiaryEditorScreen
 import com.g1.sketchbook.sketchbook.SketchbookTab
 import com.g1.sketchbook.sketchbook.WType
 import com.g1.sketchbook.ui.theme.DaymoryTheme
@@ -23,12 +22,6 @@ private fun CreateSharedPreview() = WizardPreview(WType.SHARED_NEW)
 @Preview(name = "12 Join shared sketchbook", showBackground = true, widthDp = PREVIEW_WIDTH, heightDp = PREVIEW_HEIGHT)
 @Composable
 private fun JoinSharedPreview() = WizardPreview(WType.SHARED_JOIN)
-
-@Preview(name = "14 Diary editor", showBackground = true, widthDp = PREVIEW_WIDTH, heightDp = PREVIEW_HEIGHT)
-@Composable
-private fun DiaryEditorPreview() = PreviewTheme {
-    DiaryEditorScreen(date = "2026-08-17", onBack = {}, previewMode = true)
-}
 
 @Preview(name = "15 Full calendar", showBackground = true, widthDp = PREVIEW_WIDTH, heightDp = PREVIEW_HEIGHT)
 @Composable

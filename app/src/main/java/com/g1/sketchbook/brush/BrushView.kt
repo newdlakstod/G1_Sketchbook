@@ -24,7 +24,7 @@ import kotlin.random.Random
 enum class BrushType { PEN, PENCIL, CRAYON, WATER }
 
 /** Action a gesture can trigger — mapped per-gesture in Settings, off (NONE) by default. */
-enum class GestureAction { NONE, UNDO, REDO, EYEDROP }
+enum class GestureAction { NONE, UNDO, REDO, EYEDROP, TOGGLE_TOOLBARS }
 
 /**
  * Fixed-resolution canvas: strokes are drawn into bitmaps sized to the sketchbook's own pixel
@@ -66,6 +66,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var onEyedrop: ((Int) -> Unit)? = null
     /** Armed drag was released outside the canvas / cancelled — caller should hide its preview bubble. */
     var onEyedropCancel: (() -> Unit)? = null
+    /** GestureAction.TOGGLE_TOOLBARS fired — caller toggles its own floating toolbars' collapsed
+     *  state (BrushView has no notion of them, just relays the gesture). */
+    var onToggleToolbars: (() -> Unit)? = null
     /** Fires once per three-finger horizontal swipe past the threshold: +1 = next page, -1 = previous.
      *  Purely a signal (no built-in animation) — the caller just calls goTo(page±dir) instantly. Two
      *  fingers still pinch-zoom/pan as before; a third finger switches that gesture to page-turning
@@ -75,6 +78,36 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
      *  armed for the whole press-drag-release; disarmed automatically on release. */
     var eyedropArmed = false
     private var eyedropDragging = false
+
+    /** 올가미(라소) 선택 모드 — 켜져 있으면 손가락으로 자유형 영역을 그려 선택하고, 선택 영역
+     *  안쪽을 다시 눌러 드래그하면 그 자리로 옮길 수 있다. 다른 브러시로 바꿔 꺼지면(false로
+     *  세팅되면) 남아있던 선택은 자동으로 풀린다. */
+    var lassoMode: Boolean = false
+        set(value) { if (!value && field) clearSelection(); field = value }
+    /** 페인트통(채우기) 모드 — 켜져 있으면 손가락을 대는 즉시 그 지점과 이어진 같은 색 영역
+     *  전체를 현재 색·불투명도로 채운다(정확히 같은 색만 — 허용오차 없음). */
+    var fillMode: Boolean = false
+    /** 페인트통 채우기 스타일 — true면 [crayonFillPixel]로 크레파스 입자감, false(기본)면 매끈한
+     *  단색(source-over 알파합성 그대로). */
+    var fillCrayonStyle: Boolean = false
+    /** 라소로 선택 영역이 생기면(true) / 없어지면(false) 알려준다 — 툴바의 "선택 지우기" 버튼을
+     *  선택이 있을 때만 보여주는 용도. */
+    var onLassoSelectionChanged: ((Boolean) -> Unit)? = null
+
+    private var lassoDrawing = false
+    private val lassoPath = Path()
+    private var selectionPath: Path? = null
+    private var selectionRegion: android.graphics.Region? = null
+    private var selectionBmp: Bitmap? = null
+    private var movingSelection = false
+    private var moveStartScreenX = 0f; private var moveStartScreenY = 0f
+    private var moveDx = 0f; private var moveDy = 0f
+    private val selectionOutline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f * resources.displayMetrics.density
+        color = 0xFF444444.toInt()
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(12f, 8f), 0f)
+    }
 
     private var cw = 0; private var ch = 0
     private var contentBmp: Bitmap? = null
@@ -167,6 +200,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         pendingContent?.let { content!!.drawBitmap(it, null, RectF(0f, 0f, cw.toFloat(), ch.toFloat()), null); pendingContent = null }
         strokeBmp = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888); strokeLayer = Canvas(strokeBmp!!)
         undo.clear(); redo.clear()
+        clearSelection()
         resetZoom(); computeDisplay(); invalidate()
     }
 
@@ -256,14 +290,50 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         c.clipRect(0f, 0f, cw.toFloat(), ch.toFloat())
         drawPaper(c)
         c.drawBitmap(cb, 0f, 0f, null)
+        if (movingSelection) {
+            selectionBmp?.let { sb ->
+                val vec = floatArrayOf(moveDx, moveDy); inv.mapVectors(vec)
+                c.drawBitmap(sb, vec[0], vec[1], null)
+            }
+        }
         c.restore()
         // A thin, faint outline (no shadow) so the drawable paper edge is obvious against the
         // surrounding workspace — otherwise the letterbox margins look drawable but silently ignore touches.
         pageRect.set(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(pageRect)
         c.drawRect(pageRect, pageEdge)
+        // 라소 선택 테두리(점선, "marching ants") — 화면 좌표로 옮겨서 그려야 캔버스 크기·줌과
+        // 무관하게 항상 같은 두께로 보인다. 드래그 중이면 화면 오프셋만큼 같이 옮긴다.
+        selectionPath?.let { sp ->
+            val screenPath = Path(sp); screenPath.transform(disp)
+            if (movingSelection) screenPath.offset(moveDx, moveDy)
+            c.drawPath(screenPath, selectionOutline)
+        }
+        if (lassoDrawing) {
+            val screenPath = Path(lassoPath); screenPath.transform(disp)
+            c.drawPath(screenPath, selectionOutline)
+        }
     }
 
-    fun clearCanvas() { pushUndo(); redo.clear(); content?.drawColor(0, PorterDuff.Mode.CLEAR); invalidate() }
+    fun clearCanvas() { pushUndo(); redo.clear(); clearSelection(); content?.drawColor(0, PorterDuff.Mode.CLEAR); invalidate() }
+
+    /** 라소로 선택된 영역의 내용만 지운다(툴바 "선택 지우기" 버튼) — 선택이 없으면 아무 것도 안 한다. */
+    fun deleteLassoSelection() {
+        val sp = selectionPath ?: return
+        pushUndo()
+        content?.let { c -> c.save(); c.clipPath(sp); c.drawColor(0, PorterDuff.Mode.CLEAR); c.restore() }
+        redo.clear()
+        clearSelection()
+        invalidate()
+        onStrokeEnd?.invoke()
+    }
+
+    private fun clearSelection() {
+        if (selectionPath == null && !movingSelection) return
+        selectionPath = null; selectionRegion = null; selectionBmp = null
+        movingSelection = false; moveDx = 0f; moveDy = 0f; lassoDrawing = false
+        onLassoSelectionChanged?.invoke(false)
+        invalidate()
+    }
     fun undo() { val b = undo.removeLastOrNull() ?: return; snapshotTo(redo); restore(b); invalidate() }
     fun redo() { val b = redo.removeLastOrNull() ?: return; snapshotTo(undo); restore(b); invalidate() }
     private fun restore(b: Bitmap) { content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) } }
@@ -280,6 +350,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     fun loadContent(saved: Bitmap?) {
         undo.clear(); redo.clear()
+        clearSelection()
         val c = content
         if (c != null && cw > 0) {
             c.drawColor(0, PorterDuff.Mode.CLEAR)
@@ -324,6 +395,47 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     onEyedropCancel?.invoke()
                 }
             }
+            return true
+        }
+        // 올가미(라소): 선택 그리기 또는(선택 안쪽을 눌렀으면) 선택 이동 — 둘 다 일반 드로잉/핀치줌과
+        // 완전히 분리된 별도 제스처(스포이드와 같은 구조).
+        if (lassoMode) {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val p = mapPoint(e.x, e.y)
+                    val sr = selectionRegion; val sp = selectionPath
+                    if (sr != null && sp != null && sr.contains(p[0].toInt(), p[1].toInt())) {
+                        pushUndo()
+                        selectionBmp = liftSelection(sp)
+                        movingSelection = true
+                        moveStartScreenX = e.x; moveStartScreenY = e.y; moveDx = 0f; moveDy = 0f
+                    } else {
+                        clearSelection()
+                        lassoDrawing = true
+                        lassoPath.reset(); lassoPath.moveTo(p[0], p[1])
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (movingSelection) {
+                        moveDx = e.x - moveStartScreenX; moveDy = e.y - moveStartScreenY
+                    } else if (lassoDrawing) {
+                        val p = mapPoint(e.x, e.y); lassoPath.lineTo(p[0], p[1])
+                    }
+                    invalidate()
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (movingSelection) commitMove() else if (lassoDrawing) commitLasso()
+                    lassoDrawing = false
+                    if (e.actionMasked == MotionEvent.ACTION_UP) performClick()
+                }
+            }
+            return true
+        }
+        // 페인트통: 손가락을 대는 즉시 그 지점과 이어진 같은 색 영역을 채운다(연속 드로잉이 아니라
+        // 한 번의 탭짜리 동작이라 ACTION_DOWN에서 바로 처리).
+        if (fillMode) {
+            if (e.actionMasked == MotionEvent.ACTION_DOWN) floodFillAt(e.x, e.y)
+            if (e.actionMasked == MotionEvent.ACTION_UP) performClick()
             return true
         }
         when (e.actionMasked) {
@@ -439,6 +551,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             GestureAction.UNDO -> undo()
             GestureAction.REDO -> redo()
             GestureAction.EYEDROP -> pickColorAt(sx, sy)?.let { c -> color = c; onEyedrop?.invoke(c) }
+            GestureAction.TOGGLE_TOOLBARS -> onToggleToolbars?.invoke()
             GestureAction.NONE -> {}
         }
     }
@@ -468,6 +581,120 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     private val tmp = FloatArray(2)
     private fun mapPoint(x: Float, y: Float): FloatArray { tmp[0] = x; tmp[1] = y; inv.mapPoints(tmp); return tmp }
+
+    /** 선택 경로 안쪽 픽셀만 복사해 새 비트맵으로 떼어내고, 원본 캔버스에서는 그 자리를 지운다
+     *  (드래그 중엔 이 떼어낸 비트맵을 화면 오프셋만큼 옮겨 그리다가, 손을 떼면 실제 위치에 합성). */
+    private fun liftSelection(path: Path): Bitmap {
+        val cb = contentBmp!!
+        val out = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888)
+        val oc = Canvas(out)
+        oc.save(); oc.clipPath(path); oc.drawBitmap(cb, 0f, 0f, null); oc.restore()
+        content?.let { c -> c.save(); c.clipPath(path); c.drawColor(0, PorterDuff.Mode.CLEAR); c.restore() }
+        return out
+    }
+
+    /** 라소로 그린 경로를 닫고 선택 영역으로 확정 — 너무 작거나 자기 자신과 안 겹쳐 빈 영역이면
+     *  선택 없이 취소된다. */
+    private fun commitLasso() {
+        lassoPath.close()
+        val region = android.graphics.Region()
+        val clip = android.graphics.Region(0, 0, cw, ch)
+        val ok = region.setPath(lassoPath, clip)
+        if (!ok || region.isEmpty) { lassoPath.reset(); return }
+        selectionPath = Path(lassoPath)
+        selectionRegion = region
+        lassoPath.reset()
+        onLassoSelectionChanged?.invoke(true)
+        invalidate()
+    }
+
+    /** 드래그로 옮긴 선택을 실제 캔버스 픽셀에 합성하고, 선택 영역 자체도 새 위치로 옮겨서 계속
+     *  선택된 상태를 유지한다(다시 드래그하거나 지우기를 바로 이어갈 수 있게). */
+    private fun commitMove() {
+        val sb = selectionBmp
+        if (sb == null) { movingSelection = false; return }
+        val vec = floatArrayOf(moveDx, moveDy); inv.mapVectors(vec)
+        content?.drawBitmap(sb, vec[0], vec[1], null)
+        selectionPath?.offset(vec[0], vec[1])
+        selectionPath?.let { sp -> selectionRegion = android.graphics.Region().apply { setPath(sp, android.graphics.Region(0, 0, cw, ch)) } }
+        movingSelection = false; moveDx = 0f; moveDy = 0f; selectionBmp = null
+        redo.clear()
+        invalidate(); onStrokeEnd?.invoke()
+    }
+
+    /** 페인트통: 터치한 지점과 정확히 같은 색으로 이어진 영역 전체를 찾아 현재 색·불투명도로
+     *  채운다(스캔라인 방식 flood fill — 픽셀 하나하나가 아니라 가로줄 구간 단위로 채워서 큰
+     *  캔버스에서도 감당할 수 있는 속도로 동작). 색은 단색으로 딱 채우지 않고 [crayonFillPixel]로
+     *  픽셀마다 살짝씩 다르게 칠해 크레파스로 칠한 듯한 입자감을 낸다(사용자 제공 시안 이미지 기준). */
+    private fun floodFillAt(sx: Float, sy: Float) {
+        val p = mapPoint(sx, sy)
+        val x0 = p[0].toInt(); val y0 = p[1].toInt()
+        if (x0 !in 0 until cw || y0 !in 0 until ch) return
+        val bmp = contentBmp ?: return
+        val pixels = IntArray(cw * ch)
+        bmp.getPixels(pixels, 0, cw, 0, 0, cw, ch)
+        val target = pixels[y0 * cw + x0]
+        if (target == blendOver(target, color, opacity)) return   // opacity 0 등 실질적으로 변화 없는 경우만 건너뜀
+        pushUndo()
+        scanlineFill(pixels, cw, ch, x0, y0, target)
+        bmp.setPixels(pixels, 0, cw, 0, 0, cw, ch)
+        redo.clear()
+        invalidate()
+        onStrokeEnd?.invoke()
+    }
+
+    /** 페인트통이 채우는 낱개 픽셀 하나 — [fillCrayonStyle]이 꺼져 있으면 매끈한 단색으로 딱 채우고,
+     *  켜져 있으면(기본) 10%는 아예 건너뛰어(원래 색이 살짝 비침) 크레파스 특유의 자잘한 흰 틈을
+     *  만들고 나머지는 불투명도를 픽셀마다 조금씩 다르게(72~100%) 흔들어 왁스 질감처럼 보이게 한다. */
+    private fun crayonFillPixel(dst: Int): Int {
+        if (!fillCrayonStyle) return blendOver(dst, color, opacity)
+        if (rnd.nextFloat() < 0.10f) return dst
+        val a = (0.72f + rnd.nextFloat() * 0.28f) * opacity
+        return blendOver(dst, color, a)
+    }
+
+    /** 표준 source-over 알파 합성 — [srcColor]를 [srcAlpha01](0~1) 불투명도로 [dst] 위에 얹는다. */
+    private fun blendOver(dst: Int, srcColor: Int, srcAlpha01: Float): Int {
+        val sa = srcAlpha01.coerceIn(0f, 1f)
+        if (sa <= 0f) return dst
+        val sr = (srcColor shr 16) and 0xFF; val sg = (srcColor shr 8) and 0xFF; val sb = srcColor and 0xFF
+        val da = ((dst ushr 24) and 0xFF) / 255f
+        val dr = (dst shr 16) and 0xFF; val dg = (dst shr 8) and 0xFF; val db = dst and 0xFF
+        val outA = sa + da * (1f - sa)
+        if (outA <= 0f) return 0
+        val outR = ((sr * sa + dr * da * (1f - sa)) / outA).toInt().coerceIn(0, 255)
+        val outG = ((sg * sa + dg * da * (1f - sa)) / outA).toInt().coerceIn(0, 255)
+        val outB = ((sb * sa + db * da * (1f - sa)) / outA).toInt().coerceIn(0, 255)
+        val outAi = (outA * 255f).toInt().coerceIn(0, 255)
+        return (outAi shl 24) or (outR shl 16) or (outG shl 8) or outB
+    }
+
+    private fun scanlineFill(pixels: IntArray, w: Int, h: Int, x0: Int, y0: Int, target: Int) {
+        val stack = ArrayDeque<IntArray>()
+        stack.addLast(intArrayOf(x0, y0))
+        while (stack.isNotEmpty()) {
+            val (sx, sy) = stack.removeLast()
+            if (sx !in 0 until w || sy !in 0 until h) continue
+            if (pixels[sy * w + sx] != target) continue
+            var xl = sx
+            while (xl - 1 >= 0 && pixels[sy * w + xl - 1] == target) xl--
+            var xr = sx
+            while (xr + 1 < w && pixels[sy * w + xr + 1] == target) xr++
+            for (xx in xl..xr) pixels[sy * w + xx] = crayonFillPixel(pixels[sy * w + xx])
+            if (sy - 1 >= 0) seedSpan(pixels, w, xl, xr, sy - 1, target, stack)
+            if (sy + 1 < h) seedSpan(pixels, w, xl, xr, sy + 1, target, stack)
+        }
+    }
+
+    private fun seedSpan(pixels: IntArray, w: Int, xl: Int, xr: Int, y: Int, target: Int, stack: ArrayDeque<IntArray>) {
+        var x = xl
+        while (x <= xr) {
+            if (pixels[y * w + x] == target) {
+                stack.addLast(intArrayOf(x, y))
+                while (x <= xr && pixels[y * w + x] == target) x++
+            } else x++
+        }
+    }
 
     private fun beginStroke(x: Float, y: Float) { pushUndo(); strokePrep(); strokeStart(x, y); strokeStarted = true; invalidate() }
     private fun endStroke() { strokeStarted = false; base = null; redo.clear(); onStrokeEnd?.invoke(); invalidate() }

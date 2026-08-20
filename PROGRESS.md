@@ -4,6 +4,226 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **표지 수정 시트 폭 280dp→350dp** (2026-08-20, 버전 미상향): `sketchbook/SketchbookScreens.kt`+
+  `ui/theme/Dimens.kt`. 이전엔 마법사 팝업과 같은 `Dimens.Wizard.cardWidth`(280dp)를 재사용하고
+  있었는데, 그 값을 바꾸면 마법사 카드도 같이 바뀌므로 전용 상수 `Dimens.Home.editCoverCardWidth`
+  =350dp를 새로 만들어 분리했다. `compileDebugKotlin` 검증 완료.
+- **표지 수정: 갤러리에서 사진 골라도 적용 안 되던 버그 수정** (2026-08-20, 버전 미상향):
+  `sketchbook/SketchbookScreens.kt`. 증상 = 갤러리 피커는 뜨는데 사진을 골라도 아무 반응이 없음.
+  원인으로 추정되는 지점: 사진을 고르면 크롭 범위 선택 화면(`CoverImageCropDialog`)을 별도의 새
+  `Dialog`로 띄웠는데, 갤러리(다른 앱)에 다녀온 직후 시점에 Dialog 창을 하나 더 여는 조합이 일부
+  기기에서 창이 제대로 붙지 않아 조용히 실패했던 것으로 보임. `EditCoverDialog`가 이미 열어 둔
+  Dialog 창을 새로 하나 더 만들지 않고, 그 안에서 내용만 바꿔치기(`CoverImageCropDialog`→
+  `CoverImageCropContent`, Dialog 래퍼 제거)하도록 재구성해 Dialog 창이 하나만 존재하게 했다.
+  `compileDebugKotlin` 검증 완료 — 실제로 이게 근본 원인이었는지는 실기기 확인 권장(증상 재현이
+  안 되면 알려주시면 계속 추적).
+- **공유 스케치북 분할: 여백·간격 완전 제거** (2026-08-20, 버전 미상향): "정확히 2/4분할"이 가용
+  영역 전부를 캔버스로 쓰라는 뜻이었다는 피드백 — `share/SharedBookScreen.kt`/
+  `preview/SharedBookPreviewScreen.kt`의 GRID 모드에서 바깥 `padding(8.dp)`와 칸 사이
+  `Arrangement.spacedBy(8.dp)`를 모두 제거. 칸 사이 구분은 각 `PaneFrame`이 이미 그리던 테두리
+  선(1~2dp) 하나로만 — 인접한 두 칸의 테두리가 맞닿아 자연스럽게 구분선처럼 보인다. MAXIMIZE
+  모드(큰 화면+작은 팝업)의 자체 오버레이 여백은 분할 레이아웃이 아니라서 그대로 둠.
+  `compileDebugKotlin` 검증 완료.
+- **페인트통 기본값 단색으로 변경 + 공유 스케치북 화면 전면 재구성** (2026-08-20, 버전 미상향):
+  1. `brush/BrushView.kt` + 3개 화면 + 프리뷰: `fillCrayonStyle` 기본값 `true`→`false`(단색이 기본,
+     크레파스는 옵션으로 유지).
+  2. `share/SharedBookScreen.kt` 대폭 재구성 — 캔버스에 화면을 최대한 내주는 방향:
+     - **뒤로가기 버튼·헤더 바 삭제**: 나가기는 시스템 뒤로가기(`BackHandler`, 기존 로직 그대로)로만.
+       `BoxWithConstraints` 바깥 여백도 16dp→8dp로 축소.
+     - **스케치북 이름**: 헤더 줄 없이, 화면 맨 위에 참가자 캔버스 위로 겹치는 작은 반투명 라벨
+       하나로(대기 인원/코드 안내는 이미 각 참가자 칸(`OtherPane`)이 담당해 중복 없이 제거).
+     - **참가자 별명**: `PaneFrame`을 다시 구성해 캔버스 위 별도 줄(높이를 차지)이 아니라 각자
+       캔버스 좌측 상단에 겹치는 작은 반투명 배지로.
+     - **분할/최대화 토글**: 텍스트 세그먼트(`SegGroup`/`SegChip`, 삭제) → 아이콘 하나(그리드/펼침
+       아이콘, 화면버튼과 같은 반투명 원형 스타일)로, 우측 상단 화면버튼(`ScreenControls`) 바로
+       왼쪽에 한 줄로 배치(신규 `ModeToggleButton`, `internal`로 노출해 Preview에서도 재사용).
+     - **2/4분할 규칙 확인**: 기존 로직이 이미 "참가자 2인 이하=정확히 2분할, 3~4인=2x2(4분할)"을
+       구현하고 있어(요청과 일치) 이 부분은 코드 변경 없음.
+     - `preview/SharedBookPreviewScreen.kt`도 동일 구조로 갱신(헤더 삭제, 오버랩 라벨, 아이콘 토글).
+  - `compileDebugKotlin` 검증 완료.
+- **페인트통 단색/크레파스 선택 + 올가미 아이콘 교체 + 일기 그리기 버튼 아이콘 교체**
+  (2026-08-20, 버전 미상향):
+  1. `brush/BrushView.kt`: `fillCrayonStyle: Boolean`(기본 true) 추가 — 꺼지면 `crayonFillPixel`이
+     입자감 없이 매끈한 단색(`blendOver` 그대로)으로 채운다. `brush/BrushControls.kt`: 페인트통이
+     켜져 있을 때만 스타일 전환 아이콘(크레파스=`Icons.Filled.Texture`/단색=`Icons.Filled.Circle`,
+     탭할 때마다 서로 전환) 추가. 3개 실제 화면(`SketchbookScreens.kt`/`DiaryScreens.kt`/
+     `SharedBookScreen.kt`) + `preview/BrushCanvasPreview.kt`에 `fillCrayonStyle` 상태 배선.
+  2. `brush/BrushControls.kt`: 올가미 아이콘을 네모난 `Icons.Filled.HighlightAlt`(마퀴 선택처럼
+     보여 어색하다는 피드백) → 자유형 곡선 느낌의 `Icons.Filled.Gesture`로 교체.
+  3. `diary/DiaryScreens.kt`: 일기달력 탭 "오늘 일기 그리기" 아이콘을 기본 연필(`Icons.Filled.Edit`)
+     에서 사용자가 제공한 `image/icon/paint-palette-1.png`(팔레트+붓)로 교체 —
+     `app/src/main/res/drawable-nodpi/paint_palette_1.png`로 복사(안드로이드 리소스명은 하이픈
+     불가라 언더스코어로), 기존 브러시 아이콘들과 같은 방식(`Image`+`ColorFilter.tint`)으로 표시.
+  - `compileDebugKotlin` 검증 완료(리소스 처리 포함).
+- **페인트통 채우기에 크레파스 질감** (2026-08-20, 버전 미상향): `brush/BrushView.kt`. 사용자가 크레파스
+  스와치 시안 이미지를 제시 — 단색 flat fill이던 페인트통을 픽셀 단위로 흔들어 왁스 입자감을 내도록
+  바꿨다. `scanlineFill()`이 채울 때 고정된 `replacement` 색 하나 대신 새 `crayonFillPixel()`을
+  픽셀마다 호출: 10% 확률로 아예 안 칠해서(원래 색이 비치는 자잘한 흰 틈) 크레파스 특유의 거친 느낌을
+  내고, 나머지 90%는 불투명도를 72~100% 사이에서 흔들어(`blendOver` 재사용) 매끈한 디지털 단색과
+  다르게 보이도록 함. 대상 영역을 찾는 매칭 자체는 그대로(터치 지점과 정확히 같은 색인 영역), 칠하는
+  방식만 바뀜. `compileDebugKotlin` 검증 완료 — 질감 체감은 실기기 확인 권장.
+- **홈 캐러셀: 관성 스크롤 매끄럽게 + 점 인디케이터 + 가운데 표지 전용 타이틀 블록**
+  (2026-08-20, 버전 미상향): `ui/main/MainScreen.kt`(`HomeCarousel`). 사용자가 참고 프로젝트
+  (`G1_BOOKLOG_rev1`의 `HomeScreen.kt` `ReadingPagerCarousel`, 155~268줄)를 제시 — 같은 조합을
+  그대로 이식.
+  - **관성 스크롤 끊김**: `HorizontalPager`(페이지 단위 스냅)를 `LazyRow` + `rememberSnapFlingBehavior`
+    조합으로 교체 — 손을 떼기 전까지는 일반 스크롤처럼 관성이 자연스럽게 이어지다가, 멈추는 순간에만
+    가장 가까운 표지로 스냅한다(페이지 경계마다 관성이 끊기던 Pager 특유의 느낌 해소).
+  - **점 인디케이터**: 화면 중앙에 가장 가까운 표지 인덱스(`centeredIndex`, `LazyListState.layoutInfo`
+    기반 `derivedStateOf`)를 계산해 캐러셀 아래 점으로 표시(선택=진하고 큰 점, 나머지=흐리고 작은 점).
+  - **가운데 표지 전용 타이틀**: 기존엔 카드마다 자기 이름·날짜를 작게 표시했는데, 이제는 카드 안 텍스트를
+    없애고 캐러셀 아래에 큰 타이틀(스케치북 이름) + 작은 부제(생성일 · 캔버스 사이즈 · 배경명, 예:
+    "2026.08.20 · A4 · 수채화용지") 하나만 두어 가운데 표지가 바뀔 때마다 이 블록만 갱신되게 했다.
+    배경명은 `Catalog.backgrounds`에서, 사이즈 라벨은 `Sketchbook.size.label`에서 가져옴.
+  - `ui/theme/Dimens.kt`: 카드별 제목/날짜 sp(`coverTitleCenterSp` 등 4개, 더 이상 안 씀) 삭제,
+    캐러셀 공용 타이틀/부제 sp(`carouselTitleSp`=18sp, `carouselSubtitleSp`=12sp) 신설.
+  - `compileDebugKotlin` 검증 완료. 실제 스크롤 체감(관성이 매끄러운지)은 에뮬레이터/실기기 확인 권장.
+- **올가미(라소) 선택 + 페인트통(채우기) 도구 추가** (2026-08-20, 버전 미상향): 사용자 확인 범위 =
+  올가미는 "지우기 + 이동(드래그)"까지(복사는 없음). 홈 캐러셀 롱프레스 표지수정은 확인해보니
+  지난 세션(2026-08-20 앞선 항목)에 이미 구현돼 있어 이번엔 손 안 댐.
+  - `brush/BrushView.kt`: `lassoMode`/`fillMode` 두 boolean 추가(브러시 종류와 별개 축, `erasing`과
+    같은 패턴). `lassoMode`는 커스텀 setter로 꺼지는 순간 선택을 자동 해제.
+    - 올가미: `ACTION_DOWN`이 기존 선택 영역(`android.graphics.Region.contains`) 안쪽이면 그 영역을
+      `liftSelection()`으로 별도 비트맵에 떼어내고 원본에서는 지운 뒤 드래그를 그 비트맵 오프셋으로
+      실시간 미리보기, 손을 떼면 `commitMove()`가 화면 오프셋을 `Matrix.mapVectors()`로 캔버스 픽셀
+      좌표로 역산해 실제 위치에 합성하고 선택 영역도 같이 옮겨서 계속 선택 상태 유지. 바깥을 누르면
+      기존 선택 해제 후 새 라소 그리기 시작, 손을 떼면 `Region.setPath()`로 선택 확정("marching ants"
+      점선 테두리로 표시, 화면 좌표로 매 프레임 변환해 줌·회전과 무관하게 항상 같은 두께).
+      `deleteLassoSelection()`(툴바 "선택 지우기" 버튼)은 선택 영역만 클립해서 지움.
+    - 페인트통: `floodFillAt()` — 스캔라인(가로 구간 단위) flood fill로 터치 지점과 정확히 같은 색
+      영역을 찾아 현재 색·불투명도를 표준 source-over 알파합성(`blendOver()`)으로 채움. 허용오차
+      없이 정확히 같은 색만(가장 단순한 버전). A3 크기(최대 3308×3308px) 캔버스에서도 감당 가능한
+      속도(픽셀 단위가 아니라 구간 단위 처리).
+    - `initCanvas`/`loadContent`/`clearCanvas`에서 선택 자동 해제(페이지가 바뀌면 이전 선택은
+      의미가 없으므로).
+  - `brush/BrushControls.kt`: 지우개 버튼 뒤에 올가미(`Icons.Filled.HighlightAlt`)·페인트통
+    (`Icons.Filled.FormatColorFill`) 토글 아이콘 추가(스포이드와 같은 톤 규칙 — 비활성 흐린 회색,
+    활성 강조색), 선택이 있을 때만 나타나는 "선택 지우기"(`Icons.Filled.Delete`) 아이콘 추가.
+  - `sketchbook/SketchbookScreens.kt`, `diary/DiaryScreens.kt`, `share/SharedBookScreen.kt`,
+    `preview/BrushCanvasPreview.kt`: `lassoActive`/`fillActive`/`hasLassoSelection` 상태 추가,
+    브러시 선택·지우개 토글이 서로(그리고 올가미·페인트통과) 상호배타적이 되도록 각 콜백에서
+    나머지를 꺼줌. `SharedBookScreen.kt`는 `movableContentOf` 때문에 `update` 대신 키가 있는
+    `LaunchedEffect`로 브러시 상태를 재동기화하는 기존 패턴이라, 키 목록에 `lassoActive`/`fillActive`
+    추가도 빠뜨리지 않음.
+  - `compileDebugKotlin` 검증 완료. 에뮬레이터 실제 확인은 아직 안 함(플러드필 성능·라소 드래그
+    체감은 실기기에서 확인 권장).
+- **표지 수정 시트 더 압축: 섹션 타이틀 제거+가운데정렬, 카드 폭 축소, 하단 버튼 pill→텍스트만**
+  (2026-08-20, 버전 미상향): `sketchbook/SketchbookScreens.kt`(`EditCoverDialog`).
+  - "이름 변경"/"표지 변경" 굵은 섹션 타이틀 삭제(더 이상 안 쓰는 `SectionLabel` 헬퍼도 삭제),
+    표지 변경·즐겨찾기/삭제 아이콘 행을 `Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)`로
+    가운데 정렬.
+  - 카드가 `fillMaxSize()`(거의 전체화면)였던 걸 `widthIn(max = Dimens.Wizard.cardWidth)`(=280dp,
+    다른 팝업 카드와 동일 토큰)로 폭만 좁힘(높이는 그대로 — 요청이 폭만 언급).
+  - 하단 취소/완료를 `Button`/`OutlinedButton`(알약 배경) → `TextButton`(배경 없이 글자만),
+    `Arrangement.SpaceBetween`으로 양끝 배치(예전 소형 팝업 버전과 동일 스타일로 회귀).
+  - `compileDebugKotlin` 검증 완료.
+- **표지 수정 시트: 텍스트 행 → 아이콘 버튼 2개씩 + 이미지 범위 선택 크롭 추가** (2026-08-20, 버전
+  미상향): `sketchbook/SketchbookScreens.kt`(`EditCoverDialog`).
+  1. **표지 변경**: 파스텔 8색 스와치 그리드 + 갤러리 타일(캡션 포함) → 아이콘 버튼 2개(색상휠 🎨,
+     갤러리 🖼)로 압축. `CoverPalette`(8색 스와치 목록)는 더 이상 안 써서 삭제. 색상 버튼은
+     기존에 브러시 쪽에서 쓰던 `com.g1.sketchbook.brush.ColorPickerCard`(허용 어떤 색이든)를
+     버튼 바로 아래 `Popup`(신규 `BelowCenterAnchor`)으로 띄운다. 사진이 있을 때만 "사진 빼기"
+     아이콘이 옆에 추가로 나타남.
+  2. **즐겨찾기·삭제**: 스위치+설명문 행, 화살표+설명문 행 → 아이콘 버튼 2개(★/🗑)로 압축, 텍스트
+     완전 제거(`contentDescription`만 유지). 공용 `CoverActionIcon`(원형 배경+아이콘, 텍스트 없음)
+     신설 — 표지 변경 두 버튼과 즐겨찾기·삭제 두 버튼이 전부 이걸 공유.
+  3. **이미지 적용 범위 선택**(신규 기능): 갤러리에서 사진을 고르면 예전처럼 즉시 가운데 기준
+     자동 크롭하지 않고, 새 `CoverImageCropDialog`가 표지 비율 그대로의 창 안에 원본을 띄워
+     핀치 확대·드래그 이동(`detectTransformGestures`, 다이어리 상세 보기와 동일 제스처 패턴)으로
+     사용자가 직접 보이는 범위를 고르게 한 뒤 "적용"을 누르면 그 화면 그대로가 잘린다.
+     `cropSelectedRegion()`이 화면의 scale/translate를 원본 픽셀 좌표로 역산해 `Bitmap.createBitmap`
+     으로 정확히 잘라낸다(ContentScale.Crop의 baseScale × 사용자 확대배율 = 총 배율로 역산).
+     기존 자동 중앙크롭 헬퍼 `cropToAspect()`는 더 이상 안 써서 삭제.
+  - `compileDebugKotlin` 검증 완료. 에뮬레이터 실제 확인은 아직 안 함(핀치 제스처·크롭 결과는
+    실기기에서 확인 권장).
+- **표지 수정 시트 Preview 추가** (2026-08-20, 버전 미상향): `preview/EditCoverPreview.kt` 신규 —
+  "19 Edit cover". `EditCoverDialog`가 `internal`이라 미리보기 패키지에서 바로 호출 가능한 걸 활용,
+  뒤 배경엔 `SketchbookTab(previewBooks=PreviewBooks)`(실제 목록 화면), 그 위에 `EditCoverDialog`를
+  처음부터 펼친 상태로 얹었다(Dialog는 별도 윈도우라 형제로 나란히 호출해도 겹쳐 뜸 —
+  `OnboardingPreviews.kt`의 LoginScreen+NicknameDialog와 같은 패턴). `repo=null`(로컬 저장소 미접근),
+  이름/색/즐겨찾기는 로컬 state로만 반영해 실제 상호작용(Interactive Preview)도 확인 가능.
+  `compileDebugKotlin` 검증 완료.
+- **화면버튼 50% 불투명도 + 표지 수정 시트 전면 재구성 + Preview 페이지 팝업 버그 수정**
+  (2026-08-20, 버전 미상향 — 컴파일 검증만):
+  1. `brush/BrushControls.kt`: `ScreenControls`의 닫힌 상태 원형 버튼에 `Modifier.alpha(0.5f)` 적용
+     — 캔버스 위에 항상 떠 있어도 그림을 덜 가리도록(펼쳐진 팝업 내용은 완전 불투명 유지).
+  2. `sketchbook/SketchbookScreens.kt`(`EditCoverDialog`): 사용자가 제공한 시안 이미지 기준으로
+     작은 팝업 카드 → 거의 전체화면 시트로 전면 재구성. 상단 "스케치북 표지 변경" 타이틀+닫기(X),
+     큰 표지 미리보기(200dp), "이름 변경"(글자수 카운터), "표지 색상 변경"(파스텔 8색 스와치,
+     `CoverPalette` 신설 — 기존 `BrushPalette`는 브러시용 원색이라 별개), "표지 이미지로 변경"(갤러리
+     선택 타일, "사진 빼기"는 사진이 있을 때만 라벨 옆에 노출), "즐겨찾기"(설명 문구 + 스위치, 스위치는
+     `onCheckedChange=null`로 시각 표시만 하고 바깥 Row의 `bounceClick` 하나로만 토글 — 안 그러면
+     스위치를 직접 탭했을 때 두 번 토글되는 문제가 생김), "삭제"(빨간 텍스트+설명+화살표) 순으로 구성,
+     하단 취소/완료 버튼 고정. 세로 스크롤(`verticalScroll`)로 내용이 화면보다 길어도 대응.
+     - 스코프 결정: 시안의 "미리보기 배경 변경" 버튼과 프리셋 표지 이미지 갤러리(구름/들판/밤하늘 등)는
+       사용자 확인 후 이번엔 생략 — 프리셋 이미지는 실제 에셋 파일이 프로젝트에 아직 없고, 미리보기
+       배경 버튼은 정확한 동작이 미정이라 다음에 구체화되면 추가. 이름 글자수 제한도 시안엔 30으로
+       보이지만 마법사 등 앱 전체가 20자 기준이라 그대로 유지(표시만 카운터로, 임의로 30 상향 안 함).
+  3. **Preview 페이지 팝업 버그 확인 결과**: 실제 코드 버그가 아니라 `preview/BrushCanvasPreview.kt`의
+     `ScreenControls(onOpenPages = {})`가 처음부터 빈 no-op이었던 것 — 실제 화면(`SketchbookScreens.kt`)
+     은 `onOpenPages = { pagesOpen = true }`로 정상 배선되어 있어 진짜 `PagePanel`이 뜬다. 다만 진짜
+     `PagePanel`은 `SketchbookRepository`가 있어야 썸네일을 읽어오는데, Preview는 로컬 저장소를 건드리지
+     않는다는 프로젝트 규칙(Decisions 항목)이라 그대로 못 가져다 씀 — 대신 저장소 없이 같은 화면 얼개
+     (헤더+3열 그리드+취소/완료)만 흉내 낸 `MockPagePanel`을 이 파일 안에 추가해 배선.
+  - `compileDebugKotlin` 검증 완료. 에뮬레이터 실제 확인은 아직 안 함.
+- **화면버튼(ScreenControls) 우측 상단 고정 확장 버튼으로 전면 개편** (2026-08-20, 버전 미상향 —
+  컴파일 검증만): 페이지/회전/잠금/전체화면을 담던 독립 드래그 바를, 항상 화면 우측 상단(가로/세로
+  공통)에 고정된 작은 원형 버튼 하나로 교체. 평소엔 닫혀 있다가 탭하면 아래로 펼쳐지고, 기능을
+  하나 고르거나 팝업 바깥을 탭하면 자동으로 다시 닫힌다(펼침 상태는 어디에도 저장되지 않음 —
+  매번 새로 열고 닫는 팝업).
+  - `brush/BrushControls.kt`: `ScreenControls`에서 `dock`/`collapsed`/`onToggleCollapsed`/
+    `onDragBar`/`onDragBarEnd` 파라미터를 전부 제거하고 `Popup`(`BelowAnchor`) 기반 펼침으로
+    재작성. 최소화 토글 아이콘(UnfoldLess/More)과 이동 손잡이(`DragHandle`) 호출 삭제. 닫힌 상태
+    아이콘은 `Icons.Filled.Tune`.
+  - `sketchbook/SketchbookScreens.kt`, `diary/DiaryScreens.kt`, `share/SharedBookScreen.kt`,
+    `preview/BrushCanvasPreview.kt`, `share/SharedBookPreviewScreen.kt`: `screenBarDock`/
+    `screenBarCollapsed`/`screenBarDragPx` 상태 전부 제거, `ScreenControls` 호출을
+    `modifier = Modifier.align(Alignment.TopEnd)`로 단순화. 두/세손가락 제스처의
+    `onToggleToolbars`는 이제 브러시바(`BrushControls`)의 최소화만 토글(화면버튼은 더 이상 지속
+    되는 접힘 상태가 없으므로).
+  - `share/SharedBookScreen.kt`/`SharedBookPreviewScreen.kt`: 최대화 모드의 참가자 선택
+    아이콘+스위치 줄이 우측 상단에서 화면버튼과 겹치던 것을 top padding 64dp로 내려서 회피.
+  - `ui/main/MainScreen.kt`: 제스처 설정 라벨 "버튼바 최소화/펼치기" → "브러시바 최소화/펼치기"로
+    수정(이제 화면버튼이 아니라 브러시바에만 해당).
+  - 브러시바(`BrushControls`, 그림 도구용)는 이번 변경과 무관 — dock/드래그/최소화 전부 그대로 유지.
+  - `compileDebugKotlin` 검증 완료. 에뮬레이터 실제 확인은 아직 안 함.
+- **Interactive Preview 드로잉 안 되던 버그 수정 + 일기장 Preview 전용 파일 분리** (2026-08-20,
+  버전 미상향 — 컴파일 검증만):
+  - `preview/BrushCanvasPreview.kt`: `BrushView.apply { drawEnabled = false }`가 남아있어서
+    Android Studio Interactive Preview에서 펜을 켜도 전혀 그려지지 않았음(`BrushView.onTouchEvent`가
+    `if (!drawEnabled) return false`로 터치 자체를 씹어버림 — 드로잉뿐 아니라 핀치줌·스포이드·세손가락
+    스와이프까지 전부 죽어있었음). `drawEnabled` 오버라이드 제거로 해결.
+  - 같은 파일에 undo/redo/clear가 `{}`(no-op)였던 것과 스포이드 버튼이 실제 `BrushView`에 안
+    묶여있던 것도 실제 화면(`SketchbookScreens.kt`) 배선과 동일하게 맞춤 — `view` 참조 저장 후
+    `onUndo=view?.undo()`/`onRedo=view?.redo()`/`onClear=view?.clearCanvas()`/`onRotate=view?.rotate()`,
+    `eyedropArmed`/`onEyedropPreview`/`onEyedrop`/`onEyedropCancel` 배선 + `EyedropFloatingPreview` 추가.
+  - `preview/FlowPreviews.kt`에 마법사·달력 미리보기와 섞여 있던 "14 Diary editor"(실제
+    `DiaryEditorScreen(previewMode=true)` 호출)를 새 `preview/DiaryCanvasPreview.kt`로 분리 —
+    "13 Personal canvas"(`BrushCanvasPreview.kt`)/"17-18 Shared canvas"(`SharedCanvasPreviews.kt`)와
+    같은 파일당-화면 구조로 통일해 Android Studio Preview 목록에서 찾기 쉽게 함(동작 변경 없음,
+    실제 `DiaryEditorScreen`을 그대로 호출하므로 previewMode=true에서도 이미 드로잉 가능했음).
+  - `compileDebugKotlin` 검증 완료(VS Code Java/Kotlin 언어서버가 잠근 `R.jar` 프로세스 종료 후 재시도).
+- **화면버튼 분리 + 자유 드래그 통일 + 다이어리 툴바 통합 + 홈 표지 편집 + 스포이드 톤 정리**
+  (2026-08-20, 버전 미상향 — 컴파일 검증만, 업로드는 아직 요청 안 됨):
+  - `brush/BrushControls.kt`: 페이지/회전/화면잠금/전체화면 4개를 `BrushControls`에서 떼어내
+    새 `ScreenControls` 컴포저블로 분리 — 자기만의 dock/드래그/최소화 상태를 가진 독립 플로팅
+    서피스. `BrushControls`엔 `onBack`만 남음(다이어리 전용).
+  - `ToolbarDock`/`nearestDock` 공용 헬퍼 추가 — 드래그로 가장 가까운 가장자리로 재도킹하는 로직을
+    한 곳으로 모음. 최소화 상태 전용이던 1축 슬라이드(`toolbarCollapsedOffsetPx`)를 없애고, 펼친
+    상태와 동일한 자유 2D 드래그+재도킹으로 통일(브러시바·화면버튼바 둘 다).
+  - `brush/BrushView.kt`: `GestureAction.TOGGLE_TOOLBARS` 추가 + `onToggleToolbars` 콜백 — 2/3
+    손가락 탭·롱프레스 제스처에 매핑하면 브러시바+화면버튼바를 함께 최소화/펼침 토글.
+    `ui/main/MainScreen.kt` 설정 화면 라벨/아이콘도 추가.
+  - `sketchbook/SketchbookScreens.kt`, `share/SharedBookScreen.kt`: `ScreenControls` 배선(기본
+    dock=TOP, 브러시바=BOTTOM과 겹치지 않게), `onToggleToolbars` 연결.
+  - `diary/DiaryScreens.kt`(`DiaryEditorScreen`): 캔버스 아래 고정 바 하나뿐이던 구조를 스케치북과
+    동일한 `BoxWithConstraints` 오버레이+`BrushControls`+`ScreenControls`+잠금+전체화면+최소화로
+    통합(다이어리는 하루 단위라 페이지 버튼만 없음).
+  - `ui/main/MainScreen.kt`: 홈 캐러셀 표지에 롱프레스→`EditCoverDialog`(목록탭과 동일 컴포넌트,
+    `internal`로 가시성 변경) 연결 — 이름/표지/즐겨찾기/삭제 모두 홈에서 바로 가능.
+  - `brush/BrushControls.kt`: 스포이드 버튼 톤을 브러시 버튼과 통일(비무장=흐린 회색, 무장=강조색).
+  - `preview/BrushCanvasPreview.kt`, `share/SharedBookPreviewScreen.kt`: 위 변경 전부 동일하게 배선.
+  - `compileDebugKotlin --rerun-tasks` 성공. 에뮬레이터 실행 검증은 아직 안 함.
 - **지우개 불투명도·블러 + 브러시 두께 재보정** (v2.7.0, 2026-08-17):
   - `brush/BrushView.kt`: 지우개 페인트(`eraseFill`/`eraseStroke`)를 `PorterDuff.CLEAR`에서
     `DST_OUT`으로 바꿔 `paint.alpha`가 실제로 반영되게 함(CLEAR는 알파 무시하고 항상 완전히 지움).

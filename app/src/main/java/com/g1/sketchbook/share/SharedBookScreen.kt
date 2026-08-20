@@ -24,17 +24,20 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +54,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
@@ -72,6 +76,7 @@ import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.bgDrawable
+import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -86,10 +91,6 @@ import kotlin.math.roundToInt
  *  toggle needed for that part. MAXIMIZE shows one big pane plus a small floating popup, with a
  *  picker for who's in the popup and a switch to swap big<->popup. */
 private enum class ViewMode { GRID, MAXIMIZE }
-
-// 최소화된 버튼바가 도킹된 가장자리를 따라 미끄러질 때, 화면 밖으로 나가지 않게 남겨두는 여유
-// 폭/높이의 절반 정도(정확한 실측 대신 대략치 — 화면 밖으로 살짝 여유를 두는 정도면 충분).
-private val CollapsedBarHalfExtent = 90.dp
 
 /**
  * A shared sketchbook: same 15-page book as a personal one, shown with a selectable view mode —
@@ -119,6 +120,10 @@ fun SharedBookScreen(
     var brush by remember { mutableStateOf(BrushType.PEN) }
     var color by remember { mutableLongStateOf(session.brushColor) }
     var erasing by remember { mutableStateOf(false) }
+    var lassoActive by remember { mutableStateOf(false) }
+    var fillActive by remember { mutableStateOf(false) }
+    var fillCrayonStyle by remember { mutableStateOf(false) }
+    var hasLassoSelection by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
     val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
     var eraserSize by remember { mutableFloatStateOf(session.eraserSize) }
@@ -137,9 +142,6 @@ fun SharedBookScreen(
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
     var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-    // 최소화 상태일 때만 쓰는, 도킹된 가장자리를 따라가는 위치(중앙 기준 오프셋) — 가로 도킹(상/하)이면
-    // 가로 방향, 세로 도킹(좌/우)이면 세로 방향 값. 펼친 상태의 자유 드래그(toolbarDragPx)와는 별개.
-    var toolbarCollapsedOffsetPx by remember { mutableStateOf(0f) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var others by remember { mutableStateOf<List<ShareRepository.Slot>>(emptyList()) }
@@ -173,10 +175,12 @@ fun SharedBookScreen(
     // Apply brush settings via an effect rather than AndroidView.update: the pane is wrapped in
     // movableContent, and after it's moved (rotation / view-mode change) update() stops re-observing
     // state — so selections would silently stop applying. This effect always re-syncs.
-    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, eyedropArmed, locked, page) {
+    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, lassoActive, fillActive, fillCrayonStyle, eyedropArmed, locked, page) {
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
         v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
+        v.lassoMode = lassoActive; v.fillMode = fillActive; v.fillCrayonStyle = fillCrayonStyle
+        v.onLassoSelectionChanged = { hasLassoSelection = it }
         v.twoFingerTapAction = session.twoFingerTapAction
         v.threeFingerTapAction = session.threeFingerTapAction
         v.longPressAction = session.longPressAction
@@ -187,6 +191,7 @@ fun SharedBookScreen(
             color = col; session.brushColor = col; erasing = false; eyedropArmed = false; eyedropPreview = null
         }
         v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
+        v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
         v.onThreeFingerSwipe = { dir -> goTo(page + dir) }
         v.onStrokeEnd = {
             val pg = page
@@ -202,34 +207,16 @@ fun SharedBookScreen(
         }
     }
 
+    // 뒤로가기 버튼·상단 헤더 바를 없애고 캔버스에 화면을 최대한 내줬다(2026-08-20) — 나가기는
+    // 시스템 뒤로가기(BackHandler, 위에서 처리)로만. 스케치북 이름은 화면 맨 위에 참가자 캔버스
+    // 위로 겹쳐서 떠 있는 작은 라벨 하나로 대신한다.
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .let { if (fullscreen) it else it.systemBarsPadding() },
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clickable { saveLocal(); onBack() }, contentAlignment = Alignment.Center) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "나가기")
-            }
-            Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                Text(book.name, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-                Text(
-                    when {
-                        others.isEmpty() -> "상대를 기다리는 중… · 코드 $code"
-                        others.size == 1 -> "${others[0].name} 님과 함께"
-                        else -> "${others.size}명과 함께"
-                    },
-                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                )
-            }
-            // 최대화 모드 안의 "..."+스위치가 참가자 선택을 대신하므로, 여기 헤더에는 GRID/
-            // MAXIMIZE 두 모드만 고른다.
-            SegGroup {
-                SegChip("분할", mode == ViewMode.GRID) { mode = ViewMode.GRID }
-                SegChip("최대화", mode == ViewMode.MAXIMIZE) { mode = ViewMode.MAXIMIZE }
-            }
-        }
-
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(16.dp)) {
+        // 가용 영역 전부를 스케치북으로 — 바깥 여백 없음, 칸 사이 구분도 간격이 아니라 PaneFrame
+        // 자체 테두리 선 하나로만(2026-08-20).
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val density2 = LocalDensity.current
             val landscape = maxWidth > maxHeight
             val mine = remember {
@@ -258,12 +245,12 @@ fun SharedBookScreen(
                     others.size <= 1 -> {
                         val other = others.getOrNull(0)
                         if (landscape) {
-                            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxSize()) {
                                 OtherPane(other, code, Modifier.weight(1f).fillMaxSize())
                                 mine(Modifier.weight(1f).fillMaxSize())
                             }
                         } else {
-                            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.fillMaxSize()) {
                                 OtherPane(other, code, Modifier.weight(1f).fillMaxWidth())
                                 mine(Modifier.weight(1f).fillMaxWidth())
                             }
@@ -273,12 +260,12 @@ fun SharedBookScreen(
                     // 순서(3인이면 좌하단이 빈 칸 — 시안 그대로).
                     else -> {
                         val cellSlots = (others.take(3) + listOf(null, null, null)).take(3)
-                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(Modifier.fillMaxSize()) {
+                            Row(Modifier.weight(1f).fillMaxWidth()) {
                                 GridCell(cellSlots[0], code, Modifier.weight(1f).fillMaxHeight())
                                 GridCell(cellSlots[1], code, Modifier.weight(1f).fillMaxHeight())
                             }
-                            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.weight(1f).fillMaxWidth()) {
                                 GridCell(cellSlots[2], code, Modifier.weight(1f).fillMaxHeight())
                                 mine(Modifier.weight(1f).fillMaxHeight())
                             }
@@ -314,7 +301,9 @@ fun SharedBookScreen(
                             }
                         }
 
-                        Row(Modifier.align(Alignment.TopEnd).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // top padding 64dp: 화면버튼(ScreenControls)이 항상 우측 상단에 고정돼 있어
+                        // 이 참가자 선택 줄과 겹치지 않도록 그 아래로 내림(2026-08-20).
+                        Row(Modifier.align(Alignment.TopEnd).padding(top = 64.dp, start = 8.dp, end = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box {
                                 IconButton(onClick = { pickerOpen = true }) {
                                     Icon(Icons.Filled.MoreVert, "팝업에 표시할 참가자 선택")
@@ -336,76 +325,70 @@ fun SharedBookScreen(
                 }
             }
 
-            // 버튼바: 캔버스 분할 영역 위에 떠 있는 오버레이라 패널 레이아웃은 그대로다. 손잡이를
-            // 길게 눌러 드래그하면 놓은 위치에서 가장 가까운 가장자리로 옮겨 붙는다.
-            val toolbarHorizontalDock = toolbarDock == com.g1.sketchbook.brush.ToolbarDock.TOP || toolbarDock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM
-            val barModifier = Modifier
-                .align(toolbarDock.alignment())
-                // 최소화 모드일 땐 가로 도킹(상/하)이어도 꽉 채우지 않음 — 세로 도킹처럼 버튼 개수만큼만
-                // 감싸게 해서 최소화 바가 실제로 작아 보이게 한다. 펼친 상태는 기존대로 꽉 채움.
-                .let { if (!toolbarCollapsed && toolbarHorizontalDock) it.fillMaxWidth() else it }
-                .offset {
-                    if (toolbarCollapsed) {
-                        // 도킹된 가장자리를 따라서만 이동(가로 도킹=가로로, 세로 도킹=세로로), 중앙 고정 아님.
-                        IntOffset(
-                            if (toolbarHorizontalDock) toolbarCollapsedOffsetPx.roundToInt() else 0,
-                            if (!toolbarHorizontalDock) toolbarCollapsedOffsetPx.roundToInt() else 0,
-                        )
-                    } else {
-                        IntOffset(toolbarDragPx.x.roundToInt(), toolbarDragPx.y.roundToInt())
-                    }
+            // 스케치북 이름 — 참가자 캔버스 맨 위에 떠서 겹치는 작은 라벨(2026-08-20, 전용 헤더
+            // 바를 없앤 자리를 대신). 대기 중/인원수 같은 부가 정보는 각 참가자 칸 안내문구가
+            // 이미 담당하므로(OtherPane) 여기서는 이름만.
+            Box(
+                Modifier.align(Alignment.TopCenter).padding(top = 6.dp)
+                    .background(Color(0x99000000), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text(book.name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 160.dp))
+            }
+
+            // 버튼바 둘 다: 캔버스 분할 영역 위에 떠 있는 오버레이라 패널 레이아웃은 그대로다. 손잡이를
+            // 길게 눌러 드래그하면 자유 2D로 움직이다가 놓은 위치에서 가장 가까운 가장자리로 옮겨
+            // 붙는다(최소화 상태여도 동일).
+            fun barModifier(dock: com.g1.sketchbook.brush.ToolbarDock, collapsed: Boolean, dragPx: androidx.compose.ui.geometry.Offset) = Modifier
+                .align(dock.alignment())
+                .let {
+                    val horizontal = dock == com.g1.sketchbook.brush.ToolbarDock.TOP || dock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM
+                    if (!collapsed && horizontal) it.fillMaxWidth() else it
                 }
+                .offset { IntOffset(dragPx.x.roundToInt(), dragPx.y.roundToInt()) }
             BrushControls(
                 brush, color, sizeDp, opacity, erasing,
-                onBrush = { brush = it; erasing = false },
+                onBrush = { brush = it; erasing = false; lassoActive = false; fillActive = false },
                 onColor = { color = it; erasing = false; session.brushColor = it },
                 onSize = { if (erasing) { eraserSize = it; session.eraserSize = it } else { sizeByBrush[brush] = it; session.setBrushSize(brush, it) } },
                 onOpacity = { if (erasing) { eraserOpacity = it; session.eraserOpacity = it } else { opacityByBrush[brush] = it; session.setBrushOpacity(brush, it) } },
-                onToggleErase = { erasing = !erasing },
+                onToggleErase = { erasing = !erasing; if (erasing) { lassoActive = false; fillActive = false } },
                 eraserBlur = eraserBlur, onEraserBlur = { eraserBlur = it; session.eraserBlur = it },
                 onUndo = { view?.undo() }, onRedo = { view?.redo() },
                 onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
-                onRotate = { view?.rotate() },
-                onOpenPages = { pagesOpen = true },
                 favorites = favorites,
                 onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
                 eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
-                fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
-                locked = locked, onToggleLock = { locked = !locked },
+                lassoActive = lassoActive,
+                onToggleLasso = { lassoActive = !lassoActive; if (lassoActive) { erasing = false; fillActive = false } },
+                hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
+                fillActive = fillActive,
+                onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
+                fillCrayonStyle = fillCrayonStyle, onToggleFillStyle = { fillCrayonStyle = !fillCrayonStyle },
                 collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
-                onDragBar = { d ->
-                    if (toolbarCollapsed) {
-                        // 최소화 상태: 가장자리 재선택 없이, 지금 붙어있는 가장자리를 따라서만 미끄러짐.
-                        val delta = if (toolbarHorizontalDock) d.x else d.y
-                        val limitPx = with(density2) {
-                            (if (toolbarHorizontalDock) maxWidth else maxHeight).toPx() / 2f - CollapsedBarHalfExtent.toPx()
-                        }
-                        toolbarCollapsedOffsetPx = (toolbarCollapsedOffsetPx + delta).coerceIn(-limitPx, limitPx)
-                    } else {
-                        toolbarDragPx += d
-                    }
-                },
+                onDragBar = { d -> toolbarDragPx += d },
                 onDragBarEnd = {
-                    // 최소화 상태에선 가장자리를 다시 고르지 않음 — toolbarCollapsedOffsetPx는 드래그 중에
-                    // 이미 반영·클램프돼 있어 여기서 더 할 일이 없다.
-                    if (!toolbarCollapsed) {
-                        val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
-                        val baseX = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.LEFT -> 0f; com.g1.sketchbook.brush.ToolbarDock.RIGHT -> cwPx; else -> cwPx / 2f }
-                        val baseY = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.TOP -> 0f; com.g1.sketchbook.brush.ToolbarDock.BOTTOM -> chPx; else -> chPx / 2f }
-                        val x = baseX + toolbarDragPx.x; val y = baseY + toolbarDragPx.y
-                        val distances = mapOf(
-                            com.g1.sketchbook.brush.ToolbarDock.LEFT to x,
-                            com.g1.sketchbook.brush.ToolbarDock.RIGHT to (cwPx - x),
-                            com.g1.sketchbook.brush.ToolbarDock.TOP to y,
-                            com.g1.sketchbook.brush.ToolbarDock.BOTTOM to (chPx - y),
-                        )
-                        toolbarDock = distances.minByOrNull { it.value }?.key ?: toolbarDock
-                        toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
-                    }
+                    val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
+                    toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, toolbarDragPx, cwPx, chPx)
+                    toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
                 },
                 dock = toolbarDock,
-                modifier = barModifier,
+                modifier = barModifier(toolbarDock, toolbarCollapsed, toolbarDragPx),
             )
+            // 우측 상단: 분할/최대화 아이콘 토글 + 화면버튼(페이지/회전/잠금/전체화면) 한 줄에 나란히
+            // (2026-08-20, 예전엔 "분할"/"최대화" 텍스트 세그먼트가 헤더 바에 따로 있었음). 화면버튼은
+            // 탭하면 펼쳐지고 기능을 고르거나 밖을 탭하면 자동으로 닫힌다.
+            Row(Modifier.align(Alignment.TopEnd), verticalAlignment = Alignment.CenterVertically) {
+                ModeToggleButton(mode == ViewMode.GRID) { mode = if (mode == ViewMode.GRID) ViewMode.MAXIMIZE else ViewMode.GRID }
+                com.g1.sketchbook.brush.ScreenControls(
+                    onOpenPages = { pagesOpen = true },
+                    onRotate = { view?.rotate() },
+                    locked = locked, onToggleLock = { locked = !locked },
+                    fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+                )
+            }
         }
     }
     if (pagesOpen) {
@@ -423,48 +406,57 @@ fun SharedBookScreen(
     }
 }
 
+/** 분할/최대화 아이콘 토글 — 화면버튼(ScreenControls)의 닫힌 상태 트리거와 같은 반투명 원형 버튼
+ *  스타일로 그 왼쪽에 나란히 둔다(2026-08-20, 예전엔 "분할"/"최대화" 텍스트 세그먼트가 헤더 바에
+ *  따로 있었음). 아이콘은 지금 모드를 보여주고, 탭하면 다른 모드로 바뀐다. */
 @Composable
-internal fun SegGroup(content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant), content = content)
-}
-
-@Composable
-internal fun SegChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.clip(RoundedCornerShape(8.dp))
-            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
-            .clickable { onClick() }.padding(horizontal = 9.dp, vertical = 6.dp),
-    ) {
-        Text(label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+internal fun ModeToggleButton(gridMode: Boolean, onToggle: () -> Unit) {
+    Box(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
+        Surface(
+            shape = CircleShape, color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 8.dp, tonalElevation = 2.dp, modifier = Modifier.alpha(0.5f),
+        ) {
+            Box(Modifier.padding(6.dp)) {
+                Box(Modifier.size(30.dp).bounceClick(onClick = onToggle), contentAlignment = Alignment.Center) {
+                    Icon(
+                        if (gridMode) Icons.Filled.GridView else Icons.Filled.OpenInFull,
+                        if (gridMode) "최대화 보기로 전환" else "분할 보기로 전환",
+                    )
+                }
+            }
+        }
     }
 }
 
-/** A titled, square-cornered frame around a pane (시안 그대로 — 라운드 코너 없음); the active (mine)
- *  pane gets a subtle accent border. Small generic person-icon avatar next to the name — Slot has no
- *  synced emoji, so every participant (including me) gets the same neutral circle. */
+/** 참가자 캔버스 프레임(시안 그대로 — 라운드 코너 없음, 활성(나) 칸은 살짝 강조 테두리). 이름표는
+ *  더 이상 캔버스 위 별도 줄이 아니라 캔버스 좌측 상단에 겹쳐 뜨는 작은 배지 — 화면 공간을 최대한
+ *  캔버스에 내주기 위해(2026-08-20). Slot에는 동기화된 이모지가 없어 모두 같은 사람 아이콘을 쓴다. */
 @Composable
 internal fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, content: @Composable () -> Unit) {
-    Column(modifier) {
-        Row(Modifier.padding(start = 4.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+    Box(
+        modifier
+            .background(MaterialTheme.colorScheme.surface, RectangleShape)
+            .border(
+                width = if (accent) 2.dp else 1.dp,
+                color = if (accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                shape = RectangleShape,
+            )
+            .clipToBounds(),
+    ) {
+        content()
+        Row(
+            Modifier.align(Alignment.TopStart).padding(4.dp)
+                .background(Color(0x99000000), RoundedCornerShape(6.dp))
+                .padding(horizontal = 5.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(
-                Modifier.size(16.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+                Modifier.size(12.dp).clip(CircleShape).background(Color(0x33FFFFFF)),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.Person, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(11.dp)) }
-            Spacer(Modifier.width(4.dp))
-            Text(title, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                color = if (accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            ) { Icon(Icons.Filled.Person, null, tint = Color.White, modifier = Modifier.size(8.dp)) }
+            Spacer(Modifier.width(3.dp))
+            Text(title, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1)
         }
-        Box(
-            Modifier.weight(1f).fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface, RectangleShape)
-                .border(
-                    width = if (accent) 2.dp else 1.dp,
-                    color = if (accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                    shape = RectangleShape,
-                )
-                .clipToBounds(),
-        ) { content() }
     }
 }
 

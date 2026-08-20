@@ -13,6 +13,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,20 +43,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -82,10 +92,12 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -93,12 +105,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.share.ShareRepository
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
@@ -120,9 +138,6 @@ fun bgDrawable(key: String) = when (key) {
 }
 private val PAPER_KEYS = listOf("a5", "a4", "a3")
 private val DISPLAY_KEYS = listOf("desktop", "mobile", "tablet")
-// 최소화된 버튼바가 도킹된 가장자리를 따라 미끄러질 때, 화면 밖으로 나가지 않게 남겨두는 여유
-// 폭/높이의 절반 정도(정확한 실측 대신 대략치 — 화면 밖으로 살짝 여유를 두는 정도면 충분).
-private val CollapsedBarHalfExtent = 90.dp
 
 @Composable
 private fun SizeRow(list: List<CanvasSize>, selected: String, onSelect: (String) -> Unit) {
@@ -533,14 +548,16 @@ private fun CoverCard(book: Sketchbook, repo: SketchbookRepository?, onOpen: () 
     }
 }
 
-/** 표지 길게 눌러 여는 수정 다이얼로그 — 이름, 표지(색상 또는 갤러리 사진), 즐겨찾기 토글, 삭제를
- *  한 곳에서 처리한다(예전엔 표지 위 아이콘 두 개였지만, 표지를 깔끔하게 비우면서 이 다이얼로그로
- *  옮겼다). 종이 재질(bgKey)은 그림 그릴 때 쓰는 캔버스 배경이라 표지 디자인과는 별개이고, 사이즈도
- *  이미 그려둔 페이지 비율이 깨질 수 있어 여기서 건드리지 않는다. 배경이 표지 사진/색으로 바뀌던
- *  이전 방식은 팝업 뒤 화면이 계속 바뀌어 산만하다는 피드백을 받아, 평범한 팝업(고정 스크림)으로
- *  바꾸고 카드 안에 작은 미리보기 하나만 둔다. */
+/** 표지 길게 눌러 여는 수정 시트 — 이름, 표지(색상 또는 갤러리 사진), 즐겨찾기 토글, 삭제를 거의
+ *  전체화면 시트 하나에서 처리한다(2026-08-20, 시안 이미지 기준 재구성 — 예전엔 작은 팝업 카드).
+ *  종이 재질(bgKey)은 그림 그릴 때 쓰는 캔버스 배경이라 표지 디자인과는 별개이고, 사이즈도 이미
+ *  그려둔 페이지 비율이 깨질 수 있어 여기서 건드리지 않는다.
+ *  표지 변경은 색상휠/갤러리 아이콘 2개뿐 — 즐겨찾기·삭제도 설명글 없이 아이콘 버튼 2개로 압축
+ *  (2026-08-20, 텍스트가 많던 첫 재구성 버전에서 한 번 더 정리). 갤러리 사진은 고르는 즉시 가운데로
+ *  자동 크롭하지 않고, [CoverImageCropDialog]에서 확대·이동으로 표지에 실제로 쓰일 범위를 직접
+ *  고른 뒤 적용한다. 이름 글자수 제한은 마법사 등 앱 전체가 20자 기준이라 그대로 유지(표시만 카운터로). */
 @Composable
-private fun EditCoverDialog(
+internal fun EditCoverDialog(
     book: Sketchbook,
     repo: SketchbookRepository?,
     onCancel: () -> Unit,
@@ -553,83 +570,220 @@ private fun EditCoverDialog(
     // 이미 저장된 표지 사진(있으면) 먼저 불러온다.
     var existingCover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(book.id, book.coverVersion, repo) { existingCover = withContext(Dispatchers.IO) { repo?.loadCover(book.id) } }
-    // 갤러리에서 새로 고른 사진(저장 전 미리보기) — "기본색으로"를 누르면 기존 사진도 지우도록 표시.
+    // 갤러리에서 새로 고른 사진(크롭 적용 후, 저장 전 미리보기) — 색상 버튼으로 색을 고르면 기존
+    // 사진도 지우도록 표시(색/사진 둘 다 있으면 사진이 우선 표시되어 색 선택이 무의미해 보이므로).
     var pickedCover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
     var removeRequested by remember(book.id) { mutableStateOf(false) }
     var color by remember(book.id) { mutableStateOf(book.coverColor) }
-    var colorPickerOpen by remember { mutableStateOf(false) }
+    var colorWheelOpen by remember { mutableStateOf(false) }
+    // 갤러리에서 방금 고른 원본(크롭 전) — null이 아니면 범위 선택 다이얼로그가 뜬다.
+    var rawPicked by remember { mutableStateOf<Bitmap?>(null) }
     val previewCover = pickedCover ?: existingCover.takeUnless { removeRequested }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
-        if (uri != null) {
-            decodeSampledBitmap(context, uri, 1024)
-                ?.let { cropToAspect(it, Dimens.Home.coverRatio) }
-                ?.let { pickedCover = it; removeRequested = false }
-        }
+        if (uri != null) decodeSampledBitmap(context, uri, 1600)?.let { rawPicked = it }
     }
 
+    // rawPicked·크롭 화면을 별도 Dialog로 새로 띄우지 않고 이 Dialog 하나 안에서 내용만 바꿔치기
+    // 한다 — 갤러리(다른 앱) 다녀온 직후 새 Dialog 창을 하나 더 여는 조합이 일부 기기에서 창이
+    // 제대로 붙지 않아 "사진을 골라도 적용이 안 됨" 현상으로 이어졌던 것으로 보임(2026-08-20).
     Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val raw = rawPicked
+        if (raw != null) {
+            CoverImageCropContent(
+                source = raw, targetRatio = Dimens.Home.coverRatio,
+                onApply = { cropped -> pickedCover = cropped; removeRequested = false; rawPicked = null },
+                onCancel = { rawPicked = null },
+            )
+            return@Dialog
+        }
         Box(Modifier.fillMaxSize().background(Color(0x55000000)), contentAlignment = Alignment.Center) {
             Column(
-                Modifier.widthIn(max = Dimens.Wizard.cardWidth).fillMaxWidth().padding(horizontal = 24.dp)
-                    .clip(RoundedCornerShape(Dimens.Wizard.cardRadius))
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(20.dp),
+                Modifier.fillMaxHeight().padding(vertical = 28.dp)
+                    .widthIn(max = Dimens.Home.editCoverCardWidth).fillMaxWidth().padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(MaterialTheme.colorScheme.background),
             ) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("표지 수정", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onToggleFav) {
-                            Icon(Icons.Filled.Star, "즐겨찾기",
-                                tint = if (book.fav) Color(0xFFFFD43B) else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        IconButton(onClick = onDelete) {
-                            Icon(Icons.Filled.Delete, "삭제", tint = MaterialTheme.colorScheme.error)
-                        }
+                Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 14.dp)) {
+                    Text("스케치북 표지 변경", fontWeight = FontWeight.Bold, fontSize = 18.sp,
+                        modifier = Modifier.align(Alignment.Center))
+                    IconButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterEnd)) {
+                        Icon(Icons.Filled.Close, "닫기")
                     }
                 }
-                Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 작은 미리보기 — 팝업 뒤 화면은 안 바뀌고, 지금 고른 색/사진이 표지 모양(책등
-                    // 포함) 그대로 어떻게 보일지만 확인할 수 있다.
+                HorizontalDivider()
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    Spacer(Modifier.height(24.dp))
+                    // 큰 미리보기 — 지금 고른 색/사진이 표지 모양(책등 포함) 그대로 어떻게 보일지 확인.
                     SketchbookCover(
-                        modifier = Modifier.width(64.dp).aspectRatio(Dimens.Home.coverRatio)
-                            .shadow(6.dp, SketchbookCoverShape, clip = false),
+                        modifier = Modifier.width(200.dp).aspectRatio(Dimens.Home.coverRatio)
+                            .align(Alignment.CenterHorizontally)
+                            .shadow(16.dp, SketchbookCoverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
                         coverColor = color?.let { Color(it) } ?: DefaultSketchbookCoverColor,
                         coverImage = previewCover?.let { BitmapPainter(it.asImageBitmap()) },
                     )
-                    Spacer(Modifier.width(14.dp))
-                    OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
-                        placeholder = { Text("스케치북 이름 입력") }, shape = RoundedCornerShape(50), modifier = Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(18.dp))
-                Text("표지", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { colorPickerOpen = !colorPickerOpen }) { Text("색상 선택") }
-                    TextButton(onClick = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                        Text("갤러리에서 선택")
+                    Spacer(Modifier.height(28.dp))
+                    HorizontalDivider()
+
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it.take(20) }, singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        trailingIcon = { Text("${name.length} / 20", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    HorizontalDivider()
+
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    ) {
+                        Box {
+                            CoverActionIcon(Icons.Filled.Palette, "색상 변경") { colorWheelOpen = !colorWheelOpen }
+                            if (colorWheelOpen) Popup(
+                                BelowCenterAnchor(with(LocalDensity.current) { 8.dp.roundToPx() }),
+                                { colorWheelOpen = false }, PopupProperties(focusable = true),
+                            ) {
+                                com.g1.sketchbook.brush.ColorPickerCard(color ?: (DefaultSketchbookCoverColor.toArgb().toLong() and 0xFFFFFFFFL)) {
+                                    color = it; colorWheelOpen = false
+                                }
+                            }
+                        }
+                        CoverActionIcon(Icons.Filled.AddPhotoAlternate, "이미지로 변경") {
+                            pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }
+                        if (previewCover != null) {
+                            CoverActionIcon(Icons.Filled.HideImage, "사진 빼기") { pickedCover = null; removeRequested = true }
+                        }
                     }
-                    if (previewCover != null) {
-                        TextButton(onClick = { pickedCover = null; removeRequested = true }) { Text("사진 빼기") }
+                    Spacer(Modifier.height(20.dp))
+                    HorizontalDivider()
+
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    ) {
+                        CoverActionIcon(
+                            if (book.fav) Icons.Filled.Star else Icons.Filled.StarBorder, "즐겨찾기에 추가",
+                            tint = if (book.fav) Color(0xFFFFD43B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            onClick = onToggleFav,
+                        )
+                        CoverActionIcon(Icons.Filled.Delete, "이 스케치북 삭제", tint = MaterialTheme.colorScheme.error, onClick = onDelete)
                     }
+                    Spacer(Modifier.height(20.dp))
                 }
-                if (colorPickerOpen) {
-                    Spacer(Modifier.height(10.dp))
-                    com.g1.sketchbook.brush.ColorPickerCard(color ?: (DefaultSketchbookCoverColor.toArgb().toLong() and 0xFFFFFFFFL)) {
-                        color = it
-                    }
-                }
-                Spacer(Modifier.height(20.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                HorizontalDivider()
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
                     TextButton(onClick = onCancel) { Text("취소") }
-                    TextButton(onClick = { onSave(name, pickedCover, removeRequested, color) }, enabled = name.isNotBlank()) {
-                        Text("저장", fontWeight = FontWeight.Bold)
-                    }
+                    TextButton(
+                        onClick = { onSave(name, pickedCover, removeRequested, color) },
+                        enabled = name.isNotBlank(),
+                    ) { Text("완료", fontWeight = FontWeight.Bold) }
                 }
             }
         }
     }
+}
+
+/** 표지 변경/즐겨찾기/삭제 공용 — 원형 배경 위에 아이콘 하나만 두는 텍스트 없는 액션 버튼. */
+@Composable
+private fun CoverActionIcon(
+    icon: ImageVector, contentDescription: String,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant, onClick: () -> Unit,
+) {
+    Box(
+        Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant).bounceClick(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(24.dp))
+    }
+}
+
+/** 색상휠 팝업을 앵커(색상 버튼) 아래 가운데에 띄운다 — 화면 밖으로 나가지 않게 좌우로만 clamp. */
+private class BelowCenterAnchor(private val gapPx: Int) : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        val x = (anchorBounds.left + anchorBounds.width / 2 - popupContentSize.width / 2)
+            .coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+        val y = (anchorBounds.bottom + gapPx).coerceAtMost((windowSize.height - popupContentSize.height).coerceAtLeast(0))
+        return IntOffset(x, y)
+    }
+}
+
+/** 갤러리에서 고른 원본 사진에서 표지로 쓸 범위를 직접 고르는 화면 — 핀치로 확대, 드래그로 이동
+ *  (다이어리 상세 보기의 확대/이동 제스처와 같은 패턴). 미리보기 창이 곧 최종 표지 비율이라 "적용"
+ *  시 보이는 그대로가 잘려 저장된다. 별도 Dialog로 새로 띄우지 않고 [EditCoverDialog]가 이미 열어
+ *  둔 Dialog 창 안에서 내용만 바꿔치기 한다 — 갤러리(다른 앱) 다녀온 직후 Dialog를 하나 더 여는
+ *  조합이 일부 기기에서 창이 제대로 붙지 않는 문제가 있었다(2026-08-20). */
+@Composable
+private fun CoverImageCropContent(source: Bitmap, targetRatio: Float, onApply: (Bitmap) -> Unit, onCancel: () -> Unit) {
+    var scale by remember(source) { mutableFloatStateOf(1f) }
+    var offset by remember(source) { mutableStateOf(Offset.Zero) }
+    val density = LocalDensity.current
+    val frameWidthDp = 240.dp
+    val frameHeightDp = frameWidthDp / targetRatio
+
+    Box(Modifier.fillMaxSize().background(Color(0x88000000)), contentAlignment = Alignment.Center) {
+        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.background, shadowElevation = 16.dp, tonalElevation = 3.dp) {
+            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("표지에 쓸 범위 선택", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Spacer(Modifier.height(4.dp))
+                Text("손가락으로 확대·이동해서 고르세요", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(16.dp))
+                Box(
+                    Modifier.width(frameWidthDp).height(frameHeightDp).clip(RoundedCornerShape(12.dp)).background(Color.Black)
+                        .pointerInput(source) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                offset += pan
+                            }
+                        },
+                ) {
+                    Image(
+                        bitmap = source.asImageBitmap(), contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                            .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y },
+                    )
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("취소") }
+                    Button(
+                        onClick = {
+                            val frameWpx = with(density) { frameWidthDp.toPx() }
+                            val frameHpx = with(density) { frameHeightDp.toPx() }
+                            onApply(cropSelectedRegion(source, frameWpx, frameHpx, scale, offset))
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("적용", fontWeight = FontWeight.Bold) }
+                }
+            }
+        }
+    }
+}
+
+/** [CoverImageCropContent]에서 화면에 보이던 영역을 실제 소스 픽셀 좌표로 환산해 그대로 잘라낸다 —
+ *  보이는 그대로가 저장돼야 하므로, 표시용 graphicsLayer 변환(scale/translate)을 소스 좌표계로
+ *  거꾸로 계산. baseScale은 ContentScale.Crop이 화면을 꽉 채우기 위해 원본에 곱하는 배율, 거기에
+ *  사용자가 더 확대한 배율(scale)까지 곱한 게 실제 화면-원본 간 총 배율(totalScale)이다. */
+private fun cropSelectedRegion(src: Bitmap, frameWpx: Float, frameHpx: Float, scale: Float, offset: Offset): Bitmap {
+    val srcW = src.width.toFloat(); val srcH = src.height.toFloat()
+    val baseScale = maxOf(frameWpx / srcW, frameHpx / srcH)
+    val totalScale = baseScale * scale
+    val visW = (frameWpx / totalScale).coerceIn(1f, srcW)
+    val visH = (frameHpx / totalScale).coerceIn(1f, srcH)
+    val cx = (srcW / 2f - offset.x / totalScale).coerceIn(visW / 2f, srcW - visW / 2f)
+    val cy = (srcH / 2f - offset.y / totalScale).coerceIn(visH / 2f, srcH - visH / 2f)
+    val x0 = (cx - visW / 2f).roundToInt().coerceIn(0, (srcW - visW).roundToInt().coerceAtLeast(0))
+    val y0 = (cy - visH / 2f).roundToInt().coerceIn(0, (srcH - visH).roundToInt().coerceAtLeast(0))
+    val w = visW.roundToInt().coerceIn(1, src.width - x0)
+    val h = visH.roundToInt().coerceIn(1, src.height - y0)
+    return Bitmap.createBitmap(src, x0, y0, w, h)
 }
 
 /** 갤러리 원본은 화면·저장용으로 쓰기엔 너무 커서, 긴 변이 [maxDim]을 넘지 않도록 다운샘플링해
@@ -642,20 +796,6 @@ private fun decodeSampledBitmap(context: Context, uri: Uri, maxDim: Int): Bitmap
     while (bounds.outWidth / (sample * 2) >= maxDim || bounds.outHeight / (sample * 2) >= maxDim) sample *= 2
     val opts = BitmapFactory.Options().apply { inSampleSize = sample }
     return resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-}
-
-/** 갤러리 사진을 표지 비율(Dimens.Home.coverRatio)에 맞춰 가운데를 기준으로 잘라낸다 — 그래야 표지
- *  모양에 실제로 맞는 이미지가 저장되고, 목록·홈 어디서 보든(둘 다 ContentScale.Crop) 잘리는 부분이
- *  예측 가능하다. */
-private fun cropToAspect(bmp: Bitmap, targetRatio: Float): Bitmap {
-    val srcRatio = bmp.width.toFloat() / bmp.height
-    return if (srcRatio > targetRatio) {
-        val newW = (bmp.height * targetRatio).roundToInt().coerceIn(1, bmp.width)
-        Bitmap.createBitmap(bmp, (bmp.width - newW) / 2, 0, newW, bmp.height)
-    } else {
-        val newH = (bmp.width / targetRatio).roundToInt().coerceIn(1, bmp.height)
-        Bitmap.createBitmap(bmp, 0, (bmp.height - newH) / 2, bmp.width, newH)
-    }
 }
 
 @Composable
@@ -676,6 +816,12 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var brush by remember { mutableStateOf(BrushType.PEN) }
     var color by remember { mutableLongStateOf(session.brushColor) }
     var erasing by remember { mutableStateOf(false) }
+    // 올가미(선택)·페인트통(채우기)은 브러시/지우개와 상호배타적인 별도 도구 — 하나를 켜면 나머지는
+    // 꺼진다(아래 onBrush/onToggleErase/onToggleLasso/onToggleFill이 서로를 끈다).
+    var lassoActive by remember { mutableStateOf(false) }
+    var fillActive by remember { mutableStateOf(false) }
+    var fillCrayonStyle by remember { mutableStateOf(false) }
+    var hasLassoSelection by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
     val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
     var eraserSize by remember { mutableFloatStateOf(session.eraserSize) }
@@ -694,9 +840,6 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
     var toolbarDragPx by remember { mutableStateOf(Offset.Zero) }
-    // 최소화 상태일 때만 쓰는, 도킹된 가장자리를 따라가는 위치(중앙 기준 오프셋) — 가로 도킹(상/하)이면
-    // 가로 방향, 세로 도킹(좌/우)이면 세로 방향 값. 펼친 상태의 자유 드래그(toolbarDragPx)와는 별개.
-    var toolbarCollapsedOffsetPx by remember { mutableStateOf(0f) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
@@ -734,6 +877,8 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 update = { v ->
                     v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
                     v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
+                    v.lassoMode = lassoActive; v.fillMode = fillActive; v.fillCrayonStyle = fillCrayonStyle
+                    v.onLassoSelectionChanged = { hasLassoSelection = it }
                     v.twoFingerTapAction = session.twoFingerTapAction
                     v.threeFingerTapAction = session.threeFingerTapAction
                     v.longPressAction = session.longPressAction
@@ -744,80 +889,59 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                         color = col; session.brushColor = col; erasing = false; eyedropArmed = false; eyedropPreview = null
                     }
                     v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
+                    v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
                     v.onThreeFingerSwipe = { dir -> goTo(page + dir) }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
         }
-        // 버튼바: 기본은 하단에 붙지만(떠 있는 오버레이라 캔버스 크기는 안 바뀜), 손잡이를 길게 눌러
-        // 드래그하면 놓은 위치에서 가장 가까운 가장자리(상/하/좌/우)로 옮겨 붙는다.
-        val toolbarHorizontalDock = toolbarDock == com.g1.sketchbook.brush.ToolbarDock.TOP || toolbarDock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM
-        val barModifier = Modifier
-            .align(toolbarDock.alignment())
-            // 최소화 모드일 땐 가로 도킹(상/하)이어도 꽉 채우지 않음 — 세로 도킹처럼 버튼 개수만큼만
-            // 감싸게 해서 최소화 바가 실제로 작아 보이게 한다. 펼친 상태는 기존대로 꽉 채움.
-            .let { if (!toolbarCollapsed && toolbarHorizontalDock) it.fillMaxWidth() else it }
-            .offset {
-                if (toolbarCollapsed) {
-                    // 도킹된 가장자리를 따라서만 이동(가로 도킹=가로로, 세로 도킹=세로로), 중앙 고정 아님.
-                    IntOffset(
-                        if (toolbarHorizontalDock) toolbarCollapsedOffsetPx.roundToInt() else 0,
-                        if (!toolbarHorizontalDock) toolbarCollapsedOffsetPx.roundToInt() else 0,
-                    )
-                } else {
-                    IntOffset(toolbarDragPx.x.roundToInt(), toolbarDragPx.y.roundToInt())
-                }
+        // 버튼바 둘 다: 기본 위치에 붙지만(떠 있는 오버레이라 캔버스 크기는 안 바뀜), 손잡이를 길게
+        // 눌러 드래그하면 자유롭게 2D로 움직이다가 놓은 위치에서 가장 가까운 가장자리로 옮겨 붙는다
+        // (최소화 상태여도 동일 — 2026-08-20 이전엔 최소화 시 도킹된 축으로만 밀리는 특수 케이스였음).
+        fun barModifier(dock: com.g1.sketchbook.brush.ToolbarDock, collapsed: Boolean, dragPx: Offset) = Modifier
+            .align(dock.alignment())
+            .let {
+                val horizontal = dock == com.g1.sketchbook.brush.ToolbarDock.TOP || dock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM
+                if (!collapsed && horizontal) it.fillMaxWidth() else it
             }
+            .offset { IntOffset(dragPx.x.roundToInt(), dragPx.y.roundToInt()) }
         BrushControls(
             brush, color, sizeDp, opacity, erasing,
-            onBrush = { brush = it; erasing = false },
+            onBrush = { brush = it; erasing = false; lassoActive = false; fillActive = false },
             onColor = { color = it; erasing = false; session.brushColor = it },
             onSize = { if (erasing) { eraserSize = it; session.eraserSize = it } else { sizeByBrush[brush] = it; session.setBrushSize(brush, it) } },
             onOpacity = { if (erasing) { eraserOpacity = it; session.eraserOpacity = it } else { opacityByBrush[brush] = it; session.setBrushOpacity(brush, it) } },
-            onToggleErase = { erasing = !erasing },
+            onToggleErase = { erasing = !erasing; if (erasing) { lassoActive = false; fillActive = false } },
             eraserBlur = eraserBlur, onEraserBlur = { eraserBlur = it; session.eraserBlur = it },
             onUndo = { view?.undo() }, onRedo = { view?.redo() }, onClear = { view?.clearCanvas(); saveCurrent() },
-            onRotate = { view?.rotate() },
-            onOpenPages = { pagesOpen = true },
             favorites = favorites,
             onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
-            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
-            locked = locked, onToggleLock = { locked = !locked },
+            lassoActive = lassoActive,
+            onToggleLasso = { lassoActive = !lassoActive; if (lassoActive) { erasing = false; fillActive = false } },
+            hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
+            fillActive = fillActive,
+            onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
+            fillCrayonStyle = fillCrayonStyle, onToggleFillStyle = { fillCrayonStyle = !fillCrayonStyle },
             collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
-            onDragBar = { d ->
-                if (toolbarCollapsed) {
-                    // 최소화 상태: 가장자리 재선택 없이, 지금 붙어있는 가장자리를 따라서만 미끄러짐.
-                    val delta = if (toolbarHorizontalDock) d.x else d.y
-                    val limitPx = with(density2) {
-                        (if (toolbarHorizontalDock) maxWidth else maxHeight).toPx() / 2f - CollapsedBarHalfExtent.toPx()
-                    }
-                    toolbarCollapsedOffsetPx = (toolbarCollapsedOffsetPx + delta).coerceIn(-limitPx, limitPx)
-                } else {
-                    toolbarDragPx += d
-                }
-            },
+            onDragBar = { d -> toolbarDragPx += d },
             onDragBarEnd = {
-                // 최소화 상태에선 가장자리를 다시 고르지 않음 — toolbarCollapsedOffsetPx는 드래그 중에
-                // 이미 반영·클램프돼 있어 여기서 더 할 일이 없다.
-                if (!toolbarCollapsed) {
-                    val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
-                    val baseX = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.LEFT -> 0f; com.g1.sketchbook.brush.ToolbarDock.RIGHT -> cwPx; else -> cwPx / 2f }
-                    val baseY = when (toolbarDock) { com.g1.sketchbook.brush.ToolbarDock.TOP -> 0f; com.g1.sketchbook.brush.ToolbarDock.BOTTOM -> chPx; else -> chPx / 2f }
-                    val x = baseX + toolbarDragPx.x; val y = baseY + toolbarDragPx.y
-                    val distances = mapOf(
-                        com.g1.sketchbook.brush.ToolbarDock.LEFT to x,
-                        com.g1.sketchbook.brush.ToolbarDock.RIGHT to (cwPx - x),
-                        com.g1.sketchbook.brush.ToolbarDock.TOP to y,
-                        com.g1.sketchbook.brush.ToolbarDock.BOTTOM to (chPx - y),
-                    )
-                    toolbarDock = distances.minByOrNull { it.value }?.key ?: toolbarDock
-                    toolbarDragPx = Offset.Zero
-                }
+                val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
+                toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, toolbarDragPx, cwPx, chPx)
+                toolbarDragPx = Offset.Zero
             },
             dock = toolbarDock,
-            modifier = barModifier,
+            modifier = barModifier(toolbarDock, toolbarCollapsed, toolbarDragPx),
+        )
+        // 화면버튼(페이지/회전/잠금/전체화면)은 가로/세로 상관없이 항상 우측 상단에 고정된 확장
+        // 버튼 — 탭하면 펼쳐지고 기능을 고르거나 밖을 탭하면 자동으로 닫힌다(2026-08-20).
+        com.g1.sketchbook.brush.ScreenControls(
+            onOpenPages = { pagesOpen = true },
+            onRotate = { view?.rotate() },
+            locked = locked, onToggleLock = { locked = !locked },
+            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+            modifier = Modifier.align(Alignment.TopEnd),
         )
     }
     if (pagesOpen) {

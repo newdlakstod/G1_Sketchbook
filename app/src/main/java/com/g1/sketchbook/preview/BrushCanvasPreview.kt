@@ -1,37 +1,63 @@
 package com.g1.sketchbook.preview
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushPalette
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
+import com.g1.sketchbook.brush.ScreenControls
 import com.g1.sketchbook.brush.ToolbarDock
 import com.g1.sketchbook.brush.alignment
+import com.g1.sketchbook.brush.nearestDock
+import com.g1.sketchbook.sketchbook.MAX_PAGES
+import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.DaymoryTheme
 import com.g1.sketchbook.ui.theme.ThemeMode
 import kotlin.math.roundToInt
-
-// 최소화된 버튼바가 도킹된 가장자리를 따라 미끄러질 때, 화면 밖으로 나가지 않게 남겨두는 여유
-// 폭/높이의 절반 정도(정확한 실측 대신 대략치 — 실제 화면의 같은 상수와 동일한 값).
-private val CollapsedBarHalfExtent = 90.dp
 
 @Preview(
     name = "13 Personal canvas",
@@ -41,20 +67,28 @@ private val CollapsedBarHalfExtent = 90.dp
 )
 @Composable
 private fun BrushCanvasPreview() {
+    var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
     var color by remember { mutableLongStateOf(BrushPalette.first()) }
     var sizeDp by remember { mutableFloatStateOf(20f) }
     var opacity by remember { mutableFloatStateOf(100f) }
     var erasing by remember { mutableStateOf(false) }
+    var lassoActive by remember { mutableStateOf(false) }
+    var fillActive by remember { mutableStateOf(false) }
+    var fillCrayonStyle by remember { mutableStateOf(false) }
+    var hasLassoSelection by remember { mutableStateOf(false) }
     var eraserOpacity by remember { mutableFloatStateOf(100f) }
     var eraserBlur by remember { mutableFloatStateOf(0f) }
     val effectiveOpacity = if (erasing) eraserOpacity else opacity
+    var eyedropArmed by remember { mutableStateOf(false) }
+    var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     var locked by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     var collapsed by remember { mutableStateOf(false) }
     var dock by remember { mutableStateOf(ToolbarDock.BOTTOM) }
     var dragPx by remember { mutableStateOf(Offset.Zero) }
-    var collapsedOffsetPx by remember { mutableStateOf(0f) }
+    var pagesOpen by remember { mutableStateOf(false) }
+    var currentPage by remember { mutableIntStateOf(0) }
 
     DaymoryTheme(mode = ThemeMode.LIGHT) {
         // 실제 화면과 같은 구조: 캔버스가 전체를 채우고, 버튼바는 그 위에 떠 있는 오버레이
@@ -67,84 +101,138 @@ private fun BrushCanvasPreview() {
                 factory = { context ->
                     BrushView(context).apply {
                         initCanvas(390, 600)
-                        drawEnabled = false
+                        view = this
                     }
                 },
-                update = { view ->
-                    view.brush = brush
-                    view.color = color.toInt()
-                    view.strokeSize = sizeDp
-                    view.opacity = effectiveOpacity / 100f
-                    view.erasing = erasing
-                    view.eraserBlur = eraserBlur
+                update = { v ->
+                    v.brush = brush
+                    v.color = color.toInt()
+                    v.strokeSize = sizeDp
+                    v.opacity = effectiveOpacity / 100f
+                    v.erasing = erasing
+                    v.locked = locked
+                    v.eraserBlur = eraserBlur
+                    v.lassoMode = lassoActive
+                    v.fillMode = fillActive
+                    v.fillCrayonStyle = fillCrayonStyle
+                    v.onLassoSelectionChanged = { hasLassoSelection = it }
+                    v.eyedropArmed = eyedropArmed
+                    v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
+                    v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
+                    v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
+                    v.onToggleToolbars = { collapsed = !collapsed }
                 },
             )
-            val horizontalDock = dock == ToolbarDock.TOP || dock == ToolbarDock.BOTTOM
-            val barModifier = Modifier
-                .align(dock.alignment())
-                .let { if (!collapsed && horizontalDock) it.fillMaxWidth() else it }
-                .offset {
-                    if (collapsed) {
-                        IntOffset(
-                            if (horizontalDock) collapsedOffsetPx.roundToInt() else 0,
-                            if (!horizontalDock) collapsedOffsetPx.roundToInt() else 0,
-                        )
-                    } else {
-                        IntOffset(dragPx.x.roundToInt(), dragPx.y.roundToInt())
-                    }
+            eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
+            fun barModifier(barDock: ToolbarDock, barCollapsed: Boolean, barDragPx: Offset) = Modifier
+                .align(barDock.alignment())
+                .let {
+                    val horizontal = barDock == ToolbarDock.TOP || barDock == ToolbarDock.BOTTOM
+                    if (!barCollapsed && horizontal) it.fillMaxWidth() else it
                 }
+                .offset { IntOffset(barDragPx.x.roundToInt(), barDragPx.y.roundToInt()) }
             BrushControls(
                 brush = brush,
                 color = color,
                 sizeDp = sizeDp,
                 opacity = effectiveOpacity,
                 erasing = erasing,
-                onBrush = { brush = it },
+                onBrush = { brush = it; erasing = false; lassoActive = false; fillActive = false },
                 onColor = { color = it },
                 onSize = { sizeDp = it },
                 onOpacity = { if (erasing) eraserOpacity = it else opacity = it },
-                onToggleErase = { erasing = !erasing },
+                onToggleErase = { erasing = !erasing; if (erasing) { lassoActive = false; fillActive = false } },
                 eraserBlur = eraserBlur,
                 onEraserBlur = { eraserBlur = it },
-                onUndo = {},
-                onRedo = {},
-                onClear = {},
-                onOpenPages = {},
-                onRotate = {},
-                locked = locked,
-                onToggleLock = { locked = !locked },
-                fullscreen = fullscreen,
-                onToggleFullscreen = { fullscreen = !fullscreen },
+                onUndo = { view?.undo() },
+                onRedo = { view?.redo() },
+                onClear = { view?.clearCanvas() },
+                eyedropArmed = eyedropArmed,
+                onToggleEyedrop = { eyedropArmed = !eyedropArmed },
+                lassoActive = lassoActive,
+                onToggleLasso = { lassoActive = !lassoActive; if (lassoActive) { erasing = false; fillActive = false } },
+                hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
+                fillActive = fillActive,
+                onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
+                fillCrayonStyle = fillCrayonStyle, onToggleFillStyle = { fillCrayonStyle = !fillCrayonStyle },
                 collapsed = collapsed,
                 onToggleCollapsed = { collapsed = !collapsed },
-                onDragBar = { d ->
-                    if (collapsed) {
-                        val delta = if (horizontalDock) d.x else d.y
-                        val limitPx = with(density2) {
-                            (if (horizontalDock) maxWidth else maxHeight).toPx() / 2f - CollapsedBarHalfExtent.toPx()
-                        }
-                        collapsedOffsetPx = (collapsedOffsetPx + delta).coerceIn(-limitPx, limitPx)
-                    } else {
-                        dragPx += d
-                    }
-                },
+                onDragBar = { d -> dragPx += d },
                 onDragBarEnd = {
-                    if (!collapsed) {
-                        val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
-                        val baseX = when (dock) { ToolbarDock.LEFT -> 0f; ToolbarDock.RIGHT -> cwPx; else -> cwPx / 2f }
-                        val baseY = when (dock) { ToolbarDock.TOP -> 0f; ToolbarDock.BOTTOM -> chPx; else -> chPx / 2f }
-                        val x = baseX + dragPx.x; val y = baseY + dragPx.y
-                        val distances = mapOf(
-                            ToolbarDock.LEFT to x, ToolbarDock.RIGHT to (cwPx - x),
-                            ToolbarDock.TOP to y, ToolbarDock.BOTTOM to (chPx - y),
-                        )
-                        dock = distances.minByOrNull { it.value }?.key ?: dock
-                        dragPx = Offset.Zero
-                    }
+                    val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
+                    dock = nearestDock(dock, dragPx, cwPx, chPx)
+                    dragPx = Offset.Zero
                 },
                 dock = dock,
-                modifier = barModifier,
+                modifier = barModifier(dock, collapsed, dragPx),
             )
+            // 화면버튼은 가로/세로 상관없이 항상 우측 상단에 고정된 확장 버튼(2026-08-20).
+            ScreenControls(
+                onOpenPages = { pagesOpen = true },
+                onRotate = { view?.rotate() },
+                locked = locked, onToggleLock = { locked = !locked },
+                fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
+        }
+        if (pagesOpen) {
+            MockPagePanel(currentPage, MAX_PAGES, onSelect = { currentPage = it }, onDismiss = { pagesOpen = false })
+        }
+    }
+}
+
+/** 실제 `PagePanel`(sketchbook/PagePanel.kt)은 `SketchbookRepository`가 있어야 페이지 썸네일을
+ *  읽는데, Preview는 로컬 저장소를 건드리지 않는다는 규칙(PROGRESS.md Decisions)이라 그대로 못
+ *  쓴다 — 대신 같은 화면 얼개(페이지 이동 헤더 + 3열 그리드)만 흉내 낸, 저장소 없는 목업.
+ *  Interactive Preview에서 "화면 설정 → 페이지" 버튼을 눌렀을 때 팝업 자체가 뜨는지만 확인하는
+ *  용도(실제 썸네일·순서변경 드래그는 실제 화면에서 확인). */
+@Composable
+private fun MockPagePanel(currentPage: Int, pageCount: Int, onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Color(0x55000000)), contentAlignment = Alignment.Center) {
+            Surface(
+                shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.background,
+                shadowElevation = 16.dp, tonalElevation = 3.dp, modifier = Modifier.width(292.dp),
+            ) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Text("페이지", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(Modifier.height(8.dp))
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.height(320.dp),
+                    ) {
+                        items(pageCount) { i ->
+                            val selected = i == currentPage
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.fillMaxWidth().bounceClick { onSelect(i) },
+                            ) {
+                                Box(
+                                    Modifier.fillMaxWidth().aspectRatio(0.74f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.White)
+                                        .border(if (selected) 2.5.dp else 1.dp,
+                                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            RoundedCornerShape(8.dp)),
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "${i + 1}", fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = onDismiss) { Text("취소") }
+                        TextButton(onClick = onDismiss) { Text("완료", fontWeight = FontWeight.Bold) }
+                    }
+                }
+            }
         }
     }
 }
