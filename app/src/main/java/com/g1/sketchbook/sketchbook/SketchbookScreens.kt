@@ -1045,6 +1045,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
         // 버튼 — 탭하면 펼쳐지고 기능을 고르거나 밖을 탭하면 자동으로 닫힌다(2026-08-20).
         com.g1.sketchbook.brush.ScreenControls(
             onOpenPages = { pagesOpen = true },
+            onReadMode = { saveCurrent(); readModeOpen = true },
             onRotate = { view?.rotate() },
             locked = locked, onToggleLock = { locked = !locked },
             fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
@@ -1061,7 +1062,6 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 val newPage = order.indexOf(page)
                 if (newPage != -1 && newPage != page) { page = newPage; view?.loadContent(repo.loadPage(book.id, newPage)) }
             },
-            onReadMode = { saveCurrent(); pagesOpen = false; readModeOpen = true },
             onDismiss = { pagesOpen = false },
         )
     }

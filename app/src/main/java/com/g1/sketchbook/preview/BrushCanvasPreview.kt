@@ -14,11 +14,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -88,6 +93,7 @@ private fun BrushCanvasPreview() {
     var dragPx by remember { mutableStateOf(Offset.Zero) }
     var pagesOpen by remember { mutableStateOf(false) }
     var currentPage by remember { mutableIntStateOf(0) }
+    var readModeOpen by remember { mutableStateOf(false) }
 
     DaymoryTheme(mode = ThemeMode.LIGHT) {
         // 실제 화면과 같은 구조: 캔버스가 전체를 채우고, 버튼바는 그 위에 떠 있는 오버레이
@@ -166,6 +172,7 @@ private fun BrushCanvasPreview() {
             // 화면버튼은 가로/세로 상관없이 항상 우측 상단에 고정된 확장 버튼(2026-08-20).
             ScreenControls(
                 onOpenPages = { pagesOpen = true },
+                onReadMode = { readModeOpen = true },
                 onRotate = { view?.rotate() },
                 locked = locked, onToggleLock = { locked = !locked },
                 fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
@@ -174,6 +181,28 @@ private fun BrushCanvasPreview() {
         }
         if (pagesOpen) {
             MockPagePanel(currentPage, MAX_PAGES, onSelect = { currentPage = it }, onDismiss = { pagesOpen = false })
+        }
+        if (readModeOpen) {
+            MockReadModeOverlay(onClose = { readModeOpen = false })
+        }
+    }
+}
+
+/** 실제 `ReadModeScreen`(readmode/ReadModeScreen.kt)은 `SketchbookRepository`+실제 그림 비트맵으로
+ *  GLSurfaceView 페이지-커얼을 그리는데, Preview는 로컬 저장소를 건드리지 않는다는 규칙이라
+ *  [MockPagePanel]과 같은 이유로 그대로 못 쓴다 — Interactive Preview에서 "화면 설정 → 읽기모드"
+ *  버튼을 눌렀을 때 진입 자체는 되는지만 확인하는 자리표시자(실제 페이지 넘기기 손맛·GL 렌더링은
+ *  실기기/에뮬레이터에서 확인). */
+@Composable
+private fun MockReadModeOverlay(onClose: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        Text("읽기모드 (미리보기 자리표시자)", color = Color.White)
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier.align(Alignment.TopStart).padding(16.dp).size(40.dp)
+                .clip(RoundedCornerShape(50)).background(Color(0x66000000)),
+        ) {
+            Icon(Icons.Filled.Close, "닫기", tint = Color.White)
         }
     }
 }

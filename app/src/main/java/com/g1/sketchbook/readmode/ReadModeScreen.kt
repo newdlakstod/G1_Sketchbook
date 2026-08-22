@@ -41,6 +41,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.g1.sketchbook.readmode.curl.CurlDirection
 import com.g1.sketchbook.sketchbook.DefaultSketchbookCoverColor
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
@@ -120,10 +121,19 @@ fun ReadModeScreen(
             factory = { context -> ReadModeSurface(context) },
             update = { view ->
                 surface = view
-                // On the last spread there is no next spread to advance to, so instead of doing
-                // nothing (which would strand the reader on the finished curl's blank underside),
-                // re-push the same spread to reset the renderer's curl state.
-                view.onTurnCompleted = { if (spreadIndex < spreads.lastIndex) spreadIndex++ else reloadTick++ }
+                // Backward turns aren't offered in landscape — the left page there is a static quad
+                // with no deforming mesh of its own (see ReadModeRenderer's "only the right page
+                // curls" simplification), so there's nothing to animate a left-edge turn with yet.
+                view.setTurnAvailability(canForward = spreadIndex < spreads.lastIndex, canBackward = spreadIndex > 0 && !landscape)
+                // At either end of the book there is no further spread to move to, so instead of
+                // doing nothing (which would strand the reader on the finished curl's blank
+                // underside), re-push the same spread to reset the renderer's curl state.
+                view.onTurnCompleted = { direction ->
+                    when (direction) {
+                        CurlDirection.Forward -> if (spreadIndex < spreads.lastIndex) spreadIndex++ else reloadTick++
+                        CurlDirection.Backward -> if (spreadIndex > 0) spreadIndex-- else reloadTick++
+                    }
+                }
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -177,10 +187,12 @@ private fun loadSpreadTextures(
         else -> provider.pageBitmap(staticLeftIndex) ?: blank
     }
     val nextSpreadRight = spreads.getOrNull(spreadIndex + 1)?.last()
+    val previousSpreadRight = if (spreadIndex > 0) spreads[spreadIndex - 1].last() else null
     return SpreadTextures(
         turningFront = turningFront,
         turningBack = blank,
         nextRight = nextSpreadRight?.let { provider.pageBitmap(it) } ?: blank,
+        previousRight = previousSpreadRight?.let { provider.pageBitmap(it) } ?: blank,
         staticLeft = staticLeft,
     )
 }

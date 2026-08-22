@@ -5,12 +5,12 @@ import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import com.g1.sketchbook.readmode.curl.CurlAnimator
+import com.g1.sketchbook.readmode.curl.CurlDirection
 import com.g1.sketchbook.readmode.curl.CurlGeometry
 import com.g1.sketchbook.readmode.curl.CurlPhase
 import com.g1.sketchbook.readmode.curl.CurlState
 import com.g1.sketchbook.readmode.curl.PageCamera
 import com.g1.sketchbook.readmode.curl.PageMesh
-import com.g1.sketchbook.readmode.curl.ShadowStrip
 import com.g1.sketchbook.readmode.curl.ShaderSources
 import com.g1.sketchbook.readmode.curl.TextureLoader
 import com.g1.sketchbook.readmode.curl.math.Vec2
@@ -23,11 +23,14 @@ import javax.microedition.khronos.opengles.GL10
  *  is called (spread change). [staticLeft] is null in portrait (single-page) mode. [turningBack] is
  *  the sketchbook's paper texture: pages here are single-sided digital drawings, not physical
  *  double-sided sheets, so the back of a turning leaf just shows blank paper rather than another
- *  page's content. */
+ *  page's content. [previousRight] previews the page a *backward* turn would reveal — always
+ *  loaded up front alongside [nextRight] so either direction's drag can start instantly (see
+ *  `ReadModeRenderer.onDragStart`'s [CurlDirection]); a blank page when there is no previous spread. */
 class SpreadTextures(
     val turningFront: Bitmap,
     val turningBack: Bitmap,
     val nextRight: Bitmap,
+    val previousRight: Bitmap,
     val staticLeft: Bitmap?,
 )
 
@@ -43,7 +46,6 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
     private val pageMesh = PageMesh()
     private val nextPageMesh = PageMesh(1, 1)
     private val staticLeftMesh = PageMesh(1, 1)
-    private val shadowStrip = ShadowStrip.create()
     private val camera = PageCamera()
     private val projection = FloatArray(16)
     private val viewMatrix = FloatArray(16)
@@ -52,21 +54,24 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
     private val leftMvp = FloatArray(16)
 
     private var state = CurlState()
+    private var activeDirection = CurlDirection.Forward
     private var program = 0
-    private var shadowProgram = 0
     private var pageGpu: MeshGpu? = null
     private var nextPageGpu: MeshGpu? = null
     private var staticLeftGpu: MeshGpu? = null
-    private var shadowGpu: ShadowGpu? = null
     private var turningFrontTexture = 0
     private var turningBackTexture = 0
     private var nextRightTexture = 0
+    private var previousRightTexture = 0
     private var staticLeftTexture = 0
     private var mvpLocation = -1
     private var frontTextureLocation = -1
     private var backTextureLocation = -1
     private var staticPageLocation = -1
-    private var shadowMvpLocation = -1
+    private var foldXLocation = -1
+    private var foldShadowWidthLocation = -1
+    private var foldShadowStrengthLocation = -1
+    private var foldShadowSignLocation = -1
 
     private var pageWidth = PORTRAIT_WIDTH
     private var pageHeight = PORTRAIT_WIDTH / DEFAULT_PAGE_ASPECT
@@ -98,17 +103,18 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         releaseGlObjects()
         program = createProgram(ShaderSources.PAGE_VERTEX, ShaderSources.PAGE_FRAGMENT)
-        shadowProgram = createProgram(ShaderSources.SHADOW_VERTEX, ShaderSources.SHADOW_FRAGMENT)
         mvpLocation = GLES30.glGetUniformLocation(program, "uMvp")
         frontTextureLocation = GLES30.glGetUniformLocation(program, "uFrontTexture")
         backTextureLocation = GLES30.glGetUniformLocation(program, "uBackTexture")
         staticPageLocation = GLES30.glGetUniformLocation(program, "uStaticPage")
-        shadowMvpLocation = GLES30.glGetUniformLocation(shadowProgram, "uMvp")
+        foldXLocation = GLES30.glGetUniformLocation(program, "uFoldX")
+        foldShadowWidthLocation = GLES30.glGetUniformLocation(program, "uFoldShadowWidth")
+        foldShadowStrengthLocation = GLES30.glGetUniformLocation(program, "uFoldShadowStrength")
+        foldShadowSignLocation = GLES30.glGetUniformLocation(program, "uFoldShadowSign")
 
         pageGpu = MeshGpu(pageMesh, dynamic = true)
         nextPageGpu = MeshGpu(nextPageMesh, dynamic = false)
         staticLeftGpu = MeshGpu(staticLeftMesh, dynamic = false)
-        shadowGpu = ShadowGpu(shadowStrip)
 
         GLES30.glClearColor(0.89f, 0.86f, 0.79f, 1f)
         GLES30.glEnable(GLES30.GL_DEPTH_TEST)
@@ -130,12 +136,16 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
     override fun onDrawFrame(gl: GL10?) {
         pendingSpread?.let { uploadSpread(it); pendingSpread = null }
         if (animator.isRunning) state = animator.sample(System.nanoTime())
+        var fold = CurlGeometry.FoldShadow(0f, 0f, 0f)
         if (state.drawsTurningPage) {
-            geometry.deform(pageMesh, state.dragPosition, rightPageWidth(), pageHeight)
-            geometry.updateShadow(shadowStrip, geometry.parameters(state.dragPosition), rightPageWidth(), pageHeight)
+            geometry.deform(pageMesh, state.dragPosition, rightPageWidth(), pageHeight, activeDirection)
+            fold = geometry.foldShadow(geometry.parameters(state.dragPosition), rightPageWidth())
             pageGpu?.updateDynamic(pageMesh)
-            shadowGpu?.update(shadowStrip)
         }
+        // The fold shadow lands on the *revealed* page — real-space side depends on which edge this
+        // turn started from, so both the axis position and "which side is revealed" get the same
+        // mirror `deform` above applied for backward turns.
+        val foldMirror = if (activeDirection == CurlDirection.Forward) 1f else -1f
 
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
         GLES30.glUseProgram(program)
@@ -144,31 +154,40 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
             GLES30.glUniformMatrix4fv(mvpLocation, 1, false, leftMvp, 0)
             bindTextures(staticLeftTexture, staticLeftTexture)
             GLES30.glUniform1f(staticPageLocation, 1f)
+            GLES30.glUniform1f(foldShadowWidthLocation, 0f)
             staticLeftGpu?.draw(staticLeftMesh.indexCount)
         }
 
+        val revealTexture = if (activeDirection == CurlDirection.Forward) nextRightTexture else previousRightTexture
         GLES30.glUniformMatrix4fv(mvpLocation, 1, false, rightMvp, 0)
-        bindTextures(nextRightTexture, nextRightTexture)
+        bindTextures(revealTexture, revealTexture)
         GLES30.glUniform1f(staticPageLocation, 1f)
+        GLES30.glUniform1f(foldXLocation, fold.foldX * foldMirror)
+        GLES30.glUniform1f(foldShadowWidthLocation, fold.width)
+        GLES30.glUniform1f(foldShadowStrengthLocation, fold.strength)
+        GLES30.glUniform1f(foldShadowSignLocation, foldMirror)
         nextPageGpu?.draw(nextPageMesh.indexCount)
 
         if (state.drawsTurningPage) {
-            GLES30.glUseProgram(shadowProgram)
-            GLES30.glUniformMatrix4fv(shadowMvpLocation, 1, false, rightMvp, 0)
-            shadowGpu?.draw(shadowStrip.indexCount)
-
-            GLES30.glUseProgram(program)
+            GLES30.glUniform1f(foldShadowWidthLocation, 0f)
             GLES30.glUniformMatrix4fv(mvpLocation, 1, false, rightMvp, 0)
             bindTextures(turningFrontTexture, turningBackTexture)
             GLES30.glUniform1f(staticPageLocation, 0f)
+            // Mirroring the mesh's x-axis for a backward turn (see CurlGeometry.deform) inverts every
+            // triangle's apparent winding from this fixed camera, which would flip gl_FrontFacing's
+            // front/back texture read for the still-flat majority of the page — compensate so "front"
+            // keeps meaning the visually-facing side regardless of which edge the turn started from.
+            if (activeDirection == CurlDirection.Backward) GLES30.glFrontFace(GLES30.GL_CW)
             pageGpu?.draw(pageMesh.indexCount)
+            if (activeDirection == CurlDirection.Backward) GLES30.glFrontFace(GLES30.GL_CCW)
         }
 
         GLES30.glBindVertexArray(0)
         GLES30.glUseProgram(0)
     }
 
-    fun onDragStart(position: Vec2) {
+    fun onDragStart(position: Vec2, direction: CurlDirection) {
+        activeDirection = direction
         animator.cancel()
         state = CurlState.at(CurlPhase.Dragging, sanitize(position))
     }
@@ -233,6 +252,7 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
         turningFrontTexture = replaceTexture(turningFrontTexture, textures.turningFront)
         turningBackTexture = replaceTexture(turningBackTexture, textures.turningBack)
         nextRightTexture = replaceTexture(nextRightTexture, textures.nextRight)
+        previousRightTexture = replaceTexture(previousRightTexture, textures.previousRight)
         textures.staticLeft?.let { staticLeftTexture = replaceTexture(staticLeftTexture, it) }
     }
 
@@ -251,16 +271,17 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
     }
 
     private fun releaseGlObjects() {
-        pageGpu?.release(); nextPageGpu?.release(); staticLeftGpu?.release(); shadowGpu?.release()
-        pageGpu = null; nextPageGpu = null; staticLeftGpu = null; shadowGpu = null
+        pageGpu?.release(); nextPageGpu?.release(); staticLeftGpu?.release()
+        pageGpu = null; nextPageGpu = null; staticLeftGpu = null
         if (program != 0) GLES30.glDeleteProgram(program)
-        if (shadowProgram != 0) GLES30.glDeleteProgram(shadowProgram)
         TextureLoader.release(turningFrontTexture)
         TextureLoader.release(turningBackTexture)
         TextureLoader.release(nextRightTexture)
+        TextureLoader.release(previousRightTexture)
         TextureLoader.release(staticLeftTexture)
-        program = 0; shadowProgram = 0
-        turningFrontTexture = 0; turningBackTexture = 0; nextRightTexture = 0; staticLeftTexture = 0
+        program = 0
+        turningFrontTexture = 0; turningBackTexture = 0; nextRightTexture = 0
+        previousRightTexture = 0; staticLeftTexture = 0
     }
 
     private fun createProgram(vertexSource: String, fragmentSource: String): Int {
@@ -353,75 +374,6 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
             data.position(0)
             GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, bufferId)
             GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, bytes, data)
-        }
-    }
-
-    private class ShadowGpu(strip: ShadowStrip) {
-        private val vertexArray = IntArray(1)
-        private val buffers = IntArray(3)
-
-        init {
-            GLES30.glGenVertexArrays(1, vertexArray, 0)
-            GLES30.glGenBuffers(buffers.size, buffers, 0)
-            GLES30.glBindVertexArray(vertexArray[0])
-
-            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[0])
-            GLES30.glBufferData(
-                GLES30.GL_ARRAY_BUFFER,
-                strip.positions.size * Float.SIZE_BYTES,
-                strip.positionBuffer,
-                GLES30.GL_DYNAMIC_DRAW,
-            )
-            GLES30.glEnableVertexAttribArray(0)
-            GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 0, 0)
-
-            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[1])
-            GLES30.glBufferData(
-                GLES30.GL_ARRAY_BUFFER,
-                strip.alpha.size * Float.SIZE_BYTES,
-                strip.alphaBuffer,
-                GLES30.GL_DYNAMIC_DRAW,
-            )
-            GLES30.glEnableVertexAttribArray(1)
-            GLES30.glVertexAttribPointer(1, 1, GLES30.GL_FLOAT, false, 0, 0)
-
-            GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, buffers[2])
-            GLES30.glBufferData(
-                GLES30.GL_ELEMENT_ARRAY_BUFFER,
-                strip.indices.size * Int.SIZE_BYTES,
-                strip.indexBuffer,
-                GLES30.GL_STATIC_DRAW,
-            )
-            GLES30.glBindVertexArray(0)
-        }
-
-        fun update(strip: ShadowStrip) {
-            strip.positionBuffer.position(0)
-            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[0])
-            GLES30.glBufferSubData(
-                GLES30.GL_ARRAY_BUFFER,
-                0,
-                strip.positions.size * Float.SIZE_BYTES,
-                strip.positionBuffer,
-            )
-            strip.alphaBuffer.position(0)
-            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[1])
-            GLES30.glBufferSubData(
-                GLES30.GL_ARRAY_BUFFER,
-                0,
-                strip.alpha.size * Float.SIZE_BYTES,
-                strip.alphaBuffer,
-            )
-        }
-
-        fun draw(indexCount: Int) {
-            GLES30.glBindVertexArray(vertexArray[0])
-            GLES30.glDrawElements(GLES30.GL_TRIANGLES, indexCount, GLES30.GL_UNSIGNED_INT, 0)
-        }
-
-        fun release() {
-            GLES30.glDeleteBuffers(buffers.size, buffers, 0)
-            GLES30.glDeleteVertexArrays(1, vertexArray, 0)
         }
     }
 

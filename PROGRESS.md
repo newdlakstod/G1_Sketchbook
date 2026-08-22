@@ -4,6 +4,52 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **읽기모드 버튼 위치 이동 + 페이지-커얼 이펙트 4가지 수정** (2026-08-23, 버전 미상향, 아직 커밋 안 함):
+  사용자가 실기기 테스트 전 "읽기모드 버튼이 안 보인다"고 지적 → 알고 보니 페이지 설정(`PagePanel`)
+  다이얼로그 안이 아니라 화면 우측 상단 확장 버튼(`ScreenControls`, 페이지/회전/잠금/전체화면이 모인
+  곳) 안에 넣어달라는 요청이었음 — `PagePanel`에서 버튼을 빼고 `ScreenControls`에 `onReadMode`
+  파라미터+아이콘 신설(`BrushControls.kt`, `SketchbookScreens.kt`, `PagePanel.kt`).
+  이어서 사용자가 "책장넘기기 효과가 예전 코드"라며 4가지 구체적 문제를 지적, 참고 프로젝트
+  (`CODEX/GDO_DAILY SKETCH/PageCurlDemo`)를 다시 조사시킴 — **중요 발견**: 참고 프로젝트도 실제로는
+  같은 문제를 겪고 있었고, 그림자 제거·양방향 넘기기는 설계 문서(spec/plan)만 있고 실제 코드는
+  없었음(`PageBookState.kt` 자체가 없음), 가로모드 제본선 개념은 참고 프로젝트에 아예 존재하지
+  않음(우리 앱의 독자 설계). 즉 "최신 코드를 그대로 포팅"이 아니라 설계 문서를 청사진 삼아
+  새로 구현한 작업.
+  - **계단현상 그림자 완전 삭제**: `ShadowStrip`(저해상도 세그먼트 메쉬 기반 그림자 스트립),
+    전용 `shadowProgram`/`SHADOW_VERTEX`/`SHADOW_FRAGMENT`, `CurlGeometry.updateShadow` 전부
+    삭제. 기존 셰이더의 곡률 음영(`vShade`)만으로 입체감 유지 — 참고 프로젝트의 설계 문서가
+    명시한 해법과 동일.
+  - **넘어가는 다음 장에 입체감 그림자 신설**: 저해상도 메쉬가 아니라 페이지 셰이더에 프래그먼트
+    단위 그라디언트를 추가하는 방식으로 새로 설계(`ShaderSources.kt`의 `uFoldX`/
+    `uFoldShadowWidth`/`uFoldShadowStrength`/`uFoldShadowSign` 유니폼 + `CurlGeometry.foldShadow()`).
+    정점 메쉬가 아니라 픽셀 단위 연속 함수라 계단현상이 날 수 없음. 참고 프로젝트 설계는 오히려
+    "그림자를 아예 없앤다"는 결론이라 그대로 가져올 코드가 없었고, 사용자 요구(입체감용 그림자는
+    유지하되 다음 장에)에 맞춰 새로 설계.
+  - **가로모드 제본선 중심 넘기기 — 근본 원인 특정 및 수정**: 카메라/메쉬 배치(`recomputeCamera`의
+    `rightMvp`/`leftMvp`)는 원래부터 제본선(월드 x=0) 중심으로 정확히 짜여 있었음 — 진짜 버그는
+    `DragInterpreter.normalized()`가 터치를 항상 "전체 화면 너비" 기준으로 정규화해서, 가로모드의
+    오른쪽 페이지(화면 절반)를 다루는 컬 수학이 잘못된 범위의 값을 받고 있던 것(이전 세션에서
+    "landscape drag-coordinate mismatch"로 알려진 채 보류됐던 이슈). `DragInterpreter`에
+    `landscape` 플래그를 받는 `directionForStart`/`toWorkingPosition`을 추가해 화면 절반→오른쪽
+    페이지 0..1 범위로 재매핑.
+  - **왼쪽→오른쪽(뒤로) 페이지 넘기기 신설**: 참고 프로젝트의 미구현 설계 문서(좌표 미러링 방식,
+    `workingX = 1 - touchX`)를 청사진으로 새로 구현. `CurlDirection` enum, `CurlGeometry.deform`에
+    `direction` 파라미터(메쉬 x축을 작업공간에서 미러링 후 되돌림), `DragInterpreter`의 양방향
+    가장자리 판정, `ReadModeSurface`(방향 잠금 + `setTurnAvailability`), `ReadModeScreen`(spread
+    앞뒤 모두 로드하는 `previousRight` 텍스처, `onTurnCompleted(direction)`으로 `spreadIndex++`/`--`).
+    거울 메쉬는 삼각형 와인딩이 뒤집혀 `gl_FrontFacing` 기반 앞/뒷면 판정이 깨지므로, 뒤로 넘기기
+    드로우콜에서만 `glFrontFace(GL_CW)`로 보정.
+    **의도적 스코프 제한**: 세로모드(페이지 1장)는 완전 지원, **가로모드는 앞으로 넘기기만** —
+    가로모드의 왼쪽 페이지는 애초에 변형되는 메쉬가 없는 구조(오른쪽 페이지만 커얼)라, 왼쪽에서
+    시작하는 뒤로 넘기기를 제대로 만들려면 별도의 거울 메쉬가 필요함. 실기기 검증 없이 무리하게
+    확장하기보다 명시적으로 범위를 좁힘(`ReadModeScreen`에서 `canBackward = spreadIndex > 0 &&
+    !landscape`로 강제).
+  - `ShadowStrip.kt`/`CurlShadowTest.kt` 삭제, `CurlGeometryTest.kt`/`DragInterpreterTest.kt`에
+    새 동작(양방향 미러링 대칭성, foldShadow 경계값, 가로모드 재매핑) 테스트 추가.
+  - `compileDebugKotlin` + `testDebugUnitTest`(35개, 0 실패) + `assembleDebug` 전부
+    BUILD SUCCESSFUL. **실기기 확인 전혀 안 됨** — 특히 뒤로 넘기기의 앞/뒷면 텍스처 스왑
+    정합성(`glFrontFace` 보정), 새 그림자의 실제 체감 강도, 가로모드 재매핑 후 손가락-화면
+    일치감은 시뮬레이션으로 검증 불가능한 영역.
 - **읽기모드 전체 브랜치 최종 리뷰 수정 (머지 직전 마지막 패스)** (2026-08-22, 버전 미상향):
   - **페이지 비율 하드코딩 제거**: `ReadModeRenderer`가 데모에서 물려받은 고정 3:4(`PORTRAIT_HEIGHT
     = 8f/3f`)로 모든 책을 그리던 문제 — 태블릿 사이즈 외 전 사이즈가 늘어나/눌려 보였다

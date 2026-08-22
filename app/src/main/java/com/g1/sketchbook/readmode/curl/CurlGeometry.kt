@@ -15,6 +15,15 @@ enum class CurlRegion {
     Flipped,
 }
 
+/** Which edge a turn started from. [Forward] curls the current page away from its right edge to
+ *  reveal the next one (the original, only supported direction). [Backward] mirrors that: geometry
+ *  is deformed in x-flipped "working space" (see [CurlGeometry.deform]) so the same math curls the
+ *  page away from its *left* edge instead, revealing the previous one. */
+enum class CurlDirection {
+    Forward,
+    Backward,
+}
+
 data class CurlParameters(
     val axisPoint: Vec2,
     val axisDirection: Vec2,
@@ -57,6 +66,7 @@ class CurlGeometry {
         drag: Vec2,
         pageWidth: Float,
         pageHeight: Float,
+        direction: CurlDirection = CurlDirection.Forward,
     ): CurlStats {
         require(pageWidth > 0f && pageHeight > 0f)
         val parameters = parameters(drag)
@@ -65,6 +75,7 @@ class CurlGeometry {
             return CurlStats(mesh.vertexCount, 0, 0, 0f)
         }
 
+        val mirrorX = if (direction == CurlDirection.Forward) 1f else -1f
         val axisPointX = (parameters.axisPoint.x - 0.5f) * pageWidth
         val axisPointY = (parameters.axisPoint.y - 0.5f) * pageHeight
         val axisDirectionX = parameters.axisDirection.x
@@ -83,7 +94,7 @@ class CurlGeometry {
             val uvOffset = vertex * 2
             val u = mesh.uvs[uvOffset]
             val v = 1f - mesh.uvs[uvOffset + 1]
-            val originalX = (u - 0.5f) * pageWidth
+            val originalX = (u - 0.5f) * pageWidth * mirrorX
             val originalY = (v - 0.5f) * pageHeight
             val relativeX = originalX - axisPointX
             val relativeY = originalY - axisPointY
@@ -131,7 +142,7 @@ class CurlGeometry {
             }
 
             val positionOffset = vertex * 3
-            mesh.positions[positionOffset] = positionX
+            mesh.positions[positionOffset] = positionX * mirrorX
             mesh.positions[positionOffset + 1] = positionY
             mesh.positions[positionOffset + 2] = depth
             mesh.shade[vertex] = vertexShade
@@ -143,62 +154,21 @@ class CurlGeometry {
         return CurlStats(flatVertices, curvedVertices, flippedVertices, maxDepth)
     }
 
-    fun updateShadow(
-        strip: ShadowStrip,
-        parameters: CurlParameters,
-        pageWidth: Float,
-        pageHeight: Float,
-    ) {
-        require(pageWidth > 0f && pageHeight > 0f)
-        if (parameters.progress <= IDLE_EPSILON) {
-            strip.alpha.fill(0f)
-            strip.upload()
-            return
-        }
+    /** Depth cue cast onto the *underlying* (revealed) page, not the turning page itself — unlike
+     *  the old vertex-strip shadow this replaced, it's just three numbers consumed by a per-fragment
+     *  gradient in [ShaderSources.PAGE_FRAGMENT], so it can't alias into a visible staircase the way
+     *  a low-poly mesh strip did. [foldX] and [width] are in the same working-space units as
+     *  [deform]'s `pageWidth` (i.e. *not* yet mirrored for [CurlDirection.Backward] — the caller
+     *  applies that, since only it knows which real-space side is "revealed"). [width] of `0f` means
+     *  "no shadow" (idle). */
+    data class FoldShadow(val foldX: Float, val width: Float, val strength: Float)
 
-        val axisX = (parameters.axisPoint.x - 0.5f) * pageWidth
-        val axisY = (parameters.axisPoint.y - 0.5f) * pageHeight
-        val axisDirection = parameters.axisDirection
-        val curlX = axisDirection.y
-        val curlY = -axisDirection.x
-        val width = lerp(0.025f, 0.11f, smoothStep(parameters.progress)) * pageWidth
-        val innerAlpha = minOf(0.52f, 0.14f + parameters.progress * 0.38f)
-
-        for (segment in 0..strip.segments) {
-            val amount = segment.toFloat() / strip.segments
-            val y = lerp(-pageHeight * 0.5f, pageHeight * 0.5f, amount)
-            val along = (y - axisY) / axisDirection.y
-            val innerX = clamp(
-                axisX + axisDirection.x * along,
-                -pageWidth * 0.5f,
-                pageWidth * 0.5f,
-            )
-            val innerY = clamp(y, -pageHeight * 0.5f, pageHeight * 0.5f)
-            val outerX = clamp(
-                innerX - curlX * width,
-                -pageWidth * 0.5f,
-                pageWidth * 0.5f,
-            )
-            val outerY = clamp(
-                innerY - curlY * width,
-                -pageHeight * 0.5f,
-                pageHeight * 0.5f,
-            )
-            val innerVertex = segment * 2
-            val outerVertex = innerVertex + 1
-            writeShadowVertex(strip.positions, innerVertex, innerX, innerY)
-            writeShadowVertex(strip.positions, outerVertex, outerX, outerY)
-            strip.alpha[innerVertex] = innerAlpha
-            strip.alpha[outerVertex] = 0f
-        }
-        strip.upload()
-    }
-
-    private fun writeShadowVertex(positions: FloatArray, vertex: Int, x: Float, y: Float) {
-        val offset = vertex * 3
-        positions[offset] = x
-        positions[offset + 1] = y
-        positions[offset + 2] = SHADOW_DEPTH
+    fun foldShadow(parameters: CurlParameters, pageWidth: Float): FoldShadow {
+        if (parameters.progress <= IDLE_EPSILON) return FoldShadow(0f, 0f, 0f)
+        val foldX = (parameters.axisPoint.x - 0.5f) * pageWidth
+        val width = lerp(0.05f, 0.22f, smoothStep(parameters.progress)) * pageWidth
+        val strength = minOf(0.45f, 0.12f + parameters.progress * 0.33f)
+        return FoldShadow(foldX, width, strength)
     }
 
     private companion object {
@@ -209,6 +179,5 @@ class CurlGeometry {
         const val AXIS_TILT_GAIN = 0.6f
         const val MAX_AXIS_TILT = 0.30f
         const val HALF_PI = (PI / 2.0).toFloat()
-        const val SHADOW_DEPTH = -0.02f
     }
 }

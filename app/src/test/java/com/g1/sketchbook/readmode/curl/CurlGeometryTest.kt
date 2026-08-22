@@ -60,4 +60,50 @@ class CurlGeometryTest {
 
         assertTrue(mesh.shade.minOrNull()!! <= 0.55f, "fold shadow is too weak")
     }
+
+    @Test
+    fun backwardMiddleDragContainsFlatCurvedAndFlippedRegions() {
+        val mesh = PageMesh(40, 40)
+
+        val stats = geometry.deform(mesh, Vec2(0.38f, 0.35f), pageWidth = 2f, pageHeight = 3f, direction = CurlDirection.Backward)
+
+        assertTrue(stats.flatVertices > 0, "flat region missing")
+        assertTrue(stats.curvedVertices > 0, "curved region missing")
+        assertTrue(stats.flippedVertices > 0, "flipped region missing")
+        assertTrue(mesh.positions.all(Float::isFinite))
+    }
+
+    @Test
+    fun backwardDeformMirrorsForwardPositionsWithoutChangingUvs() {
+        val forward = PageMesh(8, 8)
+        val backward = PageMesh(8, 8)
+
+        geometry.deform(forward, Vec2(0.4f, 0.5f), pageWidth = 2f, pageHeight = 8f / 3f, direction = CurlDirection.Forward)
+        geometry.deform(backward, Vec2(0.4f, 0.5f), pageWidth = 2f, pageHeight = 8f / 3f, direction = CurlDirection.Backward)
+
+        for (row in 0..forward.rows) {
+            for (column in 0..forward.columns) {
+                val forwardVertex = row * (forward.columns + 1) + (forward.columns - column)
+                val backwardVertex = row * (backward.columns + 1) + column
+                assertEquals(
+                    -forward.positions[forwardVertex * 3],
+                    backward.positions[backwardVertex * 3],
+                    1e-4f,
+                )
+                assertEquals(column.toFloat() / backward.columns, backward.uvs[backwardVertex * 2], 0f)
+            }
+        }
+    }
+
+    @Test
+    fun foldShadowIsDisabledWhenIdleAndBoundedWhenDragging() {
+        val idle = geometry.foldShadow(geometry.parameters(Vec2(1f, 0.5f)), pageWidth = 2f)
+        assertEquals(0f, idle.width, 0f)
+        assertEquals(0f, idle.strength, 0f)
+
+        val dragging = geometry.foldShadow(geometry.parameters(Vec2(0.4f, 0.5f)), pageWidth = 2f)
+        assertTrue(dragging.width > 0f, "shadow should have a width once dragging")
+        assertTrue(dragging.strength in 0f..0.45f, "shadow strength out of expected bounds")
+        assertTrue(dragging.foldX.isFinite())
+    }
 }

@@ -12,12 +12,14 @@ object ShaderSources {
         out vec2 vUv;
         out float vShade;
         out float vSide;
+        out float vLocalX;
 
         void main() {
             gl_Position = uMvp * vec4(aPosition, 1.0);
             vUv = aUv;
             vShade = aShade;
             vSide = aSide;
+            vLocalX = aPosition.x;
         }
     """
 
@@ -27,10 +29,18 @@ object ShaderSources {
         in vec2 vUv;
         in float vShade;
         in float vSide;
+        in float vLocalX;
 
         uniform sampler2D uFrontTexture;
         uniform sampler2D uBackTexture;
         uniform float uStaticPage;
+        // Soft depth cue cast onto the *revealed* (underlying) page by the turning page overhead —
+        // a per-fragment gradient rather than a separate low-poly shadow mesh, so it can't alias
+        // into a staircase the way the old ShadowStrip did. uFoldShadowWidth <= 0 disables it.
+        uniform float uFoldX;
+        uniform float uFoldShadowWidth;
+        uniform float uFoldShadowStrength;
+        uniform float uFoldShadowSign;
 
         out vec4 fragColor;
 
@@ -49,32 +59,12 @@ object ShaderSources {
             }
             float ridgeHighlight = 0.05 * smoothstep(1.0, 1.07, vShade);
             paper.rgb *= clamp(vShade + ridgeHighlight, 0.46, 1.10);
+            if (uFoldShadowWidth > 0.0) {
+                float dist = (vLocalX - uFoldX) * uFoldShadowSign;
+                float falloff = 1.0 - smoothstep(0.0, uFoldShadowWidth, clamp(dist, 0.0, uFoldShadowWidth));
+                paper.rgb *= (1.0 - falloff * uFoldShadowStrength);
+            }
             fragColor = paper;
-        }
-    """
-
-    const val SHADOW_VERTEX = """#version 300 es
-        layout(location = 0) in vec3 aPosition;
-        layout(location = 1) in float aAlpha;
-
-        uniform mat4 uMvp;
-
-        out float vAlpha;
-
-        void main() {
-            gl_Position = uMvp * vec4(aPosition, 1.0);
-            vAlpha = aAlpha;
-        }
-    """
-
-    const val SHADOW_FRAGMENT = """#version 300 es
-        precision mediump float;
-
-        in float vAlpha;
-        out vec4 fragColor;
-
-        void main() {
-            fragColor = vec4(0.08, 0.07, 0.06, vAlpha);
         }
     """
 }

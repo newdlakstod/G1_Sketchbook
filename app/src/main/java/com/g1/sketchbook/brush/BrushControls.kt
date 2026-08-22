@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
@@ -412,14 +413,15 @@ fun BrushControls(
     }
 }
 
-/** 페이지/회전/화면잠금/전체화면 — 그림 자체가 아니라 "화면"을 다루는 버튼들만 모은 작은 확장 버튼
- *  (2026-08-20, 예전엔 드래그로 옮기고 최소화할 수 있는 독립 바였는데, 화면 우측 상단 고정 + 항상
- *  닫힌 상태로 시작하는 팝업 방식으로 교체). 버튼을 탭하면 아래로 펼쳐지고, 기능을 하나 고르거나
- *  팝업 바깥을 탭하면 즉시 다시 닫힌다 — 펼침 상태 자체는 어디에도 남지 않는다. 4개 버튼 모두
- *  nullable이라, 페이지 개념이 없는 화면(다이어리)은 onOpenPages만 null로 넘기면 자동으로 빠진다. */
+/** 페이지/읽기모드/회전/화면잠금/전체화면 — 그림 자체가 아니라 "화면"을 다루는 버튼들만 모은 작은
+ *  확장 버튼 (2026-08-20, 예전엔 드래그로 옮기고 최소화할 수 있는 독립 바였는데, 화면 우측 상단 고정
+ *  + 항상 닫힌 상태로 시작하는 팝업 방식으로 교체). 버튼을 탭하면 아래로 펼쳐지고, 기능을 하나 고르거나
+ *  팝업 바깥을 탭하면 즉시 다시 닫힌다 — 펼침 상태 자체는 어디에도 남지 않는다. 버튼들 모두 nullable이라,
+ *  해당 개념이 없는 화면(다이어리)은 필요한 콜백만 null로 넘기면 자동으로 빠진다. */
 @Composable
 fun ScreenControls(
     onOpenPages: (() -> Unit)? = null,
+    onReadMode: (() -> Unit)? = null,
     onRotate: (() -> Unit)? = null,
     /** 화면 잠금: freezes pinch zoom/pan and the 90° rotate button so they can't be nudged by accident
      *  mid-drawing; drawing itself is unaffected. Icon reflects current state. */
@@ -458,6 +460,7 @@ fun ScreenControls(
                         horizontalArrangement = Arrangement.spacedBy(15.dp),
                     ) {
                         onOpenPages?.let { open -> IconBtn(Icons.Filled.Layers, "페이지") { open(); expanded = false } }
+                        onReadMode?.let { read -> IconBtn(Icons.Filled.AutoStories, "읽기모드") { read(); expanded = false } }
                         onRotate?.let { rotate ->
                             // Dimmed (not disabled) while locked — BrushView.rotate() itself no-ops, this just
                             // signals why tapping does nothing instead of silently failing.
