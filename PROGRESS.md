@@ -4,6 +4,32 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **읽기모드("페이지 넘기기") 진입점 연결 — SDD 플랜 Task 10/10 완료** (2026-08-22, 버전 미상향):
+  `.superpowers/sdd/2026-08-22-sketchbook-read-mode/` 플랜의 마지막 태스크. Task 1~9(별도 세션들)가
+  `com.g1.sketchbook.readmode` 패키지 전체(GLSurfaceView 기반 페이지-커얼 엔진, 스프레드 페어링,
+  다운샘플링, GLES3 미지원 폴백, `ReadModeScreen` 컴포저블)를 이미 완성해뒀고, 이번 태스크는 기존
+  화면에 진입 버튼만 연결하는 배선 작업.
+  - `sketchbook/PagePanel.kt`: 새 파라미터 `onReadMode: () -> Unit`을 `onReorder`와 `onDismiss`
+    사이에 추가. 페이지 그리드 아래·취소/완료 버튼 위에 "읽기모드" 버튼(`Icons.Filled.AutoStories`,
+    `secondaryContainer` 톤) 신설.
+  - `sketchbook/SketchbookScreens.kt`: `readModeOpen` 상태 신설, `PagePanel`의 `onReadMode`에서
+    `saveCurrent()`(방금 그리던 페이지를 읽기모드가 보기 전에 저장) → `pagesOpen=false` →
+    `readModeOpen=true`로 전환. `readModeOpen`이면 `ReadModeScreen(repo, book, startPage=page,
+    onClose={ lastPage -> readModeOpen=false; goTo(lastPage) })`을 띄워 닫을 때 마지막으로 보던
+    페이지로 편집기를 동기화.
+  - **플랜 브리핑에 없던 추가 발견**: `share/SharedBookScreen.kt:392`도 `PagePanel(...)`을 이름 있는
+    인자로 호출하고 있어 새 필수 파라미터 때문에 컴파일이 깨짐 — 공유 스케치북은 이번 플랜 스코프
+    밖(개인 스케치북 전용, 플랜 설계 문서 명시)이라 `onReadMode = {}`(no-op)만 추가해 컴파일만
+    통과시킴. **주의**: 그 결과 공유 스케치북의 페이지 패널에도 "읽기모드" 버튼이 똑같이 나타나지만
+    눌러도 아무 반응이 없다 — 다음에 손댈 때 그 화면에서 버튼 자체를 숨기거나(스코프 확장이
+    필요하면) 실제로 배선할지 결정 필요.
+    `preview/BrushCanvasPreview.kt`는 실제 `PagePanel`이 아니라 저장소 없이 흉내만 내는
+    `MockPagePanel`(별도 로컬 컴포저블)을 쓰고 있어 이번 변경과 무관, 수정 불필요.
+  - `compileDebugKotlin` 및 `:app:compileDebugKotlin --rerun-tasks` 둘 다 BUILD SUCCESSFUL.
+  - **실기기 확인 필요**(이 플랜의 GLSurfaceView 관련 태스크 전부와 동일한 관례): 읽기모드 버튼
+    누른 후 실제 페이지 넘기기 드래그 손맛, 실제 페이지 전환 프레임레이트, 읽기모드 중 가로 회전,
+    GLES3 미지원 기기에서의 즉시 전환 폴백 경로 — 이 중 어느 것도 `compileDebugKotlin`이나 Compose
+    Preview만으로는 검증되지 않는다.
 - **v2.8.1 릴리스 준비** (2026-08-21): 메인탭 고정 레이아웃 정렬, 화면 버튼 그림자·분할 아이콘
   수정, 페인트통 제스처 정리, Android Studio Preview 복구, 표지 색상 확인 단계와 갤러리 이미지
   반영 오류 수정 및 회귀 테스트를 묶어 `versionCode 103` / `versionName 2.8.1`로 상향했다.

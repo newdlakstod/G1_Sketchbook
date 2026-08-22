@@ -942,6 +942,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var page by remember { mutableIntStateOf(0) }
     val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
     var pagesOpen by remember { mutableStateOf(false) }
+    var readModeOpen by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(false) }
     var toolbarCollapsed by remember { mutableStateOf(false) }
@@ -1060,7 +1061,14 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 val newPage = order.indexOf(page)
                 if (newPage != -1 && newPage != page) { page = newPage; view?.loadContent(repo.loadPage(book.id, newPage)) }
             },
+            onReadMode = { saveCurrent(); pagesOpen = false; readModeOpen = true },
             onDismiss = { pagesOpen = false },
+        )
+    }
+    if (readModeOpen) {
+        com.g1.sketchbook.readmode.ReadModeScreen(
+            repo = repo, book = book, startPage = page,
+            onClose = { lastPage -> readModeOpen = false; goTo(lastPage) },
         )
     }
 }

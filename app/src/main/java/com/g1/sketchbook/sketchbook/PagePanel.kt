@@ -29,6 +29,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Icon
@@ -89,6 +90,7 @@ fun PagePanel(
      *  now belongs at that position. Caller persists it (`SketchbookRepository.applyPageOrder`) and
      *  remaps whichever page it currently has open, since that page's index may have moved. */
     onReorder: (newOrder: List<Int>) -> Unit,
+    onReadMode: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -187,6 +189,19 @@ fun PagePanel(
                         }
                     }
                     Spacer(Modifier.height(14.dp))
+                    Surface(
+                        onClick = onReadMode, shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.AutoStories, "읽기모드", tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("읽기모드", color = MaterialTheme.colorScheme.onSecondaryContainer, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         TextButton(onClick = onDismiss) { Text("취소") }
                         TextButton(onClick = onDismiss) { Text("완료", fontWeight = FontWeight.Bold) }
