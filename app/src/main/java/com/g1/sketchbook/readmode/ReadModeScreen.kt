@@ -55,12 +55,15 @@ fun ReadModeScreen(
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val supportsGles30 = remember(ctx) { deviceSupportsGles30(ctx) }
     val provider = remember(repo, book.id) { PageTextureProvider(repo, book.id) }
+    var lastKnownPage by remember { mutableIntStateOf(startPage) }
     val spreads = remember(book.pageCount, landscape) { buildSpreads(book.pageCount, landscape) }
-    var spreadIndex by remember(landscape) { mutableIntStateOf(spreadIndexForPage(spreads, startPage)) }
+    var spreadIndex by remember(landscape) { mutableIntStateOf(spreadIndexForPage(spreads, lastKnownPage)) }
     val targetW = remember(book) { downsampleTargetSize(book.size.pxW(), book.size.pxH()).first }
     val targetH = remember(book) { downsampleTargetSize(book.size.pxW(), book.size.pxH()).second }
 
     fun currentPage(): Int = spreads[spreadIndex].last { it != COVER_PAGE }
+
+    LaunchedEffect(spreadIndex, landscape) { lastKnownPage = currentPage() }
 
     BackHandler { onClose(currentPage()) }
 
@@ -87,18 +90,17 @@ fun ReadModeScreen(
     LaunchedEffect(spreadIndex, landscape, surface) {
         val activeSurface = surface ?: return@LaunchedEffect
         val textures = withContext(Dispatchers.IO) {
-            loadSpreadTextures(provider, spreads[spreadIndex], book, repo, targetW, targetH)
+            loadSpreadTextures(provider, spreads, spreadIndex, book, repo, targetW, targetH)
         }
         activeSurface.setSpread(textures, landscape)
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
-            factory = { context ->
-                ReadModeSurface(context).also {
-                    it.onTurnCompleted = { if (spreadIndex < spreads.lastIndex) spreadIndex++ }
-                    surface = it
-                }
+            factory = { context -> ReadModeSurface(context) },
+            update = { view ->
+                surface = view
+                view.onTurnCompleted = { if (spreadIndex < spreads.lastIndex) spreadIndex++ }
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -120,25 +122,28 @@ private fun deviceSupportsGles30(context: Context): Boolean {
  *  polish pass, not required for the read-mode feature to work. */
 private fun loadSpreadTextures(
     provider: PageTextureProvider,
-    spread: List<Int>,
+    spreads: List<List<Int>>,
+    spreadIndex: Int,
     book: Sketchbook,
     repo: SketchbookRepository,
     targetW: Int,
     targetH: Int,
 ): SpreadTextures {
+    val spread = spreads[spreadIndex]
     val turningIndex = spread.last()
     val blank = blankPage(targetW, targetH)
     val turningFront = provider.pageBitmap(turningIndex) ?: blank
     val staticLeftIndex = spread.firstOrNull { it != turningIndex }
     val staticLeft = when (staticLeftIndex) {
         null -> null
-        COVER_PAGE -> renderCoverBitmap(book, repo.loadCover(book.id), targetW, targetH)
+        COVER_PAGE -> renderCoverBitmap(book, repo.loadCoverThumb(book.id, reqPx = maxOf(targetW, targetH)), targetW, targetH)
         else -> provider.pageBitmap(staticLeftIndex) ?: blank
     }
+    val nextSpreadRight = spreads.getOrNull(spreadIndex + 1)?.last()
     return SpreadTextures(
         turningFront = turningFront,
         turningBack = blank,
-        nextRight = provider.pageBitmap(turningIndex + 1) ?: blank,
+        nextRight = nextSpreadRight?.let { provider.pageBitmap(it) } ?: blank,
         staticLeft = staticLeft,
     )
 }
@@ -158,12 +163,26 @@ private fun renderCoverBitmap(book: Sketchbook, coverImage: Bitmap?, width: Int,
     val coverColorArgb = (book.coverColor ?: (DefaultSketchbookCoverColor.toArgb().toLong() and 0xFFFFFFFFL) or 0xFF000000L).toInt()
     canvas.drawColor(coverColorArgb)
     if (coverImage != null) {
-        canvas.drawBitmap(coverImage, Rect(0, 0, coverImage.width, coverImage.height), Rect(0, 0, width, height), null)
+        canvas.drawBitmap(coverImage, centerCropRect(coverImage.width, coverImage.height, width, height), Rect(0, 0, width, height), null)
     }
     val spineAlpha = if (coverImage == null) 0.20f else 0.70f
     val spinePaint = Paint().apply { color = AndroidColor.BLACK; alpha = (spineAlpha * 255).roundToInt() }
     canvas.drawRect(0f, 0f, width * 0.09f, height.toFloat(), spinePaint)
     return out
+}
+
+private fun centerCropRect(srcWidth: Int, srcHeight: Int, dstWidth: Int, dstHeight: Int): Rect {
+    val srcAspect = srcWidth.toFloat() / srcHeight
+    val dstAspect = dstWidth.toFloat() / dstHeight
+    return if (srcAspect > dstAspect) {
+        val cropWidth = (srcHeight * dstAspect).roundToInt()
+        val x = (srcWidth - cropWidth) / 2
+        Rect(x, 0, x + cropWidth, srcHeight)
+    } else {
+        val cropHeight = (srcWidth / dstAspect).roundToInt()
+        val y = (srcHeight - cropHeight) / 2
+        Rect(0, y, srcWidth, y + cropHeight)
+    }
 }
 
 @Composable
