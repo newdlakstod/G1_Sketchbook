@@ -69,7 +69,7 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
     private var shadowMvpLocation = -1
 
     private var pageWidth = PORTRAIT_WIDTH
-    private var pageHeight = PORTRAIT_HEIGHT
+    private var pageHeight = PORTRAIT_WIDTH / DEFAULT_PAGE_ASPECT
     private var landscape = false
     private var hasStaticLeft = false
     private var pendingSpread: SpreadTextures? = null
@@ -78,12 +78,16 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
     private var lastSurfaceHeight = 0
 
     /** GL-thread only — wrap calls in `queueEvent` from the view (see `ReadModeSurface`). Queues the
-     *  new spread's bitmaps for upload on the next draw and resets any in-flight curl state. */
-    fun setSpread(textures: SpreadTextures, landscape: Boolean) {
+     *  new spread's bitmaps for upload on the next draw and resets any in-flight curl state.
+     *  [pageAspect] is one page's real width/height ratio (`book.size.pxW() / pxH()`): the quad's
+     *  width stays the fixed [PORTRAIT_WIDTH] unit the whole coordinate system is built on, and the
+     *  height is derived from it, so pages of every sketchbook size render un-stretched. */
+    fun setSpread(textures: SpreadTextures, landscape: Boolean, pageAspect: Float) {
+        require(pageAspect > 0f) { "pageAspect must be positive" }
         this.landscape = landscape
         hasStaticLeft = textures.staticLeft != null
         pageWidth = if (landscape) LANDSCAPE_SPREAD_WIDTH else PORTRAIT_WIDTH
-        pageHeight = PORTRAIT_HEIGHT
+        pageHeight = PORTRAIT_WIDTH / pageAspect
         pendingSpread = textures
         lastSpread = textures
         state = CurlState()
@@ -423,7 +427,10 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
 
     private companion object {
         const val PORTRAIT_WIDTH = 2f
-        const val PORTRAIT_HEIGHT = 8f / 3f
+        /** Only used for the split second before the first [setSpread] supplies the book's real
+         *  aspect — no page is drawn until then (there are no textures yet), it just keeps the
+         *  camera from being set up against a degenerate page height. */
+        const val DEFAULT_PAGE_ASPECT = 0.75f
         const val LANDSCAPE_SPREAD_WIDTH = PORTRAIT_WIDTH * 2f
         const val NEXT_PAGE_DEPTH = -0.03f
         const val COMPLETE_DURATION_NANOS = 280_000_000L

@@ -11,7 +11,15 @@ import android.graphics.Rect
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -23,10 +31,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -37,6 +47,8 @@ import com.g1.sketchbook.sketchbook.SketchbookRepository
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+private const val BLANK_PAGE_SIZE = 4
 
 /** Full-screen, read-only page-turning viewer for a personal sketchbook — no drawing toolbar.
  *  Portrait shows one page per spread; landscape pairs pages like an open book
@@ -54,10 +66,18 @@ fun ReadModeScreen(
     val ctx = LocalContext.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val supportsGles30 = remember(ctx) { deviceSupportsGles30(ctx) }
-    val provider = remember(repo, book.id) { PageTextureProvider(repo, book.id) }
+    /** One page's real width/height ratio — drives both the GL quad's shape (so pages aren't
+     *  stretched, see [ReadModeRenderer.setSpread]) and the decoder's downsample budget. */
+    val pageAspect = remember(book) { book.size.pxW().toFloat() / book.size.pxH().toFloat() }
+    val provider = remember(repo, book.id, pageAspect) { PageTextureProvider(repo, book.id, pageAspect) }
     var lastKnownPage by remember { mutableIntStateOf(startPage) }
     val spreads = remember(book.pageCount, landscape) { buildSpreads(book.pageCount, landscape) }
     var spreadIndex by remember(landscape) { mutableIntStateOf(spreadIndexForPage(spreads, lastKnownPage)) }
+    /** Bumped when a turn completes on the *last* spread, where [spreadIndex] can't advance — see
+     *  the `onTurnCompleted` handler below. Re-runs the spread-loading [LaunchedEffect], whose
+     *  `setSpread` call resets the renderer out of `CurlPhase.Completed`; without it the finished
+     *  curl would leave the reader staring at the blank next-page texture with no way back. */
+    var reloadTick by remember { mutableIntStateOf(0) }
     val targetW = remember(book) { downsampleTargetSize(book.size.pxW(), book.size.pxH()).first }
     val targetH = remember(book) { downsampleTargetSize(book.size.pxW(), book.size.pxH()).second }
 
@@ -87,12 +107,12 @@ fun ReadModeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(spreadIndex, landscape, surface) {
+    LaunchedEffect(spreadIndex, landscape, surface, reloadTick) {
         val activeSurface = surface ?: return@LaunchedEffect
         val textures = withContext(Dispatchers.IO) {
             loadSpreadTextures(provider, spreads, spreadIndex, book, repo, targetW, targetH)
         }
-        activeSurface.setSpread(textures, landscape)
+        activeSurface.setSpread(textures, landscape, pageAspect)
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -100,10 +120,27 @@ fun ReadModeScreen(
             factory = { context -> ReadModeSurface(context) },
             update = { view ->
                 surface = view
-                view.onTurnCompleted = { if (spreadIndex < spreads.lastIndex) spreadIndex++ }
+                // On the last spread there is no next spread to advance to, so instead of doing
+                // nothing (which would strand the reader on the finished curl's blank underside),
+                // re-push the same spread to reset the renderer's curl state.
+                view.onTurnCompleted = { if (spreadIndex < spreads.lastIndex) spreadIndex++ else reloadTick++ }
             },
             modifier = Modifier.fillMaxSize(),
         )
+        CloseButton(onClick = { onClose(currentPage()) })
+    }
+}
+
+/** The spec's "뒤로가기/닫기 버튼으로 나가면" close affordance — read mode is full-screen with no
+ *  system chrome, so the back gesture alone isn't discoverable enough. */
+@Composable
+private fun BoxScope.CloseButton(onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.align(Alignment.TopStart).padding(16.dp).size(40.dp)
+            .clip(CircleShape).background(Color(0x66000000)),
+    ) {
+        Icon(Icons.Filled.Close, "닫기", tint = Color.White)
     }
 }
 
@@ -131,7 +168,7 @@ private fun loadSpreadTextures(
 ): SpreadTextures {
     val spread = spreads[spreadIndex]
     val turningIndex = spread.last()
-    val blank = blankPage(targetW, targetH)
+    val blank = blankPage()
     val turningFront = provider.pageBitmap(turningIndex) ?: blank
     val staticLeftIndex = spread.firstOrNull { it != turningIndex }
     val staticLeft = when (staticLeftIndex) {
@@ -148,8 +185,13 @@ private fun loadSpreadTextures(
     )
 }
 
-private fun blankPage(width: Int, height: Int): Bitmap =
-    Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply { eraseColor(AndroidColor.WHITE) }
+/** A solid-white page texture. Deliberately tiny: GL resamples every texture across whatever quad
+ *  it's mapped onto, so a flat colour needs no more than a handful of texels — allocating this at
+ *  full page resolution just burned megabytes per spread load for no visible difference. Kept at
+ *  4×4 rather than 1×1 so no driver's mipmap/filtering path has a degenerate texture to chew on. */
+private fun blankPage(): Bitmap =
+    Bitmap.createBitmap(BLANK_PAGE_SIZE, BLANK_PAGE_SIZE, Bitmap.Config.ARGB_8888)
+        .apply { eraseColor(AndroidColor.WHITE) }
 
 /** Draws the sketchbook's cover — color or image, plus the spine strip — onto a plain Bitmap for
  *  use as a GL texture, mirroring `SketchbookCover.kt`'s Compose visuals: color fill, optional
@@ -195,6 +237,7 @@ private fun FallbackSpreadView(spreadCount: Int, spreadIndex: Int, onClose: () -
             "이 기기는 3D 책장 넘기기를 지원하지 않아요 (${spreadIndex + 1}/$spreadCount)",
             color = Color.White,
         )
+        CloseButton(onClick = onClose)
     }
     BackHandler { onClose() }
 }

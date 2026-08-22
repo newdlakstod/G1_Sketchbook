@@ -31,9 +31,9 @@ class ReadModeSurface(context: Context) : GLSurfaceView(context) {
     }
 
     /** Queues the new spread's bitmaps onto the GL thread — see [ReadModeRenderer.setSpread]. */
-    fun setSpread(textures: SpreadTextures, landscape: Boolean) {
+    fun setSpread(textures: SpreadTextures, landscape: Boolean, pageAspect: Float) {
         pollGeneration++
-        queueEvent { renderer.setSpread(textures, landscape) }
+        queueEvent { renderer.setSpread(textures, landscape, pageAspect) }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

@@ -4,12 +4,33 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **읽기모드 전체 브랜치 최종 리뷰 수정 (머지 직전 마지막 패스)** (2026-08-22, 버전 미상향):
+  - **페이지 비율 하드코딩 제거**: `ReadModeRenderer`가 데모에서 물려받은 고정 3:4(`PORTRAIT_HEIGHT
+    = 8f/3f`)로 모든 책을 그리던 문제 — 태블릿 사이즈 외 전 사이즈가 늘어나/눌려 보였다
+    (모바일 ~62%, 데스크톱 ~2.4배 왜곡). `setSpread(textures, landscape, pageAspect)`로 실제
+    `book.size.pxW()/pxH()`를 받아 `pageHeight = PORTRAIT_WIDTH / pageAspect`로 계산.
+    `PORTRAIT_WIDTH = 2f`는 좌표계의 기준 단위라 그대로 유지.
+  - **마지막 스프레드에서 한 번 더 넘기면 백지에 갇히던 버그**: 마지막 스프레드는 `spreadIndex`가
+    더 못 올라가 `setSpread`가 다시 안 불렸고, 렌더러가 `CurlPhase.Completed`에 머물러 넘어가는
+    페이지를 안 그린 채 빈 `nextRight`(백지)만 남았다. `reloadTick` 상태를 추가해 마지막에서
+    완료되면 같은 스프레드를 다시 밀어넣어 컬 상태를 리셋한다.
+  - **페이지 턴 핫패스의 비트맵 낭비 감소**: `PageTextureProvider`가 `loadPage`(전체 해상도 디코드,
+    A3면 ~31MB) 후 축소하던 것을 `loadPageThumb`(디코드 중 `inSampleSize` 다운샘플)로 교체.
+    단 `loadPageThumb`의 `reqPx`는 **가로 폭 하한**이라 세로 페이지에 그대로 1600을 넘기면
+    샘플이 1로 고정돼 아무 효과가 없다 — `decodeRequestWidth(maxEdge, pageAspect)`로 종횡비를
+    곱해 넘긴다. 중간 비트맵은 정확한 목표 크기로 리스케일 후 `recycle()`.
+    백지 텍스처(`blankPage()`)도 전체 페이지 해상도 → 4×4로 축소(GL이 어차피 리샘플).
+  - **닫기 버튼 신설**: 설계서의 "뒤로가기/닫기 버튼으로 나가면" 요구대로 좌상단 원형 닫기 버튼을
+    GL 경로와 GLES3 미지원 폴백 경로 **양쪽 모두**에 추가(폴백엔 그동안 상호작용 요소가 전무했다).
+  - `compileDebugKotlin` / `testDebugUnitTest` 모두 BUILD SUCCESSFUL (33 tests, 0 failures).
+  - **여전히 실기기 확인 필요**: 가로모드 드래그 좌표가 화면 정규화라 페이지와 잘 안 겹치는 문제는
+    실기기 손맛 튜닝이 필요해 이번 라운드에서 의도적으로 보류.
 - **읽기모드("페이지 넘기기") 진입점 연결 — SDD 플랜 Task 10/10 완료** (2026-08-22, 버전 미상향):
   `.superpowers/sdd/2026-08-22-sketchbook-read-mode/` 플랜의 마지막 태스크. Task 1~9(별도 세션들)가
   `com.g1.sketchbook.readmode` 패키지 전체(GLSurfaceView 기반 페이지-커얼 엔진, 스프레드 페어링,
   다운샘플링, GLES3 미지원 폴백, `ReadModeScreen` 컴포저블)를 이미 완성해뒀고, 이번 태스크는 기존
   화면에 진입 버튼만 연결하는 배선 작업.
-  - `sketchbook/PagePanel.kt`: 새 파라미터 `onReadMode: () -> Unit`을 `onReorder`와 `onDismiss`
+  - `sketchbook/PagePanel.kt`: 새 파라미터 `onReadMode: (() -> Unit)? = null`을 `onReorder`와 `onDismiss`
     사이에 추가. 페이지 그리드 아래·취소/완료 버튼 위에 "읽기모드" 버튼(`Icons.Filled.AutoStories`,
     `secondaryContainer` 톤) 신설.
   - `sketchbook/SketchbookScreens.kt`: `readModeOpen` 상태 신설, `PagePanel`의 `onReadMode`에서
