@@ -17,12 +17,17 @@
     `readModeOpen=true`로 전환. `readModeOpen`이면 `ReadModeScreen(repo, book, startPage=page,
     onClose={ lastPage -> readModeOpen=false; goTo(lastPage) })`을 띄워 닫을 때 마지막으로 보던
     페이지로 편집기를 동기화.
-  - **플랜 브리핑에 없던 추가 발견**: `share/SharedBookScreen.kt:392`도 `PagePanel(...)`을 이름 있는
-    인자로 호출하고 있어 새 필수 파라미터 때문에 컴파일이 깨짐 — 공유 스케치북은 이번 플랜 스코프
-    밖(개인 스케치북 전용, 플랜 설계 문서 명시)이라 `onReadMode = {}`(no-op)만 추가해 컴파일만
-    통과시킴. **주의**: 그 결과 공유 스케치북의 페이지 패널에도 "읽기모드" 버튼이 똑같이 나타나지만
-    눌러도 아무 반응이 없다 — 다음에 손댈 때 그 화면에서 버튼 자체를 숨기거나(스코프 확장이
-    필요하면) 실제로 배선할지 결정 필요.
+  - **플랜 브리핑에 없던 추가 발견 → 리뷰에서 지적받아 근본 수정**: `share/SharedBookScreen.kt:392`도
+    `PagePanel(...)`을 이름 있는 인자로 호출하고 있어 새 필수 파라미터 때문에 컴파일이 깨짐 —
+    처음엔 `onReadMode = {}`(no-op)만 추가해 컴파일만 통과시켰는데, 그러면 공유 스케치북의 페이지
+    패널에도 "읽기모드" 버튼이 똑같이 나타나지만 눌러도 반응 없는 죽은 버튼이 되는 문제가 있었음
+    (task-10 리뷰에서 Important로 지적, 플랜의 스코프 분석이 이 콜사이트를 놓친 탓이지 태스크
+    실행 오류는 아니라고 확인됨). **최종 수정**: `onReadMode`를 `(() -> Unit)? = null`로 nullable+
+    기본값화하고, 버튼 블록 전체를 `if (onReadMode != null) { ... }`로 감싸 핸들러가 없으면
+    버튼 자체가 컴포즈되지 않도록 함. 그 결과 `SharedBookScreen.kt`의 콜사이트는 원래대로
+    되돌려(이 태스크가 아예 손대지 않은 것과 동일한 상태) `onReadMode` 인자 없이 호출 — 공유
+    스케치북 페이지 패널엔 이제 "읽기모드" 버튼이 아예 뜨지 않는다. `SketchbookScreens.kt` 쪽은
+    실제 람다를 넘기므로 변경 없이 그대로 정상 동작.
     `preview/BrushCanvasPreview.kt`는 실제 `PagePanel`이 아니라 저장소 없이 흉내만 내는
     `MockPagePanel`(별도 로컬 컴포저블)을 쓰고 있어 이번 변경과 무관, 수정 불필요.
   - `compileDebugKotlin` 및 `:app:compileDebugKotlin --rerun-tasks` 둘 다 BUILD SUCCESSFUL.

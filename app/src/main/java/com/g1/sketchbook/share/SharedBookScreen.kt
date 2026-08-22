@@ -398,7 +398,6 @@ fun SharedBookScreen(
                 val newPage = order.indexOf(page)
                 if (newPage != -1 && newPage != page) { page = newPage; view?.loadContent(sbRepo.loadPage(book.id, newPage)); pushMine() }
             },
-            onReadMode = {},
             onDismiss = { pagesOpen = false },
         )
     }
