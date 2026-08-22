@@ -17,6 +17,7 @@ class ReadModeSurface(context: Context) : GLSurfaceView(context) {
     private var lastPosition = Vec2(1f, 0.5f)
     private var lastEventTime = 0L
     private var velocityX = 0f
+    @Volatile private var pollGeneration = 0
 
     /** Invoked on the main thread (see [pollForCompletion]) — safe to touch Compose state from it. */
     var onTurnCompleted: (() -> Unit)? = null
@@ -31,6 +32,7 @@ class ReadModeSurface(context: Context) : GLSurfaceView(context) {
 
     /** Queues the new spread's bitmaps onto the GL thread — see [ReadModeRenderer.setSpread]. */
     fun setSpread(textures: SpreadTextures, landscape: Boolean) {
+        pollGeneration++
         queueEvent { renderer.setSpread(textures, landscape) }
     }
 
@@ -52,6 +54,7 @@ class ReadModeSurface(context: Context) : GLSurfaceView(context) {
         lastPosition = position
         lastEventTime = event.eventTime
         velocityX = 0f
+        pollGeneration++
         queueEvent { renderer.onDragStart(position) }
         return true
     }
@@ -74,12 +77,13 @@ class ReadModeSurface(context: Context) : GLSurfaceView(context) {
             queueEvent { renderer.onDrag(position) }
         }
         val complete = !canceled && dragInterpreter.shouldComplete(progress = 1f - lastPosition.x, velocityX = velocityX)
+        val myGeneration = pollGeneration
         queueEvent {
             if (canceled) {
                 renderer.cancelDrag()
             } else {
                 renderer.onDragEnd(complete)
-                if (complete) pollForCompletion()
+                if (complete) pollForCompletion(myGeneration)
             }
         }
         activePointerId = MotionEvent.INVALID_POINTER_ID
@@ -87,15 +91,22 @@ class ReadModeSurface(context: Context) : GLSurfaceView(context) {
     }
 
     /** The settle-to-next animation takes ~280ms (`ReadModeRenderer.COMPLETE_DURATION_NANOS`).
-     *  Re-queues itself once per GL frame until `renderer.didCompleteTurn` flips, then hops to the
-     *  main thread via `post` to fire [onTurnCompleted]. Simpler than wiring a formal
-     *  animation-listener chain for a single one-shot event. */
-    private fun pollForCompletion() {
+     *  Bounces UI thread -> GL thread -> UI thread once per iteration (via `post`) until
+     *  `renderer.didCompleteTurn` flips, then fires [onTurnCompleted]. The `post` bounce (rather
+     *  than re-queuing directly from inside the GL-thread runnable) lets the GL event queue drain
+     *  to empty between polls so `onDrawFrame` — the only place `didCompleteTurn` can flip true —
+     *  actually gets to run; `GLSurfaceView`'s GL thread only reaches the draw path when its event
+     *  queue is empty. [generation] is captured at poll-start and compared against the live
+     *  [pollGeneration] on each iteration so a poll left over from an interrupted drag silently
+     *  bails out once a new drag or spread invalidates it, instead of spinning forever or
+     *  double-firing [onTurnCompleted] alongside a newer poll. */
+    private fun pollForCompletion(generation: Int) {
         queueEvent {
+            if (generation != pollGeneration) return@queueEvent
             if (renderer.didCompleteTurn) {
                 post { onTurnCompleted?.invoke() }
             } else {
-                pollForCompletion()
+                post { pollForCompletion(generation) }
             }
         }
     }
