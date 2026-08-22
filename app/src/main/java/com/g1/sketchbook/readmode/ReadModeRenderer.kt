@@ -48,6 +48,8 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
     private val projection = FloatArray(16)
     private val viewMatrix = FloatArray(16)
     private val mvp = FloatArray(16)
+    private val rightMvp = FloatArray(16)
+    private val leftMvp = FloatArray(16)
 
     private var state = CurlState()
     private var program = 0
@@ -68,18 +70,22 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
 
     private var pageWidth = PORTRAIT_WIDTH
     private var pageHeight = PORTRAIT_HEIGHT
+    private var landscape = false
     private var hasStaticLeft = false
     private var pendingSpread: SpreadTextures? = null
+    private var lastSpread: SpreadTextures? = null
     private var lastSurfaceWidth = 0
     private var lastSurfaceHeight = 0
 
     /** GL-thread only — wrap calls in `queueEvent` from the view (see `ReadModeSurface`). Queues the
      *  new spread's bitmaps for upload on the next draw and resets any in-flight curl state. */
     fun setSpread(textures: SpreadTextures, landscape: Boolean) {
+        this.landscape = landscape
         hasStaticLeft = textures.staticLeft != null
         pageWidth = if (landscape) LANDSCAPE_SPREAD_WIDTH else PORTRAIT_WIDTH
         pageHeight = PORTRAIT_HEIGHT
         pendingSpread = textures
+        lastSpread = textures
         state = CurlState()
         animator.cancel(state)
         if (lastSurfaceWidth > 0 && lastSurfaceHeight > 0) recomputeCamera(lastSurfaceWidth, lastSurfaceHeight)
@@ -106,6 +112,8 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
         GLES30.glDisable(GLES30.GL_CULL_FACE)
+
+        pendingSpread = lastSpread
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
@@ -127,25 +135,26 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
 
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
         GLES30.glUseProgram(program)
-        GLES30.glUniformMatrix4fv(mvpLocation, 1, false, mvp, 0)
 
         if (hasStaticLeft) {
+            GLES30.glUniformMatrix4fv(mvpLocation, 1, false, leftMvp, 0)
             bindTextures(staticLeftTexture, staticLeftTexture)
             GLES30.glUniform1f(staticPageLocation, 1f)
             staticLeftGpu?.draw(staticLeftMesh.indexCount)
         }
 
+        GLES30.glUniformMatrix4fv(mvpLocation, 1, false, rightMvp, 0)
         bindTextures(nextRightTexture, nextRightTexture)
         GLES30.glUniform1f(staticPageLocation, 1f)
         nextPageGpu?.draw(nextPageMesh.indexCount)
 
         if (state.drawsTurningPage) {
             GLES30.glUseProgram(shadowProgram)
-            GLES30.glUniformMatrix4fv(shadowMvpLocation, 1, false, mvp, 0)
+            GLES30.glUniformMatrix4fv(shadowMvpLocation, 1, false, rightMvp, 0)
             shadowGpu?.draw(shadowStrip.indexCount)
 
             GLES30.glUseProgram(program)
-            GLES30.glUniformMatrix4fv(mvpLocation, 1, false, mvp, 0)
+            GLES30.glUniformMatrix4fv(mvpLocation, 1, false, rightMvp, 0)
             bindTextures(turningFrontTexture, turningBackTexture)
             GLES30.glUniform1f(staticPageLocation, 0f)
             pageGpu?.draw(pageMesh.indexCount)
@@ -179,7 +188,7 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
 
     fun cancelDrag() = onDragEnd(complete = false)
 
-    private fun rightPageWidth(): Float = if (hasStaticLeft) pageWidth / 2f else pageWidth
+    private fun rightPageWidth(): Float = if (landscape) pageWidth / 2f else pageWidth
 
     private fun recomputeCamera(width: Int, height: Int) {
         val viewAspect = width.toFloat() / height.coerceAtLeast(1)
@@ -187,35 +196,40 @@ class ReadModeRenderer : GLSurfaceView.Renderer {
         Matrix.perspectiveM(projection, 0, camera.verticalFieldOfViewDegrees, viewAspect, camera.nearPlane, camera.farPlane)
         Matrix.setLookAtM(viewMatrix, 0, 0f, 0f, cameraDistance, 0f, 0f, 0f, 0f, 1f, 0f)
         Matrix.multiplyMM(mvp, 0, projection, 0, viewMatrix, 0)
+
+        val model = FloatArray(16)
+        val rightOffsetX = if (hasStaticLeft) rightPageWidth() / 2f else 0f
+        Matrix.setIdentityM(model, 0)
+        Matrix.translateM(model, 0, rightOffsetX, 0f, 0f)
+        Matrix.multiplyMM(rightMvp, 0, mvp, 0, model, 0)
+        if (hasStaticLeft) {
+            Matrix.setIdentityM(model, 0)
+            Matrix.translateM(model, 0, -rightPageWidth() / 2f, 0f, 0f)
+            Matrix.multiplyMM(leftMvp, 0, mvp, 0, model, 0)
+        }
     }
 
     private fun uploadSpread(textures: SpreadTextures) {
         val rightWidth = rightPageWidth()
-        val rightOffsetX = if (hasStaticLeft) rightWidth / 2f else 0f
 
         pageMesh.resetFlat(rightWidth, pageHeight)
-        offsetMeshX(pageMesh, rightOffsetX)
         pageMesh.uploadMutableAttributes()
 
         nextPageMesh.resetFlat(rightWidth, pageHeight)
-        offsetMeshX(nextPageMesh, rightOffsetX)
         for (vertex in 0 until nextPageMesh.vertexCount) nextPageMesh.positions[vertex * 3 + 2] = NEXT_PAGE_DEPTH
         nextPageMesh.uploadMutableAttributes()
+        nextPageGpu?.updateDynamic(nextPageMesh)
 
         if (hasStaticLeft) {
             staticLeftMesh.resetFlat(rightWidth, pageHeight)
-            offsetMeshX(staticLeftMesh, -rightWidth / 2f)
             staticLeftMesh.uploadMutableAttributes()
+            staticLeftGpu?.updateDynamic(staticLeftMesh)
         }
 
         turningFrontTexture = replaceTexture(turningFrontTexture, textures.turningFront)
         turningBackTexture = replaceTexture(turningBackTexture, textures.turningBack)
         nextRightTexture = replaceTexture(nextRightTexture, textures.nextRight)
         textures.staticLeft?.let { staticLeftTexture = replaceTexture(staticLeftTexture, it) }
-    }
-
-    private fun offsetMeshX(mesh: PageMesh, offsetX: Float) {
-        for (vertex in 0 until mesh.vertexCount) mesh.positions[vertex * 3] += offsetX
     }
 
     private fun replaceTexture(existing: Int, bitmap: Bitmap): Int =
