@@ -574,16 +574,16 @@ private fun SlidersPanel(
 }
 
 // 슬라이드 단계 수(30단계) = steps(양 끝 제외 중간값 개수) + 2
-private const val SliderStepCount = 28
+internal const val SliderStepCount = 28
 // 캔버스 px 기준 굵기 범위 — strokeSize가 화면 밀도/fitScale 나누기 없이 캔버스에 그대로 찍히는
 // 값으로 바뀌면서(2026-08-17), 예전 2~48(화면 dp 기준, 실제로는 밀도·fitScale로 몇 배 증폭되던 값)
 // 그대로 두면 캔버스에서 거의 안 보일 만큼 얇아져서 2배로 올림. Dimens.Brush.* 기본값도 같이 올렸음.
 private val SizeRange = 4f..96f
 private val BlurRange = 0f..32f
 private val SliderAccentColor = Color(0xFFE85555)
-private val SliderThumbSize = 30.dp
-private val SliderThumbTouchSize = 40.dp
-private val SliderTrackHeight = 6.dp
+internal val SliderThumbSize = 30.dp
+internal val SliderThumbTouchSize = 40.dp
+internal val SliderTrackHeight = 6.dp
 
 /** 실제 dp 값과 무관하게, 슬라이더 내 위치를 1~30 단계 번호로 환산 (모든 브러시 공통 표기). */
 private fun sizeLevel(sizeDp: Float): Int {
@@ -591,10 +591,15 @@ private fun sizeLevel(sizeDp: Float): Int {
     return (fraction * (SliderStepCount + 1)).roundToInt() + 1
 }
 
+/** 브러시 굵기/투명도 슬라이더와 동일한 트랙+썸 디자인 — 다른 화면(예: 일기 달력 오버레이 설정)에서도
+ *  같은 룩을 쓰되 강조색만 바꾸고 싶을 때를 위해 `accentColor`를 파라미터로 열어둠(기본값은 기존 브러시 빨강).
+ *  `onThumbClick`을 넘기면 썸을 탭했을 때(드래그가 아니라 탭) 호출된다 — 값을 직접 타이핑으로
+ *  입력하는 UI(달력 오버레이 글자 크기)를 여는 용도. 기본은 null이라 기존 브러시 쪽엔 영향 없음. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun IconSliderRow(icon: ImageVector, contentDescription: String, valueText: String, value: Float,
-                          range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+internal fun IconSliderRow(icon: ImageVector, contentDescription: String, valueText: String, value: Float,
+                          range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, accentColor: Color = SliderAccentColor,
+                          onThumbClick: (() -> Unit)? = null) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(10.dp))
@@ -603,8 +608,8 @@ private fun IconSliderRow(icon: ImageVector, contentDescription: String, valueTe
             onValueChange = onChange,
             valueRange = range,
             steps = SliderStepCount,
-            track = { state -> GradientSliderTrack(state) },
-            thumb = { RingSliderThumb(valueText) },
+            track = { state -> GradientSliderTrack(state, accentColor) },
+            thumb = { RingSliderThumb(valueText, accentColor, onThumbClick) },
             modifier = Modifier.weight(1f),
         )
     }
@@ -612,7 +617,7 @@ private fun IconSliderRow(icon: ImageVector, contentDescription: String, valueTe
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GradientSliderTrack(state: SliderState) {
+internal fun GradientSliderTrack(state: SliderState, accentColor: Color = SliderAccentColor) {
     val span = state.valueRange.endInclusive - state.valueRange.start
     val fraction = if (span == 0f) 0f else ((state.value - state.valueRange.start) / span).coerceIn(0f, 1f)
     val inactiveColor = MaterialTheme.colorScheme.surfaceVariant
@@ -634,7 +639,7 @@ private fun GradientSliderTrack(state: SliderState) {
         if (thumbX > 0f) {
             drawLine(
                 brush = Brush.horizontalGradient(
-                    colors = listOf(SliderAccentColor, SliderAccentColor.copy(alpha = 0.55f)),
+                    colors = listOf(accentColor, accentColor.copy(alpha = 0.55f)),
                     startX = 0f,
                     endX = thumbX,
                 ),
@@ -648,7 +653,7 @@ private fun GradientSliderTrack(state: SliderState) {
 }
 
 @Composable
-private fun RingSliderThumb(valueText: String) {
+internal fun RingSliderThumb(valueText: String, accentColor: Color = SliderAccentColor, onThumbClick: (() -> Unit)? = null) {
     Box(Modifier.size(SliderThumbTouchSize), contentAlignment = Alignment.Center) {
         Box(
             modifier = Modifier
@@ -656,10 +661,17 @@ private fun RingSliderThumb(valueText: String) {
                 .shadow(3.dp, CircleShape, clip = false)
                 .clip(CircleShape)
                 .background(Color.White)
-                .border(1.dp, Color(0x1F000000), CircleShape),
+                .border(1.dp, Color(0x1F000000), CircleShape)
+                .let { m ->
+                    if (onThumbClick != null) {
+                        m.clickable(
+                            interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onThumbClick,
+                        )
+                    } else m
+                },
             contentAlignment = Alignment.Center,
         ) {
-            Text(valueText, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SliderAccentColor)
+            Text(valueText, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor)
         }
     }
 }

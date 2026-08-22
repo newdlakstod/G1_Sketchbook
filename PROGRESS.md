@@ -56,6 +56,180 @@
     누른 후 실제 페이지 넘기기 드래그 손맛, 실제 페이지 전환 프레임레이트, 읽기모드 중 가로 회전,
     GLES3 미지원 기기에서의 즉시 전환 폴백 경로 — 이 중 어느 것도 `compileDebugKotlin`이나 Compose
     Preview만으로는 검증되지 않는다.
+- **달력 오버레이 5차 개편 — 손잡이 50%/70%, 다이얼로그는 길게 눌러 진입, 오늘 강조 원 on/off,
+  배경 on/off(+색·불투명도)** (2026-08-22, 버전 미상향): `diary/DiaryScreens.kt`. 5가지 수정:
+  1. **손잡이 크기 50%·불투명도 70%**: 필(pill) 손잡이 크기를 6×32dp/32×6dp → 3×16dp/16×3dp로,
+     배경 흰색 알파를 0.92→0.7로, 테두리도 더 옅게. 그림자(`shadow`)도 제거(너무 작아져서 불필요).
+  2. **다이얼로그는 달력을 길게 눌러 진입**: 상단 바의 톱니(Tune) 버튼 삭제. 대신 스티커 영역에
+     `detectDragGestures`(이동)와 별도로 `detectTapGestures(onLongPress = ...)`를 같은 Box에 얹어
+     길게 누르면 설정 다이얼로그가 뜨게 함 — 손을 떼지 않고 움직이면(드래그) 롱프레스가 자동
+     취소되므로 이동과 충돌하지 않음.
+  3. **"오늘 날짜 강조 원" on/off 스위치**: `OverlayPlacement.showTodayCircle`(기본 true) 추가,
+     `CalendarSettingsDialog`에 `Switch` 토글 신설. 꺼지면 `MiniCalendarSticker`와
+     `renderCalendarOverlayDiaryBitmap` 양쪽에서 분홍 원을 안 그림.
+  4. **"달력 배경" on/off 스위치**: 지난 세션에 완전히 지웠던 반투명 카드 배경을 다시 넣되 이번엔
+     기본 꺼짐(`backgroundEnabled = false`)인 옵션으로. 켜면 `MiniCalendarSticker`가 둥근 사각형
+     배경(`RoundedCornerShape(12.dp)`)을 깔고 안쪽에 살짝 여백을 준다.
+  5. **배경 켜면 색·불투명도 조절**: `backgroundColorArgb`(기본 흰색)·`backgroundOpacity`(기본
+     0.75, 0~1 슬라이더, 브러시 굵기와 같은 무채색 슬라이더 디자인 재사용) 추가, 배경 스위치가
+     켜져 있을 때만 이 두 컨트롤(불투명도 슬라이더 + `ColorPickerCard`)이 나타남.
+  - `OverlayPlacement`에 `showTodayCircle`/`backgroundEnabled`/`backgroundColorArgb`/
+    `backgroundOpacity` 4개 필드 추가, `MiniCalendarSticker`·`renderCalendarOverlayDiaryBitmap`
+    양쪽에 배선. 다이얼로그 내용이 늘어나서 `Column`에 `verticalScroll` 추가(작은 화면 대응).
+  - `compileDebugKotlin` 검증 완료. 실기기 확인은 아직 안 함 — 특히 롱프레스 vs 드래그 제스처
+    공존이 실제 손가락으로 자연스러운지 확인 필요.
+- **달력 오버레이 4차 개편 — 필(pill) 손잡이, 다이얼로그 가운데 정렬, Y/M/D 문자 버튼, 슬라이더 썸
+  탭으로 pt 입력, 글자크기/색상 통합 표시, 다이얼로그 내부 전체 가운데 정렬** (2026-08-22, 버전
+  미상향): `diary/DiaryScreens.kt` + `brush/BrushControls.kt`. 5가지 수정:
+  1. **손잡이 = 얇은 필 모양**: 가로/세로 크기 손잡이를 원형 배경 없는 아이콘에서, `RoundedCornerShape(50)`
+     로 만든 얇은 흰색 필 막대로 교체(가로 손잡이=세로로 긴 필 6×32dp, 세로 손잡이=가로로 긴 필
+     32×6dp — 필의 방향 자체가 어느 쪽으로 드래그하는지 암시).
+  2. **다이얼로그 가운데 정렬**: `CalendarSettingsDialog`를 `DialogProperties(usePlatformDefaultWidth =
+     false)` + `Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center)`로 감싸 명시적으로
+     화면 중앙에 뜨도록 보장(플랫폼 기본 동작에 기대지 않음).
+  3. **연/월/일 버튼을 Y/M/D 문자로**: 아이콘(DateRange/CalendarMonth/Today)이 서로 구분이 잘 안
+     간다는 피드백 — 아이콘 대신 굵은 글자 "Y"/"M"/"D"를 원형 토글 버튼에 표시(`OverlayToggleText`,
+     아이콘 버전 `OverlayToggleIcon`은 이제 안 써서 삭제).
+  4. **글자 크기 직접 입력칸 삭제 → 슬라이더 썸 탭으로 입력**: 상시 노출돼 있던 pt `OutlinedTextField`를
+     없애고, 대신 슬라이더의 동그란 손잡이(썸)를 탭하면 그 자리가 숫자 입력 모드로 바뀐다(포커스 자동
+     이동, 완료 버튼 또는 키보드 확인으로 슬라이더로 복귀). 이를 위해 `brush/BrushControls.kt`의
+     `RingSliderThumb`/`IconSliderRow`에 `onThumbClick: (() -> Unit)? = null` 파라미터 추가(기본 null이라
+     기존 브러시 쪽엔 영향 없음) — 썸 안쪽 원에 `clickable`을 얹어 탭과 드래그(슬라이더 자체 제스처)가
+     공존하게 함.
+  5. **글자크기/색상을 버튼으로 나누지 않음**: 이전엔 아이콘 버튼 2개로 토글해서 둘 중 하나만
+     보였는데, 이제 글자 크기 슬라이더와 색상휠(`ColorPickerCard`)을 항상 같이(세로로 나란히) 보여줌
+     — `OverlayProperty` enum과 토글 버튼 완전히 삭제.
+  6. **다이얼로그 내부 전체 가운데 정렬**: 바깥 `Column`에 `horizontalAlignment =
+     Alignment.CenterHorizontally` 추가, "완료" 버튼의 `Modifier.align(Alignment.End)`도 제거해 다른
+     요소들과 같이 가운데로.
+  - `compileDebugKotlin` 검증 완료. 실기기 확인은 아직 안 함.
+- **달력 오버레이 3차 개편 — 이동은 드래그 전용(버튼 삭제), 손잡이 배경 삭제, "달력 설정" 다이얼로그로
+  통합(연/월/일 아이콘 선택 + 상단 실시간 미리보기 + 글자크기·색상 아이콘 전환 + pt 직접입력 + 서체
+  칩 실제 폰트 렌더링 + 브러시 굵기와 동일한 무채색 슬라이더)** (2026-08-22, 버전 미상향):
+  `diary/DiaryScreens.kt` + `brush/BrushControls.kt`.
+  1. **이동 버튼 삭제**: 왼쪽 위 이동 손잡이(`OpenWith` 아이콘) 완전히 삭제. 대신 스티커 본체(연/월/
+     일/요일/날짜 전부를 담은 영역)를 감싼 `Box`에 직접 `detectDragGestures`를 달아 어디를 눌러
+     드래그해도 바로 위치가 옮겨진다. 스티커 안에 있던 개별 탭 콜백(`onTapYear`/`onTapMonth`/
+     `onTapDay`)도 함께 제거 — 이제 스티커는 순수 미리보기이고, 편집은 전부 아래 4번 다이얼로그로.
+  2. **손잡이 배경 삭제**: 남은 가로/세로 크기 손잡이 2개에서 `Color(0xCC1E2D4C)` 원형 배경 삭제,
+     아이콘만 남기고 흰색 + 그림자로 배경 없이도 어느 정도 보이게 함.
+  3. **기타 수정을 전부 "달력 설정" 다이얼로그로**: 상단 바에 톱니(`Icons.Filled.Tune`) 버튼 신설,
+     누르면 `CalendarSettingsDialog`가 뜬다.
+  4. **다이얼로그 구성**(`CalendarSettingsDialog`):
+     - 상단: 지금 편집 중인 값이 실시간 반영되는 `MiniCalendarSticker` 미리보기(160×190dp).
+     - 연도/월/일자 아이콘 3개(`DateRange`/`CalendarMonth`/`Today`) — 어느 요소를 편집할지 선택.
+     - 글자 크기(`FormatSize` 아이콘) / 색상(현재 색이 채워진 원형 스와치, 선택되면 테두리 강조)
+       아이콘 2개 — 아래에 보여줄 편집 패널을 전환.
+     - **글자 크기 패널**(`FontSizeEditor`): 브러시 굵기 슬라이더와 완전히 같은 트랙/썸 디자인이지만
+       강조색만 무채색(`OverlayAccentColor` = `Color(0xFF8A8A8A)`)으로. 이 재사용을 위해
+       `brush/BrushControls.kt`의 `IconSliderRow`/`GradientSliderTrack`/`RingSliderThumb`를
+       `private`→`internal`로 열고 `accentColor: Color = SliderAccentColor` 파라미터를 추가(디폴트라
+       기존 브러시 쪽 호출부는 색 변화 없음). 슬라이더 옆에 pt 직접 입력 `OutlinedTextField`도 추가 —
+       타이핑 중간값("12"를 치는 도중의 "1")이 슬라이더가 되받아쓰기 때문에 끊기지 않도록, 텍스트
+       상태는 `selectedElement`가 바뀔 때만 다시 초기화하고 슬라이더 변경 시엔 텍스트 쪽에서
+       직접(명령형으로) 갱신하는 방식으로 짬(리컴포지션 키로 엮지 않음 — 안 그러면 타이핑 중 값이
+       범위 하한으로 클램프되면서 방금 친 숫자가 날아가는 버그가 생김).
+     - **색상 패널**: 기존 `ColorPickerCard` 그대로.
+     - **서체 칩 3개**: 각 칩의 라벨 텍스트에 `fontFamily = f.family`를 적용해 "손글씨"/"고딕"/"세리프"
+       글자 자체가 그 서체로 보이도록(이전엔 전부 기본 서체로 표시돼 있었음).
+  - `OverlayPlacement`/`renderCalendarOverlayDiaryBitmap`(저장용 Canvas 렌더)은 값 구조가 안 바뀌어서
+    그대로 재사용.
+  - `compileDebugKotlin` 검증 완료. 실기기 확인은 아직 안 함 — 배경 없앤 손잡이가 실제로 잡기 충분히
+    쉬운지, pt 입력 필드 동작이 매끄러운지 확인 필요.
+- **달력 오버레이 배치 화면 전면 재설계 — 연/월/일 개별 색상·글자크기, 드래그 핸들 크기조절, 요소별
+  편집 팝업** (2026-08-22, 버전 미상향): `diary/DiaryScreens.kt`. 직전 세션의 하단 슬라이더 패널(크기 1개
+  + 글자크기 1개 + 폰트 공용) 방식을 사용자가 다시 뒤집어서 요청 — 4가지:
+  1. **연/월/일 각각 독립 색상**: 스티커에 연도 줄을 새로 추가(이전엔 월 이름만 있고 연도가 없었음)해서
+     연/월/일 세 요소로 나누고, 각각 `OverlayElementStyle(colorArgb, fontSp, fontRes)`로 색상·글자
+     크기·폰트를 완전히 독립적으로 가짐.
+  2. **연/월/일 각각 독립 글자 크기**: 위와 같은 구조로 해결(`fontSp`가 요소별로 다름).
+  3. **크기 조절을 슬라이더→드래그 핸들로, 표 비율만 바뀌고 폰트 폭은 고정**: 스티커 왼쪽 위에 이동
+     손잡이(`Icons.Filled.OpenWith`), 오른쪽 가운데에 가로 크기 손잡이, 아래 가운데에 세로 크기
+     손잡이(둘 다 `Icons.Filled.DragHandle`, 가로쪽은 90도 회전) 3개를 원형 드래그 핸들로 배치.
+     가로/세로 손잡이는 `gridWidthFraction`/`gridHeightFraction`(스케치 폭/높이 대비 비율)을 각각
+     독립적으로 바꾼다 — `MiniCalendarSticker`를 `widthDp×heightDp` 고정 크기의 `Column`으로 만들고
+     연/월/요일 줄은 자기 글자 크기만큼만 차지, 날짜 그리드가 `weight(1f)`로 나머지를 채우는 구조라
+     표 크기를 조절해도 글자 크기 자체(`OverlayElementStyle.fontSp`)는 전혀 안 바뀜.
+  4. **하단 상시 패널 삭제 → 요소 선택 시 작은 Dialog 팝업**: 연도/월/일자 텍스트(또는 날짜 그리드
+     전체)를 탭하면 `OverlayElementEditDialog`(글자 크기 슬라이더 + 브러시 쪽 기존
+     `ColorPickerCard`(색상휠) 재사용 + 폰트 칩 3개)가 `Dialog`로 뜬다. 하단 고정 패널·슬라이더 2개·
+     전역 폰트 칩 행은 전부 삭제.
+  - `OverlayPlacement`가 `(fracX, fracY, sizeFraction, fontScale, fontRes)` 5개 값 → `(fracX, fracY,
+    gridWidthFraction, gridHeightFraction, year: OverlayElementStyle, month: ..., day: ...)`로 재설계.
+    `renderCalendarOverlayDiaryBitmap`도 동일 구조로 다시 씀 — 연/월/요일 줄 높이를 각 줄 글자
+    크기(`fontSp × 화면 밀도`)에서 유도해 Compose 쪽과 같은 규칙을 저장 결과에도 반영.
+  - 새 `OverlayHandle`(재사용 가능한 원형 드래그 손잡이), `OverlayElement` enum(연도/월/일자 구분),
+    `fontFamilyFor(fontRes)` 헬퍼(Int 리소스 id ↔ Compose FontFamily 매핑) 추가.
+  - `compileDebugKotlin` 검증 완료. 실기기 확인은 아직 안 함 — 손잡이 드래그 히트영역(28dp 원)이
+    실제 손가락으로 조작하기 충분히 큰지, 팝업 위치/레이아웃이 실제로 괜찮은지 확인 필요.
+- **일자 상세화면 전체화면화(워터마크 날짜) + 달력 오버레이 배경 제거 + 크기/글자크기/폰트 조절**
+  (2026-08-22, 버전 미상향): `diary/DiaryScreens.kt`. 사용자가 6가지로 정리해 요청 — 1(썸네일 달력
+  진입)·3(좌우 스와이프 일자 변경)·4(다운로드 옵션 선택)은 이미 구현돼 있어 확인만 함(4는 "스케치만"
+  까지 3개 옵션인데 사용자는 2개만 언급 — "스케치만"을 빼란 뜻인지 불명확해 일단 그대로 둠, 필요하면
+  말씀해달라고 안내). 실제로 바뀐 건 2·5·6:
+  - **2(전체화면+워터마크)**: `CleanDetailBody`에서 날짜를 별도 헤더 줄(레이아웃 공간 차지)로 안 그리고,
+    이미지 위에 겹치는 반투명 텍스트(흰 60% 알파 + 검은 그림자)로 바꿈. `CleanCalendarScreen`도
+    함께 손봄 — 그리드 보기일 때만 연/월 타이틀+사이드 패딩을 두르고, 상세 보기일 때는
+    `CleanDetailBody(..., Modifier.fillMaxSize())`로 패딩·헤더 없이 화면 전체를 그대로 씀. 그림 없는
+    날은 중앙에 날짜+안내문구를 세로로 표시.
+  - **5(달력 스티커 배경 제거)**: `MiniCalendarSticker`(Compose 미리보기)의
+    `.background(Color(0x99FFFFFF), ...)` 삭제, `renderCalendarOverlayDiaryBitmap`(저장용 Canvas)의
+    `canvas.drawRoundRect(...)` 흰 카드 그리기 삭제 — 이제 텍스트/원만 스케치 위에 직접 떠 있음.
+  - **6(크기·글자크기·폰트 조절)**: `CalendarOverlayPlacementScreen` 하단에 반투명 컨트롤 패널 추가 —
+    크기 슬라이더(`sizeFraction`, 0.18~0.7), 글자 크기 슬라이더(`fontScale`, 0.5~2, 크기와 독립적으로
+    글자만 키움/줄임), 폰트 선택 칩 3개(손글씨=`Cavorting`/고딕=`Pretendard`/세리프=`BodoniMTBlack`,
+    새 `OverlayFont` enum). 위치·크기·글자크기·폰트를 하나로 묶은 `OverlayPlacement` 데이터 클래스를
+    신설해 배치 화면과 저장 렌더(`renderCalendarOverlayDiaryBitmap`)가 값을 그대로 공유(이전엔 위치
+    두 값만 넘겼음). 드래그 스티커의 중심 정렬은 근사치(스티커 폭 절반)였던 걸
+    `onGloballyPositioned`로 실제 측정 크기를 받아 정확히 계산하도록 개선.
+    **코드 위치**(전부 `app/src/main/java/com/g1/sketchbook/diary/DiaryScreens.kt`): 슬라이더 UI·상태 =
+    `CalendarOverlayPlacementScreen`(647번째 줄) + `OverlaySliderRow`(724번째 줄), 값 묶음 정의 =
+    `OverlayPlacement`(630번째 줄)/`OverlayFont`(634번째 줄), 배치 화면 미리보기 스티커 =
+    `MiniCalendarSticker`(735번째 줄), 최종 저장용 합성 =
+    `renderCalendarOverlayDiaryBitmap`(773번째 줄).
+  - `preview/DiaryOverlayPreview.kt`: `onSave` 시그니처가 `(Float, Float) -> Unit`→
+    `(OverlayPlacement) -> Unit`로 바뀐 것에 맞춰 갱신.
+  - `compileDebugKotlin` 검증 완료. 실기기 확인은 아직 안 함(배경 없앤 텍스트의 실제 가독성, 슬라이더
+    체감은 확인 필요).
+- **일자 상세화면/달력 오버레이 배치 화면 Preview 신규 추가** (2026-08-22, 버전 미상향): 사용자가
+  "Preview에 오늘 날짜 샘플이 없다"고 지적 — 확인해보니 `CleanCalendarScreen`/`CleanDetailBody`는
+  `previewMode`일 때 `repo`가 항상 `null`이라 `bmp`가 항상 `null`이 되고, 그림이 있을 때만 뜨는
+  저장 버튼·다운로드 다이얼로그(3번째 "달력 오버레이" 옵션 포함) 자체를 Preview에서 켤 방법이
+  없었다(기존 "16 Calendar day detail" Preview도 사실 항상 빈 상태만 보여주고 있었음).
+  - `diary/DiaryScreens.kt`: `CleanCalendarScreen`/`CleanDetailBody`에 `previewBitmap: Bitmap? = null`
+    파라미터 추가 — `bmp = previewBitmap ?: repo?.load(date)`로, 지정하면 repo 없이도 실제 그림이
+    있는 것처럼 동작(기존 `previewMode`/`previewDetailDate`와 같은 패턴). `CalendarOverlayPlacementScreen`
+    가시성을 `private`→`internal`로 변경(다른 다이얼로그들처럼 Preview 패키지에서 직접 호출 가능하게).
+  - 신규 `preview/DiaryOverlayPreview.kt`: "20 Diary day detail - sample sketch"(오늘 날짜 +
+    `sampleDiarySketch()`로 생성한 간단한 언덕/해 낙서 비트맵을 주입한 `CleanCalendarScreen` — 저장
+    버튼→다운로드 다이얼로그→"달력 오버레이로 다운로드"까지 Interactive Preview로 실제 탭해서 확인
+    가능), "21 Calendar overlay placement"(배치 화면을 곧바로 열어둔 상태로, 스티커 드래그 자체만
+    빠르게 확인).
+  - `compileDebugKotlin` 검증 완료.
+- **일자 상세화면 다운로드 3번째 옵션 "달력 오버레이" 러프 구현** (2026-08-22, 버전 미상향): 사용자
+  확정 사양([memory] project-diary-detail-download-versions 참고, AskUserQuestion으로 세부 재확인) =
+  전용 배치 화면에서 스티커를 드래그만(크기 고정) 가능, 스티커 내용은 해당 월 전체 그리드 + 지금
+  보고 있는 날짜만 분홍 원 강조(다른 날 기록 여부 점 표시는 생략), 배경은 반투명 오버레이.
+  `diary/DiaryScreens.kt`:
+  - `DownloadOptionsDialog`에 세 번째 `DownloadChoiceRow`("달력 오버레이로 다운로드") 추가,
+    `onOverlay` 콜백 신설.
+  - `CleanDetailBody`: `showOverlayPlacement` 상태 추가, 기존 `Column(modifier)`를
+    `Box(modifier) { Column(...) { ... } }`로 감싸 그 위에 전용 배치 화면을 조건부로 얹는 구조로 변경.
+    시스템 뒤로가기(`BackHandler`)로도 배치 화면을 닫을 수 있게 배선(앱 전반의 기존 관례).
+  - 신규 `CalendarOverlayPlacementScreen`: 스케치를 원본 비율(`aspectRatio`) 그대로 크게 보여주고,
+    그 위에 `MiniCalendarSticker`를 `detectDragGestures`로 드래그(위치만, `fracX`/`fracY` 0~1 비율로
+    저장) — 상단에 취소(X)/저장(체크) 원형 버튼.
+  - 신규 `MiniCalendarSticker`(Compose 미리보기용): 반투명 흰 카드 위에 요일 헤더+6주 그리드,
+    보고 있는 날짜만 `TodayPink` 원으로 강조.
+  - 신규 `renderCalendarOverlayDiaryBitmap()`(저장용 Canvas 렌더): 배치 화면에서 고른 `fracX`/`fracY`
+    위치에 스케치 원본 해상도 기준으로 같은 스타일(폭 42%, 반투명 흰 카드)의 달력을 다시 그려 합성 —
+    `renderFramedDiaryBitmap()`과 같은 "Compose 미리보기와 저장용 Canvas 렌더는 완전히 같은 수치식일
+    필요 없다"는 이 프로젝트의 기존 관례를 그대로 따름.
+  - **의도적으로 미룬 디테일**(사용자가 "러프하게 먼저, 디테일은 나중에"로 명시): 스티커 크기 조절
+    불가(고정 42%), 다른 날 기록 여부 점 표시 없음, Compose 미리보기와 Canvas 렌더 사이 픽셀 단위
+    정합성 없음(비율만 맞춤) — 실기기로 실제 보이는 결과 확인 후 다듬을 예정.
+  - `compileDebugKotlin` 검증 완료. 에뮬레이터/실기기 확인은 아직 안 함(드래그 체감·최종 합성 결과
+    실제로 어떻게 보이는지는 실기기에서 확인 필요).
 - **v2.8.1 릴리스 준비** (2026-08-21): 메인탭 고정 레이아웃 정렬, 화면 버튼 그림자·분할 아이콘
   수정, 페인트통 제스처 정리, Android Studio Preview 복구, 표지 색상 확인 단계와 갤러리 이미지
   반영 오류 수정 및 회귀 테스트를 묶어 `versionCode 103` / `versionName 2.8.1`로 상향했다.

@@ -14,11 +14,15 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,15 +32,32 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,27 +71,41 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -79,11 +114,15 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
+import com.g1.sketchbook.brush.ColorPickerCard
+import com.g1.sketchbook.brush.IconSliderRow
 import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.sketchbook.Catalog
 import com.g1.sketchbook.ui.bounceClick
+import com.g1.sketchbook.ui.theme.BodoniMTBlack
 import com.g1.sketchbook.ui.theme.Cavorting
 import com.g1.sketchbook.ui.theme.Dimens
+import com.g1.sketchbook.ui.theme.Pretendard
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
@@ -274,6 +313,11 @@ fun DiaryCalendarScreen(
                 ChevronArrow(pointLeft = false, modifier = Modifier.width(Dimens.Calendar.arrowIconW).height(Dimens.Calendar.arrowIconH))
             }
         }
+        Text(
+            "이번 달 ${marked.size}일 기록", fontFamily = Cavorting, fontSize = Dimens.Calendar.summarySp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
         Spacer(Modifier.height(Dimens.Calendar.titleGap))
         AiryCalendar(year, month, marked, today, onTap = { onOpenCalendar(year, month) }, Modifier.weight(1f).fillMaxWidth())
     }
@@ -308,6 +352,16 @@ private fun ordinal(d: Int): String = when {
     d in 11..13 -> "th"
     d % 10 == 1 -> "st"; d % 10 == 2 -> "nd"; d % 10 == 3 -> "rd"
     else -> "th"
+}
+
+/** "YYYY-MM-DD" 문자열을 deltaDays만큼(음수면 이전) 이동한 날짜 문자열로 변환 — 월/연 경계도 처리. */
+private fun shiftDate(date: String, deltaDays: Int): String {
+    val parts = date.split("-")
+    val cal = Calendar.getInstance().apply {
+        set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+        add(Calendar.DAY_OF_MONTH, deltaDays)
+    }
+    return "%04d-%02d-%02d".format(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
 }
 
 private fun monthCells(year: Int, month: Int): List<Int> {
@@ -365,30 +419,42 @@ fun CleanCalendarScreen(
     onBack: () -> Unit,
     previewDetailDate: String? = null,
     previewMode: Boolean = false,
+    previewBitmap: Bitmap? = null,
 ) {
     val ctx = LocalContext.current
     val repo = if (previewMode) null else remember(ctx) { DiaryRepository(ctx) }
+    // 상세뷰에서 좌우 스와이프로 날짜를 넘기면 월 경계를 넘을 수 있어 연/월을 내부 상태로 들고 있는다
+    // (파라미터 year/month는 최초 진입 시점의 값일 뿐).
+    var curYear by remember { mutableIntStateOf(year) }
+    var curMonth by remember { mutableIntStateOf(month) }
     var thumbs by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
-    LaunchedEffect(year, month, repo) {
-        if (repo != null) thumbs = withContext(Dispatchers.IO) { buildThumbs(repo, year, month) }
+    LaunchedEffect(curYear, curMonth, repo) {
+        if (repo != null) thumbs = withContext(Dispatchers.IO) { buildThumbs(repo, curYear, curMonth) }
     }
     var detailDate by remember(previewDetailDate) { mutableStateOf(previewDetailDate) }
 
     BackHandler { if (detailDate != null) detailDate = null else onBack() }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()
-        .padding(start = Dimens.CleanCalendar.sidePadding, end = Dimens.CleanCalendar.sidePadding,
-            top = Dimens.CleanCalendar.topPadding, bottom = Dimens.CleanCalendar.bottomPadding)) {
-        // Shared title — identical for slide 3 and slide 4.
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("$year", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(MonthNames[month], fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.monthSp, maxLines = 1)
-        }
-        Spacer(Modifier.height(Dimens.CleanCalendar.titleGap))
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (detailDate == null) {
-            CleanGrid(year, month, thumbs, Modifier.weight(1f).fillMaxWidth()) { detailDate = it }
+            Column(Modifier.fillMaxSize().systemBarsPadding()
+                .padding(start = Dimens.CleanCalendar.sidePadding, end = Dimens.CleanCalendar.sidePadding,
+                    top = Dimens.CleanCalendar.topPadding, bottom = Dimens.CleanCalendar.bottomPadding)) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$curYear", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(MonthNames[curMonth], fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.monthSp, maxLines = 1)
+                }
+                Spacer(Modifier.height(Dimens.CleanCalendar.titleGap))
+                CleanGrid(curYear, curMonth, thumbs, Modifier.weight(1f).fillMaxWidth()) { detailDate = it }
+            }
         } else {
-            CleanDetailBody(repo, detailDate!!, Modifier.weight(1f).fillMaxWidth())
+            // 일자 상세는 전체화면 — 그림이 화면을 꽉 채우고 날짜는 그 위 워터마크로만 표시(별도 헤더 없음).
+            CleanDetailBody(repo, detailDate!!, Modifier.fillMaxSize(), previewBitmap = previewBitmap) { newDate ->
+                detailDate = newDate
+                val parts = newDate.split("-")
+                curYear = parts[0].toInt()
+                curMonth = parts[1].toInt() - 1
+            }
         }
     }
 }
@@ -432,64 +498,653 @@ private fun CleanGrid(year: Int, month: Int, thumbs: Map<String, ImageBitmap>, m
 }
 
 @Composable
-private fun CleanDetailBody(repo: DiaryRepository?, date: String, modifier: Modifier) {
-    val bmp = remember(date, repo) { repo?.load(date) }
+private fun CleanDetailBody(
+    repo: DiaryRepository?, date: String, modifier: Modifier, previewBitmap: Bitmap? = null,
+    onNavigate: (String) -> Unit,
+) {
+    val bmp = remember(date, repo, previewBitmap) { previewBitmap ?: repo?.load(date) }
     val parts = date.split("-")
-    val d = parts[2].toInt()
-    val cal = remember(date) { Calendar.getInstance().apply { set(parts[0].toInt(), parts[1].toInt() - 1, d) } }
-    val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
     val ctx = LocalContext.current
+    var showDownloadDialog by remember { mutableStateOf(false) }
+    var showOverlayPlacement by remember(date) { mutableStateOf(false) }
     // 보기 전용 확대/축소 — 그림 자체는 수정하지 않으므로 BrushView의 캔버스가 아니라 표준 Compose
     // 제스처로 충분(1x~5x, 다 축소하면 팬도 원점으로 되돌림).
     var scale by remember(date) { mutableFloatStateOf(1f) }
     var offsetX by remember(date) { mutableFloatStateOf(0f) }
     var offsetY by remember(date) { mutableFloatStateOf(0f) }
-    Column(modifier) {
-        // Weekday / day aligned to the frame's left / right edges (title comes from the shared header).
-        Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(weekday, fontFamily = Cavorting, fontSize = 40.sp, modifier = Modifier.weight(1f))
-            Text("$d${ordinal(d)}", fontFamily = Cavorting, fontSize = 40.sp)
-        }
-        Spacer(Modifier.height(12.dp))
-        // Hand-drawn frame; the sketch is cropped to fill it.
-        Box(Modifier.weight(1f).fillMaxWidth().padding(4.dp).sketchBorder(MaterialTheme.colorScheme.onSurface),
-            contentAlignment = Alignment.Center) {
+    // 좌우 스와이프로 전날/다음날 이동 — 확대 중(scale>1)일 때는 팬으로 쓰이므로 스와이프를 건드리지
+    // 않고, 배율이 1일 때만 누적해서 임계값을 넘으면 즉시 날짜를 바꾼다(release까지 기다리지 않음).
+    var swipeAccum by remember(date) { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    val swipeThresholdPx = with(density) { 72.dp.toPx() }
+    BackHandler(enabled = showOverlayPlacement) { showOverlayPlacement = false }
+    val dateLabel = "${parts[0]}.${parts[1]}.${parts[2]}"
+    Box(modifier) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (bmp != null) {
                 Image(
                     bmp.asImageBitmap(), date, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().padding(7.dp).clip(RoundedCornerShape(4.dp))
+                    modifier = Modifier.fillMaxSize()
                         .pointerInput(date) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 scale = (scale * zoom).coerceIn(1f, 5f)
-                                if (scale <= 1f) { offsetX = 0f; offsetY = 0f }
-                                else { offsetX += pan.x; offsetY += pan.y }
+                                if (scale <= 1f) {
+                                    offsetX = 0f; offsetY = 0f
+                                    swipeAccum += pan.x
+                                    if (swipeAccum > swipeThresholdPx) { onNavigate(shiftDate(date, -1)); swipeAccum = 0f }
+                                    else if (swipeAccum < -swipeThresholdPx) { onNavigate(shiftDate(date, 1)); swipeAccum = 0f }
+                                } else { offsetX += pan.x; offsetY += pan.y }
                             }
                         }
                         .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offsetX; translationY = offsetY },
                 )
+                // 날짜는 헤더 줄 없이 이미지 위 워터마크로만 — 스케치가 화면을 그대로 꽉 채운다.
+                Text(
+                    dateLabel, fontFamily = Cavorting, fontSize = 22.sp,
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.4f), blurRadius = 8f)),
+                    modifier = Modifier.align(Alignment.TopCenter).systemBarsPadding().padding(top = 18.dp),
+                )
                 IconButton(
-                    onClick = {
-                        val status = saveToGallery(ctx, bmp, "daymory_$date")
-                        Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
-                    },
+                    onClick = { showDownloadDialog = true },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp).size(40.dp)
                         .clip(CircleShape).background(Color(0x66000000)),
                 ) {
-                    Icon(Icons.Filled.Save, "갤러리에 저장", tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Filled.Save, "다운로드", tint = Color.White, modifier = Modifier.size(20.dp))
+                }
+                if (showDownloadDialog) {
+                    DownloadOptionsDialog(
+                        onDismiss = { showDownloadDialog = false },
+                        onPlain = {
+                            showDownloadDialog = false
+                            val status = saveToGallery(ctx, bmp, "daymory_$date")
+                            Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
+                        },
+                        onFramed = {
+                            showDownloadDialog = false
+                            val framed = renderFramedDiaryBitmap(ctx, bmp, date)
+                            val status = saveToGallery(ctx, framed, "daymory_${date}_frame")
+                            Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
+                        },
+                        onOverlay = {
+                            showDownloadDialog = false
+                            showOverlayPlacement = true
+                        },
+                    )
                 }
             } else {
-                Text("이 날의 일기가 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Box(
+                    Modifier.fillMaxSize().pointerInput(date) {
+                        detectHorizontalDragGestures(onDragCancel = { swipeAccum = 0f }) { change, dragAmount ->
+                            swipeAccum += dragAmount
+                            if (swipeAccum > swipeThresholdPx) { onNavigate(shiftDate(date, -1)); swipeAccum = 0f }
+                            else if (swipeAccum < -swipeThresholdPx) { onNavigate(shiftDate(date, 1)); swipeAccum = 0f }
+                            change.consume()
+                        }
+                    },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(dateLabel, fontFamily = Cavorting, fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(8.dp))
+                        Text("이 날의 일기가 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+        if (showOverlayPlacement && bmp != null) {
+            CalendarOverlayPlacementScreen(
+                bmp = bmp, date = date,
+                onCancel = { showOverlayPlacement = false },
+                onSave = { placement ->
+                    showOverlayPlacement = false
+                    val composited = renderCalendarOverlayDiaryBitmap(ctx, bmp, date, placement)
+                    val status = saveToGallery(ctx, composited, "daymory_${date}_calendar")
+                    Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
+                },
+            )
+        }
+    }
+}
+
+/** 저장 아이콘 탭 시 뜨는 다운로드 버전 선택 시트 (3가지 — 스케치만 / 액자 구성 / 달력 오버레이). */
+@Composable
+private fun DownloadOptionsDialog(onDismiss: () -> Unit, onPlain: () -> Unit, onFramed: () -> Unit, onOverlay: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("이미지로 저장") },
+        text = {
+            Column {
+                DownloadChoiceRow(Icons.Filled.Image, "스케치만 다운로드", onPlain)
+                Spacer(Modifier.height(10.dp))
+                DownloadChoiceRow(Icons.Filled.Crop, "액자 구성으로 다운로드", onFramed)
+                Spacer(Modifier.height(10.dp))
+                DownloadChoiceRow(Icons.Filled.CalendarMonth, "달력 오버레이로 다운로드", onOverlay)
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
+    )
+}
+
+@Composable
+private fun DownloadChoiceRow(icon: ImageVector, title: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick, shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer),
+                contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Text(title, fontSize = 15.sp)
+        }
+    }
+}
+
+/** 달력 오버레이의 글자 요소(연/월/일) 하나에 대한 스타일 — 색상·글자 크기·폰트를 각각 독립적으로. */
+internal data class OverlayElementStyle(val colorArgb: Long, val fontSp: Float, val fontRes: Int)
+
+/** 달력 오버레이 배치에서 조절 가능한 값들 — 위치(0~1 비율)·표 크기(가로/세로 별도)·연/월/일 각각의
+ *  스타일·오늘 날짜 강조 원 표시 여부·배경(껐다 켰다 가능, 켜면 색·불투명도 별도 조절). 배치 화면과
+ *  최종 저장 렌더(`renderCalendarOverlayDiaryBitmap`)가 이 하나의 값 묶음을 공유. */
+internal data class OverlayPlacement(
+    val fracX: Float, val fracY: Float,
+    val gridWidthFraction: Float, val gridHeightFraction: Float,
+    val year: OverlayElementStyle, val month: OverlayElementStyle, val day: OverlayElementStyle,
+    val showTodayCircle: Boolean,
+    val backgroundEnabled: Boolean, val backgroundColorArgb: Long, val backgroundOpacity: Float,
+)
+
+private enum class OverlayFont(val label: String, val family: FontFamily, val fontRes: Int) {
+    HANDWRITTEN("손글씨", Cavorting, R.font.cavorting),
+    CLEAN("고딕", Pretendard, R.font.pretendard_medium),
+    SERIF("세리프", BodoniMTBlack, R.font.bodoni_mt_black),
+}
+
+private fun fontFamilyFor(fontRes: Int): FontFamily = when (fontRes) {
+    R.font.pretendard_medium -> Pretendard
+    R.font.bodoni_mt_black -> BodoniMTBlack
+    else -> Cavorting
+}
+
+private val DefaultYearStyle = OverlayElementStyle(0xFF1E2D4CL, 13f, R.font.cavorting)
+private val DefaultMonthStyle = OverlayElementStyle(0xFF1E2D4CL, 19f, R.font.cavorting)
+private val DefaultDayStyle = OverlayElementStyle(0xFF1E2D4CL, 12f, R.font.cavorting)
+
+private enum class OverlayElement(val letter: String) { YEAR("Y"), MONTH("M"), DAY("D") }
+private val OverlayAccentColor = Color(0xFF8A8A8A) // 무채색 슬라이더 강조색(브러시 굵기 슬라이더의 빨강 대신)
+private val OverlayFontSizeRange = 8f..60f
+
+/** 달력 오버레이 배치 전용 화면 — 스케치를 원본 비율 그대로 크게 보여주고, 그 위에 미니 달력을
+ *  올린다. 상호작용:
+ *  - 스티커 본체를 바로 드래그 = 위치 이동(별도 이동 버튼 없음).
+ *  - 스티커를 길게 누르면 = "달력 설정" 다이얼로그(연/월/일 각각의 색상·글자크기·폰트, 오늘 강조 원
+ *    on/off, 배경 on/off + 색·불투명도).
+ *  - 오른쪽 가운데/아래 가운데 필(pill) 손잡이 드래그 = 표의 가로/세로 크기를 각각 독립적으로
+ *    (글자 크기는 안 바뀜 — "폰트 폭은 고정").
+ *  상단 취소(X)/저장(체크) 버튼만(설정 버튼은 없음 — 길게 누르기로 대체). */
+@Composable
+internal fun CalendarOverlayPlacementScreen(bmp: Bitmap, date: String, onCancel: () -> Unit, onSave: (OverlayPlacement) -> Unit) {
+    val parts = date.split("-")
+    val year = parts[0].toInt(); val month = parts[1].toInt() - 1; val day = parts[2].toInt()
+    var fracX by remember(date) { mutableFloatStateOf(0.5f) }
+    var fracY by remember(date) { mutableFloatStateOf(0.5f) }
+    var gridWFrac by remember(date) { mutableFloatStateOf(0.42f) }
+    var gridHFrac by remember(date) { mutableFloatStateOf(0.3f) }
+    var yearStyle by remember(date) { mutableStateOf(DefaultYearStyle) }
+    var monthStyle by remember(date) { mutableStateOf(DefaultMonthStyle) }
+    var dayStyle by remember(date) { mutableStateOf(DefaultDayStyle) }
+    var showTodayCircle by remember(date) { mutableStateOf(true) }
+    var backgroundEnabled by remember(date) { mutableStateOf(false) }
+    var backgroundColorArgb by remember(date) { mutableStateOf(0xFFFFFFFFL) }
+    var backgroundOpacity by remember(date) { mutableFloatStateOf(0.75f) }
+    var showSettings by remember { mutableStateOf(false) }
+    var stickerSizePx by remember { mutableStateOf(IntSize.Zero) }
+
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        BoxWithConstraints(
+            Modifier.align(Alignment.Center).fillMaxWidth()
+                .aspectRatio(bmp.width.toFloat() / bmp.height.toFloat()),
+        ) {
+            val boxWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+            val boxHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
+            Image(bmp.asImageBitmap(), date, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            val gridWidth = maxWidth * gridWFrac
+            val gridHeight = maxHeight * gridHFrac
+            Box(
+                Modifier.offset {
+                    IntOffset(
+                        (fracX * boxWidthPx - stickerSizePx.width / 2).roundToInt(),
+                        (fracY * boxHeightPx - stickerSizePx.height / 2).roundToInt(),
+                    )
+                }.onGloballyPositioned { stickerSizePx = it.size },
+            ) {
+                Box(
+                    Modifier
+                        .pointerInput(date) {
+                            detectDragGestures { change, drag ->
+                                change.consume()
+                                fracX = (fracX + drag.x / boxWidthPx).coerceIn(0f, 1f)
+                                fracY = (fracY + drag.y / boxHeightPx).coerceIn(0f, 1f)
+                            }
+                        }
+                        .pointerInput(date) {
+                            detectTapGestures(onLongPress = { showSettings = true })
+                        },
+                ) {
+                    MiniCalendarSticker(
+                        year, month, day, gridWidth, gridHeight, yearStyle, monthStyle, dayStyle,
+                        showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
+                    )
+                }
+                OverlayHandle(Modifier.align(Alignment.CenterEnd).offset(16.dp, 0.dp), pillWidth = 3.dp, pillHeight = 16.dp, "가로 크기") { drag ->
+                    gridWFrac = (gridWFrac + drag.x / boxWidthPx).coerceIn(0.12f, 0.9f)
+                }
+                OverlayHandle(Modifier.align(Alignment.BottomCenter).offset(0.dp, 16.dp), pillWidth = 16.dp, pillHeight = 3.dp, "세로 크기") { drag ->
+                    gridHFrac = (gridHFrac + drag.y / boxHeightPx).coerceIn(0.1f, 0.9f)
+                }
+            }
+        }
+        Row(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().systemBarsPadding().padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            IconButton(
+                onClick = onCancel,
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0x66000000)),
+            ) { Icon(Icons.Filled.Close, "취소", tint = Color.White) }
+            IconButton(
+                onClick = {
+                    onSave(
+                        OverlayPlacement(
+                            fracX, fracY, gridWFrac, gridHFrac, yearStyle, monthStyle, dayStyle,
+                            showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
+                        ),
+                    )
+                },
+                modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0x66000000)),
+            ) { Icon(Icons.Filled.Check, "저장", tint = Color.White) }
+        }
+    }
+
+    if (showSettings) {
+        CalendarSettingsDialog(
+            year, month, day, yearStyle, monthStyle, dayStyle,
+            onYearChange = { yearStyle = it }, onMonthChange = { monthStyle = it }, onDayChange = { dayStyle = it },
+            showTodayCircle = showTodayCircle, onShowTodayCircleChange = { showTodayCircle = it },
+            backgroundEnabled = backgroundEnabled, onBackgroundEnabledChange = { backgroundEnabled = it },
+            backgroundColorArgb = backgroundColorArgb, onBackgroundColorChange = { backgroundColorArgb = it },
+            backgroundOpacity = backgroundOpacity, onBackgroundOpacityChange = { backgroundOpacity = it },
+            onDismiss = { showSettings = false },
+        )
+    }
+}
+
+/** 크기 조절 손잡이 — 배경 없이 얇은 필(pill) 막대만. 가로 손잡이는 세로로 긴 필, 세로 손잡이는
+ *  가로로 긴 필(드래그 방향을 암시). 크기 50%·불투명도 70%로 눈에 덜 띄게. `onDrag`은 화면 px 단위
+ *  누적 드래그 벡터를 그대로 받는다(호출부에서 각자 필요한 비율로 변환). */
+@Composable
+private fun OverlayHandle(
+    modifier: Modifier, pillWidth: Dp, pillHeight: Dp, contentDescription: String, onDrag: (Offset) -> Unit,
+) {
+    Box(
+        modifier.size(40.dp)
+            .pointerInput(Unit) { detectDragGestures { change, drag -> change.consume(); onDrag(drag) } },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(pillWidth, pillHeight).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.7f))
+                .border(1.dp, Color.Black.copy(alpha = 0.1f), RoundedCornerShape(50)),
+        )
+    }
+}
+
+/** 달력을 길게 눌러 여는 "달력 설정" 다이얼로그 — 화면 가운데에 뜬다. 위에 실시간 미리보기,
+ *  연/월/일 중 어느 걸 편집할지는 Y/M/D 글자 버튼으로 고른다(아이콘은 구분이 잘 안 간다는 피드백
+ *  으로 문자로 교체). 글자 크기·색상은 버튼으로 나누지 않고 항상 같이 보인다 — 글자 크기는 브러시
+ *  굵기와 같은 슬라이더 디자인(무채색), 값은 슬라이더 썸을 탭하면 직접 숫자로 입력 가능. 색상은
+ *  기존 브러시 색상휠(`ColorPickerCard`) 재사용. 서체 칩은 각자의 실제 폰트로 렌더링해서 미리 보인다.
+ *  아래에 "오늘 날짜 강조 원"·"달력 배경" on/off 스위치, 배경을 켜면 배경 색·불투명도도 추가로
+ *  나온다. 내부 구성요소는 전부 가운데 정렬. */
+@Composable
+private fun CalendarSettingsDialog(
+    year: Int, month: Int, day: Int,
+    yearStyle: OverlayElementStyle, monthStyle: OverlayElementStyle, dayStyle: OverlayElementStyle,
+    onYearChange: (OverlayElementStyle) -> Unit, onMonthChange: (OverlayElementStyle) -> Unit, onDayChange: (OverlayElementStyle) -> Unit,
+    showTodayCircle: Boolean, onShowTodayCircleChange: (Boolean) -> Unit,
+    backgroundEnabled: Boolean, onBackgroundEnabledChange: (Boolean) -> Unit,
+    backgroundColorArgb: Long, onBackgroundColorChange: (Long) -> Unit,
+    backgroundOpacity: Float, onBackgroundOpacityChange: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selectedElement by remember { mutableStateOf(OverlayElement.YEAR) }
+    val style: OverlayElementStyle
+    val onChange: (OverlayElementStyle) -> Unit
+    when (selectedElement) {
+        OverlayElement.YEAR -> { style = yearStyle; onChange = onYearChange }
+        OverlayElement.MONTH -> { style = monthStyle; onChange = onMonthChange }
+        OverlayElement.DAY -> { style = dayStyle; onChange = onDayChange }
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, tonalElevation = 4.dp) {
+                Column(
+                    Modifier.width(280.dp).padding(16.dp).verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("달력 설정", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    MiniCalendarSticker(
+                        year, month, day, 160.dp, 190.dp, yearStyle, monthStyle, dayStyle,
+                        showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OverlayElement.entries.forEach { el ->
+                            OverlayToggleText(el.letter, selectedElement == el) { selectedElement = el }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    FontSizeEditor(style, selectedElement, onChange)
+                    Spacer(Modifier.height(14.dp))
+                    ColorPickerCard(style.colorArgb) { onChange(style.copy(colorArgb = it)) }
+                    Spacer(Modifier.height(14.dp))
+                    Text("서체", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OverlayFont.entries.forEach { f ->
+                            val selected = f.fontRes == style.fontRes
+                            Surface(
+                                onClick = { onChange(style.copy(fontRes = f.fontRes)) }, shape = MaterialTheme.shapes.small,
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            ) {
+                                Text(
+                                    f.label, fontFamily = f.family, fontSize = 13.sp,
+                                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    OverlayToggleRow("오늘 날짜 강조 원", showTodayCircle, onShowTodayCircleChange)
+                    Spacer(Modifier.height(10.dp))
+                    OverlayToggleRow("달력 배경", backgroundEnabled, onBackgroundEnabledChange)
+                    if (backgroundEnabled) {
+                        Spacer(Modifier.height(14.dp))
+                        IconSliderRow(
+                            Icons.Filled.Opacity, "배경 불투명도", "${(backgroundOpacity * 100).roundToInt()}",
+                            backgroundOpacity, 0f..1f, onChange = onBackgroundOpacityChange, accentColor = OverlayAccentColor,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        ColorPickerCard(backgroundColorArgb, onBackgroundColorChange)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    TextButton(onClick = onDismiss) { Text("완료") }
+                }
             }
         }
     }
 }
 
-/** A wobbly, hand-drawn rectangle stroke drawn behind the content. */
-private fun Modifier.sketchBorder(color: Color, stroke: Dp = 2.5.dp): Modifier = this.drawBehind {
-    val sw = stroke.toPx()
+@Composable
+private fun OverlayToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.width(10.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun OverlayToggleText(letter: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick, shape = CircleShape,
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+            Text(
+                letter, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 글자 크기 편집 — 브러시 굵기 슬라이더와 같은 트랙/썸 디자인(무채색). 상시 노출 입력칸은 없고,
+ *  슬라이더 썸(동그란 손잡이)을 탭하면 그 자리에서 숫자를 직접 입력하는 모드로 바뀐다(완료 또는
+ *  키보드 확인으로 다시 슬라이더로 복귀). `selectedElement`가 바뀔 때만 편집 모드를 초기화한다. */
+@Composable
+private fun FontSizeEditor(style: OverlayElementStyle, selectedElement: OverlayElement, onChange: (OverlayElementStyle) -> Unit) {
+    var editingText by remember(selectedElement) { mutableStateOf(false) }
+    var ptText by remember(selectedElement) { mutableStateOf(style.fontSp.roundToInt().toString()) }
+    fun commit() {
+        ptText.toFloatOrNull()?.let { onChange(style.copy(fontSp = it.coerceIn(OverlayFontSizeRange.start, OverlayFontSizeRange.endInclusive))) }
+        editingText = false
+    }
+    if (editingText) {
+        val focusRequester = remember { FocusRequester() }
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.FormatSize, "글자 크기", modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(10.dp))
+            OutlinedTextField(
+                value = ptText, onValueChange = { ptText = it },
+                modifier = Modifier.width(100.dp).focusRequester(focusRequester),
+                singleLine = true, textStyle = TextStyle(fontSize = 14.sp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { commit() }),
+                suffix = { Text("pt", fontSize = 12.sp) },
+            )
+            Spacer(Modifier.width(6.dp))
+            IconButton(onClick = { commit() }) { Icon(Icons.Filled.Check, "확인", modifier = Modifier.size(20.dp)) }
+        }
+    } else {
+        IconSliderRow(
+            Icons.Filled.FormatSize, "글자 크기", "${style.fontSp.roundToInt()}", style.fontSp, OverlayFontSizeRange,
+            onChange = { v -> onChange(style.copy(fontSp = v)) },
+            accentColor = OverlayAccentColor,
+            onThumbClick = { ptText = style.fontSp.roundToInt().toString(); editingText = true },
+        )
+    }
+}
+
+/** 미니 달력 스티커 — 연도·월·요일 헤더·6주 그리드, 지금 보고 있는 날짜는 `showTodayCircle`이 켜져
+ *  있을 때만 분홍 원으로 강조(다른 날의 기록 여부는 표시 안 함). 전체 크기는 `widthDp`×`heightDp`
+ *  고정이고 그 안에서 연/월/요일 줄은 각자 글자 크기만큼만 차지, 날짜 그리드가 나머지를 채운다 —
+ *  그래서 표 크기(가로/세로)를 조절해도 글자 크기는 안 바뀐다("폰트 폭은 고정"). `backgroundEnabled`가
+ *  켜져 있으면 둥근 사각형 배경(지정한 색·불투명도)을 깔고 내용에 살짝 안쪽 여백을 준다. 배치 화면·
+ *  설정 다이얼로그 미리보기 양쪽 모두 이 컴포저블 하나를 그대로 재사용(순수 미리보기 — 자체 탭/드래그
+ *  없음). */
+@Composable
+private fun MiniCalendarSticker(
+    year: Int, month: Int, day: Int, widthDp: Dp, heightDp: Dp,
+    yearStyle: OverlayElementStyle, monthStyle: OverlayElementStyle, dayStyle: OverlayElementStyle,
+    showTodayCircle: Boolean, backgroundEnabled: Boolean, backgroundColorArgb: Long, backgroundOpacity: Float,
+) {
+    val cells = remember(year, month) { monthCells(year, month) }
+    Column(
+        Modifier.size(widthDp, heightDp)
+            .let {
+                if (backgroundEnabled) {
+                    it.background(Color(backgroundColorArgb).copy(alpha = backgroundOpacity), RoundedCornerShape(12.dp))
+                        .padding(6.dp)
+                } else it
+            },
+    ) {
+        Text(
+            "$year", fontFamily = fontFamilyFor(yearStyle.fontRes), fontSize = yearStyle.fontSp.sp,
+            color = Color(yearStyle.colorArgb), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            MonthNames[month], fontFamily = fontFamilyFor(monthStyle.fontRes), fontSize = monthStyle.fontSp.sp,
+            color = Color(monthStyle.colorArgb), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+        )
+        Row(Modifier.fillMaxWidth()) {
+            WeekHeaders.forEach { wd ->
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        wd, fontFamily = fontFamilyFor(dayStyle.fontRes), fontSize = (dayStyle.fontSp * 0.7f).sp,
+                        color = Color(dayStyle.colorArgb).copy(alpha = 0.6f),
+                    )
+                }
+            }
+        }
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            cells.chunked(7).forEach { week ->
+                Row(Modifier.weight(1f).fillMaxWidth()) {
+                    week.forEach { d ->
+                        Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                            if (d > 0) {
+                                if (d == day && showTodayCircle) Box(Modifier.fillMaxSize(0.75f).clip(CircleShape).background(TodayPink))
+                                Text("$d", fontFamily = fontFamilyFor(dayStyle.fontRes), fontSize = dayStyle.fontSp.sp, color = Color(dayStyle.colorArgb))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private const val OverlayLineHeightMultiplier = 1.3f
+
+/** 다운로드 옵션 "달력 오버레이" — 배치 화면에서 고른 `OverlayPlacement`(위치·표 크기·연/월/일 각각의
+ *  색상·글자크기·폰트) 그대로 미니 달력을 원본 해상도로 다시 그려 스케치 비트맵 위에 합성한다(배경
+ *  없이 텍스트만). 연/월/요일 줄 높이는 Compose 쪽과 마찬가지로 각 줄의 글자 크기(fontSp × 화면
+ *  밀도)에서 유도 — 표 크기를 조절해도 글자 크기 자체는 안 바뀐다는 규칙을 저장 결과에도 그대로 반영. */
+private fun renderCalendarOverlayDiaryBitmap(ctx: Context, bmp: Bitmap, date: String, placement: OverlayPlacement): Bitmap {
+    val parts = date.split("-")
+    val year = parts[0].toInt(); val month = parts[1].toInt() - 1; val day = parts[2].toInt()
+    val out = bmp.copy(Bitmap.Config.ARGB_8888, true)
+    val canvas = android.graphics.Canvas(out)
+    val density = ctx.resources.displayMetrics.density
+
+    fun paint(style: OverlayElementStyle, sizePx: Float, alphaOverride: Int? = null) =
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = style.colorArgb.toInt()
+            if (alphaOverride != null) alpha = alphaOverride
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(ctx, style.fontRes)
+            textSize = sizePx
+            textAlign = android.graphics.Paint.Align.CENTER
+        }
+
+    val gridW = bmp.width * placement.gridWidthFraction
+    val stickerH = bmp.height * placement.gridHeightFraction
+    val cellW = gridW / 7f
+
+    val yearPx = placement.year.fontSp * density
+    val monthPx = placement.month.fontSp * density
+    val dayPx = placement.day.fontSp * density
+    val weekdayPx = dayPx * 0.7f
+
+    val yearRowH = yearPx * OverlayLineHeightMultiplier
+    val monthRowH = monthPx * OverlayLineHeightMultiplier
+    val weekdayRowH = weekdayPx * OverlayLineHeightMultiplier
+    val gridH = (stickerH - yearRowH - monthRowH - weekdayRowH).coerceAtLeast(cellW)
+    val cellH = gridH / 6f
+
+    val left = (placement.fracX * bmp.width - gridW / 2).coerceIn(0f, (bmp.width - gridW).coerceAtLeast(0f))
+    val top = (placement.fracY * bmp.height - stickerH / 2).coerceIn(0f, (bmp.height - stickerH).coerceAtLeast(0f))
+
+    if (placement.backgroundEnabled) {
+        val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = placement.backgroundColorArgb.toInt()
+            alpha = (placement.backgroundOpacity * 255).roundToInt().coerceIn(0, 255)
+        }
+        val radius = gridW * 0.05f
+        canvas.drawRoundRect(android.graphics.RectF(left, top, left + gridW, top + stickerH), radius, radius, bgPaint)
+    }
+
+    canvas.drawText("$year", left + gridW / 2, top + yearRowH * 0.75f, paint(placement.year, yearPx))
+    canvas.drawText(MonthNames[month], left + gridW / 2, top + yearRowH + monthRowH * 0.75f, paint(placement.month, monthPx))
+
+    val weekdayPaint = paint(placement.day, weekdayPx, alphaOverride = 160)
+    val weekdayY = top + yearRowH + monthRowH + weekdayRowH * 0.75f
+    WeekHeaders.forEachIndexed { i, wd -> canvas.drawText(wd, left + cellW * i + cellW / 2, weekdayY, weekdayPaint) }
+
+    val dayPaint = paint(placement.day, dayPx)
+    val todayPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.parseColor("#E3B7B7")
+    }
+    val gridTop = top + yearRowH + monthRowH + weekdayRowH
+    monthCells(year, month).chunked(7).forEachIndexed { row, week ->
+        week.forEachIndexed { col, d ->
+            if (d > 0) {
+                val cx = left + cellW * col + cellW / 2
+                val cy = gridTop + cellH * row + cellH / 2
+                if (d == day && placement.showTodayCircle) canvas.drawCircle(cx, cy, minOf(cellW, cellH) * 0.38f, todayPaint)
+                canvas.drawText("$d", cx, cy + dayPaint.textSize * 0.35f, dayPaint)
+            }
+        }
+    }
+    return out
+}
+
+/** 다운로드 옵션 "액자 구성" — 예전 일자 스케치 화면(요일+날짜 헤더 + 손그림 액자 테두리)과
+ *  같은 구성을 하나의 비트맵으로 그려서 저장용으로 만든다. 라이트 팔레트 색을 그대로 박아 넣어
+ *  기기의 다크/라이트 모드와 무관하게 항상 같은 종이 느낌으로 저장된다. */
+private fun renderFramedDiaryBitmap(ctx: Context, bmp: Bitmap, date: String): Bitmap {
+    val parts = date.split("-")
+    val d = parts[2].toInt()
+    val cal = Calendar.getInstance().apply { set(parts[0].toInt(), parts[1].toInt() - 1, d) }
+    val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
+    val dayLabel = "$d${ordinal(d)}"
+
+    val ivory = android.graphics.Color.parseColor("#F6F1E6")
+    val navy = android.graphics.Color.parseColor("#1E2D4C")
+    val typeface = androidx.core.content.res.ResourcesCompat.getFont(ctx, R.font.cavorting)
+
+    val innerPad = bmp.width * 0.012f
+    val margin = bmp.width * 0.03f
+    val headerHeight = bmp.width * 0.08f
+    val gap = bmp.width * 0.02f
+    val frameW = bmp.width + innerPad * 2
+    val frameH = bmp.height + innerPad * 2
+    val canvasW = (frameW + margin * 2).toInt()
+    val canvasH = (headerHeight + gap + frameH + margin * 2).toInt()
+
+    val out = Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(out)
+    canvas.drawColor(ivory)
+
+    val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = navy; this.typeface = typeface; textSize = headerHeight * 0.55f
+    }
+    val headerBaselineY = margin + headerHeight * 0.7f
+    textPaint.textAlign = android.graphics.Paint.Align.LEFT
+    canvas.drawText(weekday, margin, headerBaselineY, textPaint)
+    textPaint.textAlign = android.graphics.Paint.Align.RIGHT
+    canvas.drawText(dayLabel, margin + frameW, headerBaselineY, textPaint)
+
+    val frameLeft = margin
+    val frameTop = margin + headerHeight + gap
+    val frameStrokeW = bmp.width * 0.006f
+    val borderPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = navy; style = android.graphics.Paint.Style.STROKE
+        strokeWidth = frameStrokeW
+        strokeCap = android.graphics.Paint.Cap.ROUND
+        strokeJoin = android.graphics.Paint.Join.ROUND
+    }
+    canvas.drawPath(
+        wobblyFramePath(frameLeft, frameTop, frameLeft + frameW, frameTop + frameH, frameStrokeW),
+        borderPaint,
+    )
+    canvas.drawBitmap(bmp, frameLeft + innerPad, frameTop + innerPad, null)
+    return out
+}
+
+/** 스케치북 앱 전반의 "손그림 액자 테두리" 느낌을 비트맵 Canvas 위에 그리는 버전 — 씨드(7)를
+ *  고정해서 매번 같은 모양의 손떨림이 나오게 한다(달력 탭 CleanCalendarScreen 프리뷰 시절의
+ *  Compose sketchBorder 로직과 동일한 수식). */
+private fun wobblyFramePath(left: Float, top: Float, right: Float, bottom: Float, strokeWidth: Float): android.graphics.Path {
     val rnd = Random(7)
-    val step = 46f          // longer segments = gentler wobble
-    val pts = ArrayList<Offset>()
+    val step = 46f
+    val pts = ArrayList<android.graphics.PointF>()
     fun edge(fromX: Float, fromY: Float, toX: Float, toY: Float) {
         val dx = toX - fromX; val dy = toY - fromY
         val len = hypot(dx, dy); if (len == 0f) return
@@ -497,18 +1152,18 @@ private fun Modifier.sketchBorder(color: Color, stroke: Dp = 2.5.dp): Modifier =
         val n = max(2, (len / step).toInt())
         for (i in 0..n) {
             val t = i.toFloat() / n
-            val j = (rnd.nextFloat() - 0.5f) * sw * 0.7f   // smaller amplitude
-            pts.add(Offset(fromX + dx * t + nx * j, fromY + dy * t + ny * j))
+            val j = (rnd.nextFloat() - 0.5f) * strokeWidth * 0.7f
+            pts.add(android.graphics.PointF(fromX + dx * t + nx * j, fromY + dy * t + ny * j))
         }
     }
-    val l = sw; val t = sw; val r = size.width - sw; val b = size.height - sw
+    val l = left + strokeWidth; val t = top + strokeWidth
+    val r = right - strokeWidth; val b = bottom - strokeWidth
     edge(l, t, r, t); edge(r, t, r, b); edge(r, b, l, b); edge(l, b, l, t)
-    val path = Path().apply {
+    return android.graphics.Path().apply {
         moveTo(pts[0].x, pts[0].y)
         for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
         close()
     }
-    drawPath(path, color, style = Stroke(sw, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
 private fun datesWithDiary(repo: DiaryRepository, year: Int, month: Int): Set<String> {

@@ -68,6 +68,7 @@ object Dimens {
         val arrowIconH = 20.dp      // 이전/다음 달 화살표 높이
         val editIcon = 24.dp        // 오늘 일기 편집(연필) 아이콘 크기 — 액션영역 아이콘 통일 기준(리스트 탭과 동일)
         val todayDisc = 36.dp       // 오늘 핑크 원 지름
+        val summarySp = 16.sp       // 연월 타이틀 아래 "이번 달 N일 기록" 요약 글자 크기
     }
 
     /** 클린 달력 (슬라이드 3·4, CleanCalendarScreen) — 배경화면 캡처용, 바 없음 */
