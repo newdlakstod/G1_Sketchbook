@@ -86,16 +86,30 @@ object Dimens {
         val outerPadding = 24.dp    // 캔버스 뷰 바깥 여백
         val minZoom = 0.3f          // fit 이하 줌아웃 최소 배율(작게 = 주변 공간 넓어짐)
         val maxZoom = 5f            // 최대 확대 배율
+        val lassoStrokeWidthDp = 0.5f // 라쏘 선택 점선 테두리 두께(density 곱해서 px로 사용)
     }
 
-    /** 브러시 종류별 기본 굵기(dp) + 지우개 기본 굵기 */
+    /** 브러시 종류별 기본 굵기(dp) + 지우개 기본 굵기, 그리고 각 굵기 슬라이더가 오갈 수 있는
+     *  최소/최대값(2026-08-23 추가 — 예전엔 모든 브러시가 BrushControls.MinBrushSize~MaxBrushSize(4~96)
+     *  하나를 공유했는데, 펜처럼 가는 도구와 수채화처럼 굵은 도구가 같은 범위를 쓰면 세밀한 조절이 어려워서
+     *  브러시 기본값 기준으로 나눔). */
     object Brush {
         // 캔버스 px 기준 굵기(2026-08-17, BrushControls.SizeRange=4~96과 같은 스케일로 2배 상향 —
         // strokeSize가 화면 밀도/fitScale과 무관해지면서 예전 값 그대로면 캔버스에서 너무 얇았음).
-        val penWidth = 20f
-        val pencilWidth = 24f
-        val crayonWidth = 32f
-        val waterWidth = 40f
-        val eraserWidth = 48f
+        val penWidth = 10f
+        val penMinWidth = 5f
+        val penMaxWidth = 30f
+        val pencilWidth = 10f
+        val pencilMinWidth = 5f
+        val pencilMaxWidth = 30f
+        val crayonWidth = 15f
+        val crayonMinWidth = 7f
+        val crayonMaxWidth = 45f
+        val waterWidth = 20f
+        val waterMinWidth = 10f
+        val waterMaxWidth = 80f
+        val eraserWidth = 10f
+        val eraserMinWidth = 5f
+        val eraserMaxWidth = 80f
     }
 }

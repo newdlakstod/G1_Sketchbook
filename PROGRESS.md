@@ -4,6 +4,76 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **v2.9.3 배포분: 브러시별 굵기 최소/최대 범위 + 액자 다운로드 연도 표기 + 보기모드 워터마크 색상**
+  (2026-08-23): 세 가지 추가 수정을 이전 미커밋 작업들과 함께 이번 릴리스로 묶음.
+  1. **브러시별 굵기 최소/최대**: 바로 아래 항목(전역 `MinBrushSize`/`MaxBrushSize` 분리)에서 한 단계
+     더 나가 `Dimens.Brush`에 브러시별(`pen`/`pencil`/`crayon`/`water`/`eraser`) `*MinWidth`/`*MaxWidth`를
+     추가하고, `BrushControls.kt`의 `SlidersPanel`/`BrushBtnWithPanel`에 `sizeRange` 파라미터를 뚫어
+     각 브러시 버튼이 자기 브러시의 범위를 쓰도록 배선(`brushSizeRange(BrushType)`/`EraserSizeRange`
+     헬퍼). 1~30단계 표시(`sizeLevel`)도 브러시별 range 기준으로 재계산하도록 수정. 이후 사용자가
+     Dimens.kt 값 자체(펜 5~30, 크레용 7~45, 물감 10~80, 지우개 5~80 등)를 직접 조정함 — 그 값을
+     그대로 유지.
+  2. **액자 구성 다운로드에 연도 누락**: `diary/DiaryScreens.kt`의 `renderFramedDiaryBitmap`이 헤더에
+     요일(좌)+날짜서수(우, 예 "23rd")만 그리고 연도가 아예 없었음 — `dayLabel`을 `"23rd, 2026"`
+     형식으로 연도를 붙임(월은 요청 범위 밖이라 그대로 둠).
+  3. **보기모드 워터마크 날짜가 흰 글씨라 안 보임**: `CleanDetailBody`의 날짜 워터마크 `Text` 색을
+     흰색(그림자 검정)에서 검정(그림자 흰색)으로 반전.
+  - `compileDebugKotlin` BUILD SUCCESSFUL. 로컬 `testDebugUnitTest`는 Android Studio가 같은
+    `app/build` 산출물 디렉터리를 동시에 잡고 있어 `R.jar` 파일 잠금 충돌로 실패(코드 문제 아님) —
+    GitHub Actions 클린 러너에서의 `assembleDebug` 결과로 대체 검증.
+- **브러시 굵기 최소/최대값 상수 분리 + 일기 다운로드 옵션 아이콘 전용화** (2026-08-23, v2.9.3에
+  포함되어 커밋됨): 사용자가 2가지 요청.
+  1. **브러시 굵기 최소/최대값**: "최소사이즈 값은 있는데 최대값이 안 보인다"는 지적 — 실제로는
+     코드 어디에도 최소/최대 숫자 표시 UI가 없어서(AskUserQuestion으로 재확인), 진짜 요청은 "코드에서
+     직접 최소·최대 굵기를 설정하고 싶은데 그 코드를 못 찾겠다"였음. `brush/BrushControls.kt`에서
+     기존 `private val SizeRange = 4f..96f`(한 줄에 두 값이 묶여 있어 찾기 어려웠음) 대신
+     `internal const val MinBrushSize = 4f` / `internal const val MaxBrushSize = 96f`로 분리하고
+     `SizeRange = MinBrushSize..MaxBrushSize`로 구성 — 이제 두 값이 각각 이름 붙은 채로 눈에 띄고,
+     직접 숫자만 바꾸면 굵기 슬라이더의 최소/최대가 바뀐다.
+  2. **일기 다운로드 옵션 다이얼로그 아이콘 전용화**: 오늘일기 저장 시 뜨는 "이미지로 저장" 시트가
+     아이콘+텍스트 행 3줄(`DownloadChoiceRow`)이었던 걸, 텍스트 없이 원형 아이콘 3개를 가로로 나란히
+     보여주는 형태(`DownloadChoiceIcon`)로 교체. 액자 구성 아이콘은 `Icons.Filled.Crop`(자르기
+     아이콘, 의미가 안 맞음)이었는데 머티리얼 아이콘 세트엔 "폴라로이드" 모양이 없어서(소스 jar 직접
+     검색해 확인) `Canvas`로 직접 그린 `PolaroidIcon`(테두리 카드 + 위쪽 사진 영역 + 아래쪽 여백)으로
+     교체. 접근성을 위해 각 아이콘에 `Modifier.semantics { contentDescription = ... }` 부여, 클릭은
+     기존 관례대로 `bounceClick` 재사용. 안 쓰게 된 `Icons.Filled.Crop`/`ImageVector` import 삭제.
+  - `compileDebugKotlin` BUILD SUCCESSFUL. 실기기/에뮬레이터 확인 안 함 — 특히 폴라로이드 아이콘의
+    실제 크기감, 아이콘 3개 가로 배치가 다이얼로그 폭에서 자연스러운지 확인 필요.
+- **표지 두께 색상 버그 + 3손가락 페이지넘김 캔버스 점프 + 라쏘 5종 개선** (2026-08-23, v2.9.3에
+  포함되어 커밋됨): 사용자가 5가지를 한 번에 요청.
+  1. **표지가 사진일 때 "두께감" 스택이 여전히 이전 색상**: `ui/main/MainScreen.kt`의 홈 캐러셀에서
+     표지 뒤 어긋난 종이 스택 2겹(`stackColor`)이 `book.coverColor`를 그대로 썼는데, 사진 표지로
+     바꿔도 `book.coverColor` 필드 자체는 안 지워지고 남아있어 두께 부분에서만 옛 색이 비쳐 보였다.
+     `SketchbookCover.kt`의 책등(spine) 자체는 원래부터 항상 검정 오버레이라 문제 없었음 — 버그는
+     캐러셀의 두께 스택 쪽. `cover != null`(사진 로드됨)이면 `stackColor = Color.Black`으로 고정.
+  2. **3손가락 페이지 넘기기 후 캔버스가 튐**: `brush/BrushView.kt`의 `spacing`/`midX`/`midY`가
+     항상 포인터 인덱스 0/1만 읽는데, 3손가락 중 하나가 떨어져 2손가락으로 줄어들면 안드로이드가
+     남은 손가락들의 인덱스를 재배정한다 — 그 순간 `prevDist`/`prevMidX`/`prevMidY`는 옛 인덱스
+     조합 기준 값이라 다음 MOVE에서 완전히 다른 두 점 사이 델타로 계산되어 갑자기 팬/줌이 튀었다.
+     `resyncPinchBaseline` 플래그를 신설 — 손가락이 줄어들어도 2개 이상 남으면(`ACTION_POINTER_UP`)
+     이 플래그를 세우고, 다음 MOVE에서 diff 대신 그 프레임의 위치를 새 기준점으로 재설정한다(점프 없이
+     자연스럽게 이어짐). 페이지 전환 자체(줌/팬 유지)는 원래도 `loadContent`가 `resetZoom()`을 안 불러
+     보존되고 있었음 — 확인만 함.
+  3. **라쏘 점선 테두리 두께를 Dimens로**: `BrushView.kt`에 하드코딩돼 있던
+     `1.5f * resources.displayMetrics.density`를 `Dimens.Canvas.lassoStrokeWidthDp`로 추출.
+  4. **라쏘 선택 크기조절+회전 신규**: 기존엔 선택 이동(평행이동)만 가능했다(`moveDx`/`moveDy` 두
+     값뿐). 화면좌표계 델타를 통째로 누적하는 `Matrix selectionTransform`으로 교체 — 손가락 1개면
+     이동만, 선택을 옮기는 도중 손가락이 하나 더 닿으면(`ACTION_POINTER_DOWN`, pointerCount==2)
+     두 손가락 사이 거리 변화(확대/축소)·각도 변화(회전)·중점 이동(이동)을 매 프레임
+     `postScale`→`postRotate`→`postTranslate`로 누적 적용(사진 앱들의 표준 2손가락 트랜스폼과 동일
+     패턴). 미리보기(`onDraw`)와 최종 합성(`commitMove`) 둘 다 정확히 같은 행렬
+     (`disp → selectionTransform → inv`)을 써서 한 픽셀도 안 어긋나게 함. 손가락 하나가 떨어져
+     2→1이 되는 순간도 캔버스 3손가락 케이스와 같은 이유로 재기준점을 잡아 안 튀게 처리.
+     최소/최대 배율 clamp는 아직 없음(의도적 스코프 축소 — 필요시 추후).
+  5. **라쏘 모드에서 캔버스 바깥 탭하면 원래 브러시로 복귀**: 새 콜백 `onLassoTapOutside`를
+     `BrushView`에 추가 — 라쏘 모드의 `ACTION_DOWN`이 캔버스 범위(`[0,cw]×[0,ch]`) 밖으로 매핑되면
+     그 콜백만 부르고 아무 선택 동작도 안 함. Compose 쪽(`SketchbookScreens.kt`,
+     `diary/DiaryScreens.kt` 둘 다)에 `preLassoErasing`/`preLassoFillActive` 스냅샷을 추가해서,
+     라쏘를 켜기 직전 지우개/채우기 상태를 기억해뒀다가 바깥 탭 시 그대로 복원.
+  - `compileDebugKotlin` + `testDebugUnitTest` + `assembleDebug` 전부 BUILD SUCCESSFUL. **실기기
+    확인 안 됨** — 특히 4번(2손가락 트랜스폼 손맛, pivot이 손가락 중점이라 "제자리 회전"이 아니라
+    "손가락 사이 축 중심 회전"으로 느껴질 수 있음)과 5번(캔버스 바깥 경계가 줌아웃 여백까지 포함하는
+    체감)은 직접 조작해봐야 확인 가능.
 - **읽기모드 버튼 위치 이동 + 페이지-커얼 이펙트 4가지 수정** (2026-08-23, 버전 미상향, 아직 커밋 안 함):
   사용자가 실기기 테스트 전 "읽기모드 버튼이 안 보인다"고 지적 → 알고 보니 페이지 설정(`PagePanel`)
   다이얼로그 안이 아니라 화면 우측 상단 확장 버튼(`ScreenControls`, 페이지/회전/잠금/전체화면이 모인

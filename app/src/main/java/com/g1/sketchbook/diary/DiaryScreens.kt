@@ -44,7 +44,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Opacity
@@ -74,7 +73,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
@@ -85,13 +86,14 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -143,6 +145,8 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
     var hasLassoSelection by remember { mutableStateOf(false) }
+    var preLassoErasing by remember { mutableStateOf(false) }
+    var preLassoFillActive by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
     var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
@@ -207,6 +211,7 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
                             v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
                             v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
                             v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
+                            v.onLassoTapOutside = { lassoActive = false; erasing = preLassoErasing; fillActive = preLassoFillActive }
                             v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo?.save(date, b) } } }
                         },
                     )
@@ -238,7 +243,11 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
             },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             lassoActive = lassoActive,
-            onToggleLasso = { lassoActive = !lassoActive; if (lassoActive) { erasing = false; fillActive = false } },
+            onToggleLasso = {
+                if (!lassoActive) { preLassoErasing = erasing; preLassoFillActive = fillActive }
+                lassoActive = !lassoActive
+                if (lassoActive) { erasing = false; fillActive = false }
+            },
             hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
             fillActive = fillActive,
             onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
@@ -541,8 +550,8 @@ private fun CleanDetailBody(
                 // 날짜는 헤더 줄 없이 이미지 위 워터마크로만 — 스케치가 화면을 그대로 꽉 채운다.
                 Text(
                     dateLabel, fontFamily = Cavorting, fontSize = 22.sp,
-                    color = Color.White.copy(alpha = 0.6f),
-                    style = TextStyle(shadow = Shadow(Color.Black.copy(alpha = 0.4f), blurRadius = 8f)),
+                    color = Color.Black.copy(alpha = 0.75f),
+                    style = TextStyle(shadow = Shadow(Color.White.copy(alpha = 0.5f), blurRadius = 8f)),
                     modifier = Modifier.align(Alignment.TopCenter).systemBarsPadding().padding(top = 18.dp),
                 )
                 IconButton(
@@ -607,19 +616,24 @@ private fun CleanDetailBody(
     }
 }
 
-/** 저장 아이콘 탭 시 뜨는 다운로드 버전 선택 시트 (3가지 — 스케치만 / 액자 구성 / 달력 오버레이). */
+/** 저장 아이콘 탭 시 뜨는 다운로드 버전 선택 시트 (3가지 — 스케치만 / 액자 구성 / 달력 오버레이).
+ *  텍스트 없이 아이콘만 나란히 보여준다. */
 @Composable
 private fun DownloadOptionsDialog(onDismiss: () -> Unit, onPlain: () -> Unit, onFramed: () -> Unit, onOverlay: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("이미지로 저장") },
         text = {
-            Column {
-                DownloadChoiceRow(Icons.Filled.Image, "스케치만 다운로드", onPlain)
-                Spacer(Modifier.height(10.dp))
-                DownloadChoiceRow(Icons.Filled.Crop, "액자 구성으로 다운로드", onFramed)
-                Spacer(Modifier.height(10.dp))
-                DownloadChoiceRow(Icons.Filled.CalendarMonth, "달력 오버레이로 다운로드", onOverlay)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                DownloadChoiceIcon("스케치만 다운로드", onPlain) { tint ->
+                    Icon(Icons.Filled.Image, null, tint = tint, modifier = Modifier.size(24.dp))
+                }
+                DownloadChoiceIcon("액자 구성으로 다운로드", onFramed) { tint ->
+                    PolaroidIcon(tint = tint, modifier = Modifier.size(24.dp))
+                }
+                DownloadChoiceIcon("달력 오버레이로 다운로드", onOverlay) { tint ->
+                    Icon(Icons.Filled.CalendarMonth, null, tint = tint, modifier = Modifier.size(24.dp))
+                }
             }
         },
         confirmButton = {},
@@ -628,19 +642,41 @@ private fun DownloadOptionsDialog(onDismiss: () -> Unit, onPlain: () -> Unit, on
 }
 
 @Composable
-private fun DownloadChoiceRow(icon: ImageVector, title: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick, shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth(),
+private fun DownloadChoiceIcon(contentDescription: String, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
+    Box(
+        Modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .bounceClick(onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center,
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer),
-                contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(22.dp))
-            }
-            Spacer(Modifier.width(14.dp))
-            Text(title, fontSize = 15.sp)
-        }
+        icon(MaterialTheme.colorScheme.onSecondaryContainer)
+    }
+}
+
+/** 폴라로이드 사진 모양 아이콘(테두리 카드 + 위쪽 사진 영역, 아래쪽은 폴라로이드 특유의 여백) —
+ *  머티리얼 아이콘 세트엔 이 모양이 없어 Canvas로 직접 그린다. */
+@Composable
+private fun PolaroidIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val strokeWidthPx = size.width * 0.09f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(strokeWidthPx / 2, strokeWidthPx / 2),
+            size = Size(size.width - strokeWidthPx, size.height - strokeWidthPx),
+            cornerRadius = CornerRadius(size.width * 0.08f),
+            style = Stroke(width = strokeWidthPx),
+        )
+        val photoInset = size.width * 0.17f
+        val photoTop = size.height * 0.17f
+        val photoBottom = size.height * 0.64f
+        drawRect(
+            color = tint,
+            topLeft = Offset(photoInset, photoTop),
+            size = Size(size.width - photoInset * 2, photoBottom - photoTop),
+        )
     }
 }
 
@@ -740,10 +776,10 @@ internal fun CalendarOverlayPlacementScreen(bmp: Bitmap, date: String, onCancel:
                         showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
                     )
                 }
-                OverlayHandle(Modifier.align(Alignment.CenterEnd).offset(16.dp, 0.dp), pillWidth = 3.dp, pillHeight = 16.dp, "가로 크기") { drag ->
+                OverlayHandle(Modifier.align(Alignment.CenterEnd).offset(16.dp, 0.dp), pillWidth = 5.dp, pillHeight = 23.dp, "가로 크기") { drag ->
                     gridWFrac = (gridWFrac + drag.x / boxWidthPx).coerceIn(0.12f, 0.9f)
                 }
-                OverlayHandle(Modifier.align(Alignment.BottomCenter).offset(0.dp, 16.dp), pillWidth = 16.dp, pillHeight = 3.dp, "세로 크기") { drag ->
+                OverlayHandle(Modifier.align(Alignment.BottomCenter).offset(0.dp, 16.dp), pillWidth = 23.dp, pillHeight = 5.dp, "세로 크기") { drag ->
                     gridHFrac = (gridHFrac + drag.y / boxHeightPx).coerceIn(0.1f, 0.9f)
                 }
             }
@@ -1093,7 +1129,7 @@ private fun renderFramedDiaryBitmap(ctx: Context, bmp: Bitmap, date: String): Bi
     val d = parts[2].toInt()
     val cal = Calendar.getInstance().apply { set(parts[0].toInt(), parts[1].toInt() - 1, d) }
     val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
-    val dayLabel = "$d${ordinal(d)}"
+    val dayLabel = "$d${ordinal(d)}, ${parts[0]}"
 
     val ivory = android.graphics.Color.parseColor("#F6F1E6")
     val navy = android.graphics.Color.parseColor("#1E2D4C")

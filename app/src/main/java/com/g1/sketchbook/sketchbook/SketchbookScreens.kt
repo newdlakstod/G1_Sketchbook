@@ -929,6 +929,9 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
     var hasLassoSelection by remember { mutableStateOf(false) }
+    // 라소 켜기 직전 상태를 기억해뒀다가, 캔버스 바깥을 탭해 라소를 나갈 때 그대로 복원한다.
+    var preLassoErasing by remember { mutableStateOf(false) }
+    var preLassoFillActive by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
     val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
     var eraserSize by remember { mutableFloatStateOf(session.eraserSize) }
@@ -999,6 +1002,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
                     v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
                     v.onThreeFingerSwipe = { dir -> goTo(page + dir) }
+                    v.onLassoTapOutside = { lassoActive = false; erasing = preLassoErasing; fillActive = preLassoFillActive }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
                 },
             )
@@ -1027,7 +1031,11 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             lassoActive = lassoActive,
-            onToggleLasso = { lassoActive = !lassoActive; if (lassoActive) { erasing = false; fillActive = false } },
+            onToggleLasso = {
+                if (!lassoActive) { preLassoErasing = erasing; preLassoFillActive = fillActive }
+                lassoActive = !lassoActive
+                if (lassoActive) { erasing = false; fillActive = false }
+            },
             hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
             fillActive = fillActive,
             onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },

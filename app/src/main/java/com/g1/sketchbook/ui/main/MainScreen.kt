@@ -280,7 +280,10 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     // 표지 사진이 바뀌면 다시 읽어온다.
                     var cover by remember(book.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
                     LaunchedEffect(book.id, book.coverVersion, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
-                    val stackColor = book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor
+                    // 표지가 사진이면 두께 스택은 검정으로 고정 — book.coverColor는 사진 적용 전에
+                    // 마지막으로 골랐던(또는 기본) 색이 그대로 남아있는 필드라, 사진 표지에 그 색을
+                    // 그대로 쓰면 "직전 표지 색"이 두께 부분에서만 새어나오는 것처럼 보였다.
+                    val stackColor = if (cover != null) Color.Black else (book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor)
                     Box(Modifier.fillMaxHeight(), contentAlignment = Alignment.Center) {
                         // scale()/alpha()는 graphicsLayer(오프스크린 레이어)를 만드는데, 그 레이어는 이
                         // Box 자신의 레이아웃 크기로 딱 잘려서 그려진다 — 안쪽 SketchbookCover의 그림자가

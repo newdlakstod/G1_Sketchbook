@@ -14,6 +14,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.g1.sketchbook.ui.theme.Dimens
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -91,17 +92,26 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
      *  선택이 있을 때만 보여주는 용도. */
     var onLassoSelectionChanged: ((Boolean) -> Unit)? = null
 
+    /** 라소 모드에서 캔버스(페이지) 바깥의 여백(줌아웃했을 때 보이는 워크스페이스 영역)을 탭하면
+     *  호출된다 — Compose 쪽에서 라소를 끄고 원래 쓰던 브러시로 돌아가는 용도. */
+    var onLassoTapOutside: (() -> Unit)? = null
+
     private var lassoDrawing = false
     private val lassoPath = Path()
     private var selectionPath: Path? = null
     private var selectionRegion: android.graphics.Region? = null
     private var selectionBmp: Bitmap? = null
     private var movingSelection = false
-    private var moveStartScreenX = 0f; private var moveStartScreenY = 0f
-    private var moveDx = 0f; private var moveDy = 0f
+    // 화면좌표계 델타 변환(이동+크기+회전)을 매 프레임 누적한다 — 손 뗄 때 이 하나의 행렬을
+    // 캔버스좌표계로 바꿔(disp/inv 사잇값) 실제 픽셀에 한 번에 합성한다(commitMove 참고).
+    private var selectionTransform = Matrix()
+    private var prevSelX = 0f; private var prevSelY = 0f       // 손가락 1개일 때(이동만)
+    private var selTransforming = false                          // 손가락 2개 이상(크기+회전) 진입 여부
+    private var prevSelDist = 0f; private var prevSelAngleDeg = 0f
+    private var prevSelMidX = 0f; private var prevSelMidY = 0f
     private val selectionOutline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 1.5f * resources.displayMetrics.density
+        strokeWidth = Dimens.Canvas.lassoStrokeWidthDp * resources.displayMetrics.density
         color = 0xFF444444.toInt()
         pathEffect = android.graphics.DashPathEffect(floatArrayOf(12f, 8f), 0f)
     }
@@ -131,6 +141,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var pinching = false
     private var prevDist = 0f
     private var prevMidX = 0f; private var prevMidY = 0f
+    // When a finger lifts but 2+ remain (e.g. releasing the 3rd finger after a page-turn swipe),
+    // Android reassigns pointer indices 0/1 to whichever fingers are left — spacing()/midX()/midY()
+    // always read those indices, so prevDist/prevMidX/prevMidY (last computed against the *old*
+    // index assignment) no longer describe the same two fingers. Left as-is, the next MOVE event
+    // diffs against that stale point and applies a sudden, spurious pan/zoom jump. This flag tells
+    // the next MOVE to just re-baseline instead of diffing.
+    private var resyncPinchBaseline = false
 
     // Multi-finger tap detection (2/3-finger tap gestures) — tracked alongside the pinch above,
     // but harmless no-ops while both tap actions are GestureAction.NONE (the default).
@@ -289,8 +306,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         c.drawBitmap(cb, 0f, 0f, null)
         if (movingSelection) {
             selectionBmp?.let { sb ->
-                val vec = floatArrayOf(moveDx, moveDy); inv.mapVectors(vec)
-                c.drawBitmap(sb, vec[0], vec[1], null)
+                // disp → selectionTransform(화면좌표 델타) → inv, 세 개를 이어붙여 원본 비트맵의
+                // 캔버스좌표를 "지금 보이는 자리"의 캔버스좌표로 바꾼다(이 c는 이미 disp가 concat된
+                // 상태라 drawBitmap(bitmap, matrix, ..)의 matrix는 그 위에 추가로 적용됨).
+                val m = Matrix(disp); m.postConcat(selectionTransform); m.postConcat(inv)
+                c.drawBitmap(sb, m, null)
             }
         }
         c.restore()
@@ -299,10 +319,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         pageRect.set(0f, 0f, cw.toFloat(), ch.toFloat()); disp.mapRect(pageRect)
         c.drawRect(pageRect, pageEdge)
         // 라소 선택 테두리(점선, "marching ants") — 화면 좌표로 옮겨서 그려야 캔버스 크기·줌과
-        // 무관하게 항상 같은 두께로 보인다. 드래그 중이면 화면 오프셋만큼 같이 옮긴다.
+        // 무관하게 항상 같은 두께로 보인다. 드래그 중이면 selectionTransform(이미 화면좌표계)을
+        // 그대로 적용한다.
         selectionPath?.let { sp ->
             val screenPath = Path(sp); screenPath.transform(disp)
-            if (movingSelection) screenPath.offset(moveDx, moveDy)
+            if (movingSelection) screenPath.transform(selectionTransform)
             c.drawPath(screenPath, selectionOutline)
         }
         if (lassoDrawing) {
@@ -327,7 +348,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun clearSelection() {
         if (selectionPath == null && !movingSelection) return
         selectionPath = null; selectionRegion = null; selectionBmp = null
-        movingSelection = false; moveDx = 0f; moveDy = 0f; lassoDrawing = false
+        movingSelection = false; selTransforming = false; selectionTransform = Matrix(); lassoDrawing = false
         onLassoSelectionChanged?.invoke(false)
         invalidate()
     }
@@ -394,31 +415,67 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             }
             return true
         }
-        // 올가미(라소): 선택 그리기 또는(선택 안쪽을 눌렀으면) 선택 이동 — 둘 다 일반 드로잉/핀치줌과
-        // 완전히 분리된 별도 제스처(스포이드와 같은 구조).
+        // 올가미(라소): 선택 그리기 또는(선택 안쪽을 눌렀으면) 선택 이동/크기조절/회전 — 둘 다 일반
+        // 드로잉/핀치줌과 완전히 분리된 별도 제스처(스포이드와 같은 구조). 선택을 옮기는 중 손가락이
+        // 하나 더 닿으면 두 손가락 사이 거리·각도 변화로 크기·회전을 함께 조작한다(사진 앱들의 표준
+        // 두 손가락 트랜스폼 제스처와 같은 방식 — 손가락 중점을 축으로 매 프레임 회전→확대→이동을
+        // 누적 적용).
         if (lassoMode) {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     val p = mapPoint(e.x, e.y)
+                    if (p[0] < 0f || p[0] > cw || p[1] < 0f || p[1] > ch) {
+                        onLassoTapOutside?.invoke()
+                        return true
+                    }
                     val sr = selectionRegion; val sp = selectionPath
                     if (sr != null && sp != null && sr.contains(p[0].toInt(), p[1].toInt())) {
                         pushUndo()
                         selectionBmp = liftSelection(sp)
                         movingSelection = true
-                        moveStartScreenX = e.x; moveStartScreenY = e.y; moveDx = 0f; moveDy = 0f
+                        selTransforming = false
+                        selectionTransform = Matrix()
+                        prevSelX = e.x; prevSelY = e.y
                     } else {
                         clearSelection()
                         lassoDrawing = true
                         lassoPath.reset(); lassoPath.moveTo(p[0], p[1])
                     }
                 }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    if (movingSelection && e.pointerCount == 2) {
+                        selTransforming = true
+                        prevSelDist = spacing(e); prevSelMidX = midX(e); prevSelMidY = midY(e)
+                        prevSelAngleDeg = angleDeg(e)
+                    }
+                }
                 MotionEvent.ACTION_MOVE -> {
-                    if (movingSelection) {
-                        moveDx = e.x - moveStartScreenX; moveDy = e.y - moveStartScreenY
+                    if (movingSelection && selTransforming && e.pointerCount >= 2) {
+                        val d = spacing(e); val mx = midX(e); val my = midY(e); val a = angleDeg(e)
+                        if (prevSelDist > 0f) {
+                            val ds = d / prevSelDist
+                            selectionTransform.postScale(ds, ds, mx, my)
+                            selectionTransform.postRotate(a - prevSelAngleDeg, mx, my)
+                            selectionTransform.postTranslate(mx - prevSelMidX, my - prevSelMidY)
+                        }
+                        prevSelDist = d; prevSelMidX = mx; prevSelMidY = my; prevSelAngleDeg = a
+                    } else if (movingSelection) {
+                        selectionTransform.postTranslate(e.x - prevSelX, e.y - prevSelY)
+                        prevSelX = e.x; prevSelY = e.y
                     } else if (lassoDrawing) {
                         val p = mapPoint(e.x, e.y); lassoPath.lineTo(p[0], p[1])
                     }
                     invalidate()
+                }
+                MotionEvent.ACTION_POINTER_UP -> {
+                    if (movingSelection && selTransforming && e.pointerCount == 2) {
+                        // 트랜스폼용 손가락 둘 중 하나가 떨어짐 — 남은 손가락 하나로 이동만 계속하되,
+                        // 지금 위치를 새 기준점으로 다시 잡아야 다음 MOVE에서 안 튄다(캔버스 3손가락
+                        // 스와이프 뒤 2손가락 팬으로 떨어질 때와 같은 이유).
+                        selTransforming = false
+                        val survivorIndex = if (e.actionIndex == 0) 1 else 0
+                        prevSelX = e.getX(survivorIndex); prevSelY = e.getY(survivorIndex)
+                    }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (movingSelection) commitMove() else if (lassoDrawing) commitLasso()
@@ -464,6 +521,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     // Pinch/pan math always reads the first two pointers (spacing/midX/midY use
                     // index 0/1), regardless of whether a 3rd finger is also down.
                     val d = spacing(e); val mx = midX(e); val my = midY(e)
+                    if (resyncPinchBaseline) {
+                        resyncPinchBaseline = false
+                        prevDist = d; prevMidX = mx; prevMidY = my
+                        multiMoved = false
+                    }
                     if (!multiMoved && (hypot(mx - multiStartMidX, my - multiStartMidY) > tapSlopPx ||
                             kotlin.math.abs(d - multiStartDist) > tapSlopPx)) multiMoved = true
                     if (e.pointerCount == 3) {
@@ -510,7 +572,14 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 }
                 // Dropping back to one finger ends the pinch; the leftover finger must not start
                 // a stray stroke, so we just clear pinch state (a fresh DOWN will draw next).
-                if (e.pointerCount <= 2) { pinching = false; prevDist = 0f }
+                if (e.pointerCount <= 2) {
+                    pinching = false; prevDist = 0f
+                } else {
+                    // Still 2+ fingers left (e.g. 3 -> 2 after a page-turn swipe) — the survivors'
+                    // pointer indices are about to be reassigned, so force the next MOVE to
+                    // re-baseline instead of jumping (see resyncPinchBaseline's doc comment).
+                    resyncPinchBaseline = true
+                }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (longPressPending) { longPressPending = false; removeCallbacks(longPressRunnable) }
@@ -530,6 +599,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun spacing(e: MotionEvent): Float = hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1))
     private fun midX(e: MotionEvent): Float = (e.getX(0) + e.getX(1)) / 2f
     private fun midY(e: MotionEvent): Float = (e.getY(0) + e.getY(1)) / 2f
+    private fun angleDeg(e: MotionEvent): Float =
+        Math.toDegrees(atan2((e.getY(1) - e.getY(0)).toDouble(), (e.getX(1) - e.getX(0)).toDouble())).toFloat()
 
     /** Undo the in-progress stroke without recording it (used when a pinch takes over). Fill mode
      *  never pushed an undo snapshot or touched the canvas in the first place (see [beginStroke]),
@@ -605,16 +676,18 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         invalidate()
     }
 
-    /** 드래그로 옮긴 선택을 실제 캔버스 픽셀에 합성하고, 선택 영역 자체도 새 위치로 옮겨서 계속
-     *  선택된 상태를 유지한다(다시 드래그하거나 지우기를 바로 이어갈 수 있게). */
+    /** 드래그(+선택적 크기/회전)로 바뀐 선택을 실제 캔버스 픽셀에 합성하고, 선택 영역 자체도 새
+     *  위치/모양으로 옮겨서 계속 선택된 상태를 유지한다(다시 드래그하거나 지우기를 바로 이어갈 수
+     *  있게). onDraw의 미리보기와 정확히 같은 행렬(disp→selectionTransform→inv)을 써서 미리보기와
+     *  최종 결과가 한 픽셀도 안 어긋난다. */
     private fun commitMove() {
         val sb = selectionBmp
-        if (sb == null) { movingSelection = false; return }
-        val vec = floatArrayOf(moveDx, moveDy); inv.mapVectors(vec)
-        content?.drawBitmap(sb, vec[0], vec[1], null)
-        selectionPath?.offset(vec[0], vec[1])
+        if (sb == null) { movingSelection = false; selTransforming = false; return }
+        val m = Matrix(disp); m.postConcat(selectionTransform); m.postConcat(inv)
+        content?.drawBitmap(sb, m, null)
+        selectionPath?.transform(m)
         selectionPath?.let { sp -> selectionRegion = android.graphics.Region().apply { setPath(sp, android.graphics.Region(0, 0, cw, ch)) } }
-        movingSelection = false; moveDx = 0f; moveDy = 0f; selectionBmp = null
+        movingSelection = false; selTransforming = false; selectionTransform = Matrix(); selectionBmp = null
         redo.clear()
         invalidate(); onStrokeEnd?.invoke()
     }
