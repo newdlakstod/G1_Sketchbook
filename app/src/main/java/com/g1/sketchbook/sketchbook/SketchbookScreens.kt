@@ -1,6 +1,7 @@
 package com.g1.sketchbook.sketchbook
 
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
@@ -35,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -54,6 +56,8 @@ import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -101,10 +105,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -452,8 +458,21 @@ private fun SketchbookListScreen(
     val showShared = initialShowShared
     var columns by remember { mutableIntStateOf(session.gridColumns) }
     var columnMenuOpen by remember { mutableStateOf(false) }
+    // 가로모드 3열(서브패널) 전용 — 2열 그리드에서 탭한 책의 페이지 썸네일을 보여준다. 세로모드에선
+    // 안 쓰임(MainTabPage가 landscape가 아니면 sidePanel 자체를 그리지 않음).
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    var selectedId by remember { mutableStateOf<String?>(null) }
+    val shown = books.filter { it.shared == showShared }
+    val selectedBook = shown.firstOrNull { it.id == selectedId }
     com.g1.sketchbook.ui.main.MainTabPage(
         title = if (showShared) "Draw together" else "Sketchbook list",
+        sidePanel = {
+            PageThumbnailPanel(
+                repo = repo, book = selectedBook,
+                onOpen = { selectedBook?.let(onOpen) },
+                onEdit = { selectedBook?.let { editing = it } },
+            )
+        },
         actions = {
             if (showShared) {
                 IconButton(onClick = onNewShared) { Icon(Icons.Filled.GroupAdd, "공유 스케치북 만들기") }
@@ -475,7 +494,6 @@ private fun SketchbookListScreen(
             }
         },
     ) {
-            val shown = books.filter { it.shared == showShared }
             if (shown.isEmpty()) {
                 Text(if (showShared) "아직 공유받은 스케치북이 없어요." else "아직 스케치북이 없어요. 홈 화면에서 만들어보세요.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
@@ -487,7 +505,13 @@ private fun SketchbookListScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     gridItems(shown, key = { it.id }) { b ->
-                        CoverCard(b, repo, { onOpen(b) }, { editing = b })
+                        // 가로모드: 탭 = 3열에 미리보기 선택, 길게 누르면 바로 열림(표지 수정은 3열
+                        // 패널의 연필 아이콘으로 이동). 세로모드는 기존 그대로(탭=열기, 길게=수정).
+                        if (landscape) {
+                            CoverCard(b, repo, onOpen = { selectedId = b.id }, onEdit = { onOpen(b) })
+                        } else {
+                            CoverCard(b, repo, onOpen = { onOpen(b) }, onEdit = { editing = b })
+                        }
                     }
                 }
             }
@@ -518,6 +542,60 @@ private fun SketchbookListScreen(
             onSave = { name, newCover, removeCover, newColor -> onEditBook(current, name, newCover, removeCover, newColor); editing = null },
             onToggleFav = { onToggleFav(current) },
             onDelete = { editing = null; pendingDelete = current },
+        )
+    }
+}
+
+/** 가로모드 3열(서브패널) — 2열 그리드에서 탭으로 선택한 책의 페이지 썸네일을 위에서 아래로
+ *  스크롤해서 훑어본다. 아무 것도 선택 안 됐으면 안내 문구만, 선택되면 제목+수정/열기 아이콘과
+ *  [MAX_PAGES]장의 썸네일 목록. */
+@Composable
+private fun PageThumbnailPanel(repo: SketchbookRepository?, book: Sketchbook?, onOpen: () -> Unit, onEdit: () -> Unit) {
+    if (book == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "표지를 탭해 페이지를 미리보세요", fontSize = 12.sp, textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp),
+            )
+        }
+        return
+    }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(book.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Filled.Edit, "표지 수정", modifier = Modifier.size(17.dp))
+            }
+            Spacer(Modifier.width(2.dp))
+            IconButton(onClick = onOpen, modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Filled.OpenInNew, "열기", modifier = Modifier.size(17.dp))
+            }
+        }
+        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(book.pageCount) { index -> PageThumbnailCell(repo, book.id, index) }
+        }
+    }
+}
+
+@Composable
+private fun PageThumbnailCell(repo: SketchbookRepository?, bookId: String, index: Int) {
+    var thumb by remember(bookId, index) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(bookId, index, repo) { thumb = withContext(Dispatchers.IO) { repo?.loadPageThumb(bookId, index) } }
+    Box(
+        Modifier.fillMaxWidth().aspectRatio(Dimens.Home.coverRatio).clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)),
+        contentAlignment = Alignment.BottomStart,
+    ) {
+        thumb?.let {
+            Image(it.asImageBitmap(), null, contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)))
+        }
+        Text(
+            "${index + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            color = if (thumb != null) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(6.dp),
         )
     }
 }

@@ -162,7 +162,7 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
 private fun PreviewPane(title: String, accent: Boolean, paper: Color, modifier: Modifier) {
     PaneFrame(modifier, title, accent) {
         Box(Modifier.fillMaxSize().background(paper), contentAlignment = Alignment.Center) {
-            Text("daymory", color = Color(0x44708068), fontSize = 18.sp)
+            Text("Daymory", color = Color(0x44708068), fontSize = 18.sp)
         }
     }
 }

@@ -5,6 +5,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.g1.sketchbook.diary.CleanCalendarScreen
 import com.g1.sketchbook.sketchbook.SketchbookTab
 import com.g1.sketchbook.sketchbook.WType
+import com.g1.sketchbook.ui.main.MainTabLayout
 import com.g1.sketchbook.ui.theme.DaymoryTheme
 import com.g1.sketchbook.ui.theme.ThemeMode
 
@@ -39,6 +40,16 @@ private fun CalendarDetailPreview() = PreviewTheme {
         previewDetailDate = "2026-08-17",
         previewMode = true,
     )
+}
+
+// 가로모드 프리뷰는 MainTabLayout으로 감싸야 1열 네비게이션 레일이 같이 보인다 — SketchbookTab을
+// 바로 부르면 MainTabPage(2·3열)만 그려지고, 1열은 원래 MainTabLayout이 바깥에서 그리는 부분이라 빠짐.
+@Preview(name = "17 Sketchbook list - landscape", showBackground = true, widthDp = PREVIEW_HEIGHT, heightDp = PREVIEW_WIDTH)
+@Composable
+private fun SketchbookListLandscapePreview() = PreviewTheme {
+    MainTabLayout(tab = 1, onTab = {}) {
+        SketchbookTab(nickname = "Minjun", myUid = "preview-user", onOpenBook = {}, previewBooks = PreviewBooks)
+    }
 }
 
 @Composable

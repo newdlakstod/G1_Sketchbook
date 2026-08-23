@@ -421,7 +421,7 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
                 Text("🦆", fontSize = 28.sp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("daymory", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text("Daymory", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     Text("아날로그 감성 스케치북", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text("v${com.g1.sketchbook.BuildConfig.VERSION_NAME}", fontSize = 12.sp,

@@ -29,6 +29,15 @@ object Dimens {
         val navBarPadding = 10.dp   // 하단 네비게이션 바 내부 여백(상하)
     }
 
+    /** 가로모드 3열 레이아웃(1열 네비게이션 · 2열 본문 · 3열 서브패널) 폭 설정 — `MainTabLayout`/
+     *  `MainTabPage`가 이 값들을 그대로 씀. 1열은 고정 폭(dp), 2·3열은 남은 공간을 나눠 갖는 비율
+     *  (weight)이라 절대 폭이 아니라 "2열:3열 = contentWeight:sidePanelWeight" 비율로 읽는다. */
+    object Landscape {
+        val navWidth = 80.dp        // 1열(SideNavRail) 고정 폭
+        val contentWeight = 2f    // 2열(본문) 비율
+        val sidePanelWeight = 1f    // 3열(서브패널) 비율 — 이 값이 0이 되진 않게(레이아웃이 사라짐)
+    }
+
     /** 온보딩 (Splash/Login) */
     object Onboarding {
         val titleSp = 120.sp         // "daymory" 타이틀 — 화면 폭에 맞춰 줄어들 수 있는 최대값(고정 아님)

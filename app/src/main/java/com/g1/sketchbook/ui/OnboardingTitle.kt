@@ -15,25 +15,28 @@ import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.ui.theme.Cavorting
 
 /**
- * 온보딩(Splash/Login) 공통 "daymory" 타이틀.
+ * 온보딩(Splash/Login) 공통 "Daymory" 타이틀.
  *
  * [preferredFontSize]를 먼저 그대로 적용하고, 화면 폭에 들어가지 않을 때만 줄인다.
  * 화면이 넓어도 설정값보다 키우지 않으며 한 단어를 항상 한 줄로 표시한다.
  */
 @Composable
-fun OnboardingTitle(preferredFontSize: TextUnit, color: Color, modifier: Modifier = Modifier) {
+fun OnboardingTitle(
+    preferredFontSize: TextUnit, color: Color, modifier: Modifier = Modifier,
+    textAlign: TextAlign = TextAlign.Center,
+) {
     val measurer = rememberTextMeasurer()
     val minFontSize = preferredFontSize * 0.55f
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val maxWidthPx = constraints.maxWidth
         var resolvedFontSize = preferredFontSize
         while (resolvedFontSize > minFontSize &&
-            measurer.measure(AnnotatedString("daymory"), TextStyle(fontFamily = Cavorting, fontSize = resolvedFontSize)).size.width > maxWidthPx
+            measurer.measure(AnnotatedString("Daymory"), TextStyle(fontFamily = Cavorting, fontSize = resolvedFontSize)).size.width > maxWidthPx
         ) {
             resolvedFontSize = (resolvedFontSize.value - 4f).sp
         }
         Text(
-            "daymory", fontFamily = Cavorting, fontSize = resolvedFontSize, color = color, textAlign = TextAlign.Center,
+            "Daymory", fontFamily = Cavorting, fontSize = resolvedFontSize, color = color, textAlign = textAlign,
             lineHeight = resolvedFontSize * 1.15f, modifier = Modifier.fillMaxWidth(),
         )
     }

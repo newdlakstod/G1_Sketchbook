@@ -48,6 +48,14 @@ private fun LoginDarkPreview() = PreviewTheme(mode = ThemeMode.DARK) {
     LoginScreen(busy = false, error = null, onSignIn = {})
 }
 
+@Preview(name = "08 Splash - landscape", showBackground = true, widthDp = PREVIEW_HEIGHT, heightDp = PREVIEW_WIDTH)
+@Composable
+private fun SplashLandscapePreview() = PreviewTheme { SplashScreen(onEnter = {}) }
+
+@Preview(name = "09 Login - landscape", showBackground = true, widthDp = PREVIEW_HEIGHT, heightDp = PREVIEW_WIDTH)
+@Composable
+private fun LoginLandscapePreview() = PreviewTheme { LoginScreen(busy = false, error = null, onSignIn = {}) }
+
 @Composable
 private fun PreviewTheme(mode: ThemeMode = ThemeMode.LIGHT, content: @Composable () -> Unit) {
     DaymoryTheme(mode = mode, content = content)

@@ -1121,15 +1121,17 @@ private fun renderCalendarOverlayDiaryBitmap(ctx: Context, bmp: Bitmap, date: St
     return out
 }
 
-/** 다운로드 옵션 "액자 구성" — 예전 일자 스케치 화면(요일+날짜 헤더 + 손그림 액자 테두리)과
- *  같은 구성을 하나의 비트맵으로 그려서 저장용으로 만든다. 라이트 팔레트 색을 그대로 박아 넣어
- *  기기의 다크/라이트 모드와 무관하게 항상 같은 종이 느낌으로 저장된다. */
+/** 다운로드 옵션 "액자 구성" — 예전 일자상세 화면(v1.31.0, `DiaryDetailView`)의 헤더 구조를 그대로
+ *  재현: 가운데 정렬로 연도(작게)+월 이름(크게)이 위아래로 쌓이고, 그 아래 요일(왼쪽)/일자서수(오른쪽)
+ *  줄, 그 아래 손그림 액자 테두리. 하나의 비트맵으로 그려서 저장용으로 만든다. 라이트 팔레트 색을
+ *  그대로 박아 넣어 기기의 다크/라이트 모드와 무관하게 항상 같은 종이 느낌으로 저장된다. */
 private fun renderFramedDiaryBitmap(ctx: Context, bmp: Bitmap, date: String): Bitmap {
     val parts = date.split("-")
     val d = parts[2].toInt()
-    val cal = Calendar.getInstance().apply { set(parts[0].toInt(), parts[1].toInt() - 1, d) }
+    val month = parts[1].toInt() - 1
+    val cal = Calendar.getInstance().apply { set(parts[0].toInt(), month, d) }
     val weekday = FullWeekdays[cal.get(Calendar.DAY_OF_WEEK) - 1]
-    val dayLabel = "$d${ordinal(d)}, ${parts[0]}"
+    val dayLabel = "$d${ordinal(d)}"
 
     val ivory = android.graphics.Color.parseColor("#F6F1E6")
     val navy = android.graphics.Color.parseColor("#1E2D4C")
@@ -1137,7 +1139,14 @@ private fun renderFramedDiaryBitmap(ctx: Context, bmp: Bitmap, date: String): Bi
 
     val innerPad = bmp.width * 0.012f
     val margin = bmp.width * 0.03f
-    val headerHeight = bmp.width * 0.08f
+    val yearTextSize = bmp.width * 0.032f
+    val monthTextSize = bmp.width * 0.075f
+    val subTextSize = bmp.width * 0.045f
+    val yearLineH = yearTextSize * 1.25f
+    val monthLineH = monthTextSize * 1.15f
+    val subLineH = subTextSize * 1.25f
+    val titleGap = bmp.width * 0.015f
+    val headerHeight = yearLineH + monthLineH + titleGap + subLineH
     val gap = bmp.width * 0.02f
     val frameW = bmp.width + innerPad * 2
     val frameH = bmp.height + innerPad * 2
@@ -1149,13 +1158,21 @@ private fun renderFramedDiaryBitmap(ctx: Context, bmp: Bitmap, date: String): Bi
     canvas.drawColor(ivory)
 
     val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        color = navy; this.typeface = typeface; textSize = headerHeight * 0.55f
+        color = navy; this.typeface = typeface
     }
-    val headerBaselineY = margin + headerHeight * 0.7f
+    val centerX = margin + frameW / 2
+    textPaint.textAlign = android.graphics.Paint.Align.CENTER
+    textPaint.textSize = yearTextSize
+    canvas.drawText(parts[0], centerX, margin + yearLineH * 0.75f, textPaint)
+    textPaint.textSize = monthTextSize
+    canvas.drawText(MonthNames[month], centerX, margin + yearLineH + monthLineH * 0.8f, textPaint)
+
+    val subBaselineY = margin + yearLineH + monthLineH + titleGap + subLineH * 0.75f
+    textPaint.textSize = subTextSize
     textPaint.textAlign = android.graphics.Paint.Align.LEFT
-    canvas.drawText(weekday, margin, headerBaselineY, textPaint)
+    canvas.drawText(weekday, margin, subBaselineY, textPaint)
     textPaint.textAlign = android.graphics.Paint.Align.RIGHT
-    canvas.drawText(dayLabel, margin + frameW, headerBaselineY, textPaint)
+    canvas.drawText(dayLabel, margin + frameW, subBaselineY, textPaint)
 
     val frameLeft = margin
     val frameTop = margin + headerHeight + gap

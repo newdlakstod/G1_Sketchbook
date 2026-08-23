@@ -89,6 +89,38 @@ fun MainTabPage(
     contentSidePadding: Dp = Dimens.Screen.sideMargin,
     contentFillsRemaining: Boolean = true,
     actions: @Composable RowScope.() -> Unit = {},
+    /** 가로모드 전용 3번째 열(서브 컨텐츠) — null이면(기본값) 빈 칸으로만 자리를 잡는다("레이아웃만
+     *  갖추고" 내용은 비워두는 탭들이 이 기본값을 그대로 씀). 세로모드에서는 아예 안 쓰인다. */
+    sidePanel: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    if (landscape) {
+        Row(Modifier.fillMaxSize().then(modifier)) {
+            MainTabPageBody(
+                title = title, modifier = Modifier.weight(Dimens.Landscape.contentWeight).fillMaxHeight(),
+                contentSidePadding = contentSidePadding, contentFillsRemaining = contentFillsRemaining,
+                actions = actions, content = content,
+            )
+            Box(
+                Modifier.weight(Dimens.Landscape.sidePanelWeight).fillMaxHeight()
+                    .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, end = Dimens.Screen.sideMargin),
+            ) {
+                sidePanel?.invoke()
+            }
+        }
+    } else {
+        MainTabPageBody(title, modifier, contentSidePadding, contentFillsRemaining, actions, content)
+    }
+}
+
+@Composable
+private fun MainTabPageBody(
+    title: String,
+    modifier: Modifier = Modifier,
+    contentSidePadding: Dp = Dimens.Screen.sideMargin,
+    contentFillsRemaining: Boolean = true,
+    actions: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // 공통 위치 조절: 헤더·제목·본문 여백은 Dimens.Screen 값에서 바꾼다.
@@ -142,7 +174,7 @@ private fun MainTabHeader(
 ) {
     Box(modifier.fillMaxWidth()) {
         Text(
-            "daymory",
+            "Daymory",
             fontFamily = BodoniMTBlack,
             fontSize = 20.sp,
             color = Color.Black,
@@ -156,7 +188,7 @@ private fun SideNavRail(tab: Int, onTab: (Int) -> Unit) {
     Column(
         Modifier.fillMaxHeight().systemBarsPadding()
             .padding(vertical = Dimens.Screen.navBarPadding)
-            .width(Dimens.Screen.navItemSize + 20.dp),
+            .width(Dimens.Landscape.navWidth),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceEvenly,
     ) {

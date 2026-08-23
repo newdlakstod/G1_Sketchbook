@@ -9,7 +9,7 @@ fun LoginScreen(
     onSignIn: () -> Unit,
 ) {
     OnboardingLayout(
-        contentDescription = "daymory 오리",
+        contentDescription = "Daymory 오리",
         ctaLabel = "Google 계정으로 로그인",
         onCta = onSignIn,
         busy = busy,
