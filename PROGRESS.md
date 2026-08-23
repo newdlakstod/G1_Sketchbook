@@ -4,6 +4,37 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **가로모드 3열 썸네일 화질 개선 + 공유모드 화질 개선 + 현재 페이지 표기 + 공유 상대방 페이지 선택**
+  (2026-08-23, 버전 미상향, 아직 커밋 안 함): 사용자가 4가지 요청.
+  1. **가로모드 List/Share 탭 3열 썸네일 화질**: `PageThumbnailCell`(`SketchbookScreens.kt`)이
+     `loadPageThumb` 기본값(`reqPx=160`)을 그대로 썼는데, 3열 셀이 그보다 훨씬 넓게 그려져서 확대되며
+     흐릿했음 — 이 자리 전용으로 `reqPx=480`을 명시.
+  2. **공유모드 상대방 화질**: `SharedBookScreen.kt`의 `encodeSnapshot`이 `maxSide=700`/JPEG quality 70
+     이었는데, A4 캔버스 원본 장변이 ~2300px라 1/3 이하로 줄어 흐릿했음 — `maxSide=1400`/quality 85로
+     상향(스케치는 단색 배경이 많아 JPEG 압축이 잘 먹어서 페이로드 증가는 제한적).
+  3. **개인 스케치북 화면에 현재 페이지 표기**: `SketchbookCanvasScreen`의 캔버스 우측 하단에
+     `"${page+1} / $pageCount"` 배지 추가(다른 화면들과 같은 반투명 검정+흰글자 스타일).
+  4. **공유화면에서 상대방의 다른 페이지도 선택해서 보기** — 가장 큰 변경. 기존엔 `Slot.snapshot`이
+     "상대가 지금 그리고 있는 페이지 1장"의 스냅샷만 실시간으로 받는 구조라, 상대의 다른 14장은 내
+     기기에 데이터 자체가 없었음(AskUserQuestion으로 확인 — 사용자가 "내 페이지처럼 상대도 15장 다
+     볼 수 있게 서버구조 바꿔줘"를 선택). **Firebase 스키마를 깨는 변경**:
+     - `ShareRepository.Slot.snapshot: String?` → `snapshots: Map<Int, String>`(페이지별) +
+       `currentPage: Int`(상대가 지금 그리고 있는 "라이브" 페이지) 신설.
+     - `pushSnapshot(code, uid, base64)` → `pushSnapshot(code, uid, page, base64)`로 시그니처 변경,
+       `updateChildren`으로 `currentPage`/`snapshots/{page}`/`updatedAt`을 한 번에 갱신.
+     - `SharedBookScreen.kt`의 `pushMine()`/`onStrokeEnd`가 현재 `page`를 실어 보내도록 수정.
+     - `OtherPane`에 페이지 배지(우하단, 탭하면 `PartnerPagePicker` 오픈) 추가 — 로컬 상태
+       `viewedPage: Int?`(null=라이브, 상대의 `currentPage`를 계속 따라감 / 값 있으면 그 페이지에
+       고정). `PartnerPagePicker`는 `PagePanel`과 같은 스타일(3열 그리드 다이얼로그)로 15칸을
+       보여주되, 아직 상대가 안 그린 페이지는 빈 칸(플레이스홀더)으로 표시. 다이얼로그용 썸네일은
+       `decodeSnapshotThumb`(신규, `loadPageThumb`와 같은 `inSampleSize` 다운샘플 기법)로 디코드해
+       15장을 한 번에 열어도 무겁지 않게 함.
+     - **하위호환 없음** — 기존 세션(구버전 앱)이 쓰던 `slots/{uid}/snapshot` 필드는 더 이상 안 읽음.
+       사용자가 직접 요청한 구조 변경이라 별도 마이그레이션은 만들지 않음(기존 진행 중이던 공유
+       세션이 있다면 새 버전 배포 후 깨질 수 있음 — 알고 있어야 함).
+  - `compileDebugKotlin` BUILD SUCCESSFUL. 실기기 확인 안 됨 — 특히 4번은 Firebase 실시간 동기화라
+    로컬 컴파일만으론 동작 보장 안 됨(두 기기로 실제 공유 세션 열어서 서로 다른 페이지 넘기며 확인
+    필요).
 - **v2.9.3 배포분: 브러시별 굵기 최소/최대 범위 + 액자 다운로드 연도 표기 + 보기모드 워터마크 색상**
   (2026-08-23): 세 가지 추가 수정을 이전 미커밋 작업들과 함께 이번 릴리스로 묶음.
   1. **브러시별 굵기 최소/최대**: 바로 아래 항목(전역 `MinBrushSize`/`MaxBrushSize` 분리)에서 한 단계

@@ -29,6 +29,7 @@ import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -68,6 +69,7 @@ internal fun MainTabLayout(
     if (landscape) {
         Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             SideNavRail(tab, onTab)
+            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = Dimens.Landscape.dividerWidth)
             Box(
                 Modifier.weight(1f).fillMaxHeight().systemBarsPadding().padding(end = 4.dp),
             ) { content() }
@@ -102,9 +104,13 @@ fun MainTabPage(
                 contentSidePadding = contentSidePadding, contentFillsRemaining = contentFillsRemaining,
                 actions = actions, content = content,
             )
+            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = Dimens.Landscape.dividerWidth)
+            // 3열은 2열과 같은 배경 위에 surfaceVariant를 살짝 덧칠해서(면 전체, 안쪽 여백은 내용에만)
+            // 미세한 명암차로 구분한다 — 시안처럼 진한 경계선 대신 톤 차이로만 나눔.
             Box(
                 Modifier.weight(Dimens.Landscape.sidePanelWeight).fillMaxHeight()
-                    .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, end = Dimens.Screen.sideMargin),
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = Dimens.Landscape.sidePanelTintAlpha))
+                    .padding(top = Dimens.Screen.topMargin, bottom = Dimens.Screen.bottomMargin, end = Dimens.Screen.sideMargin, start = 16.dp),
             ) {
                 sidePanel?.invoke()
             }

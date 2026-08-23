@@ -19,10 +19,13 @@ import kotlin.random.Random
  * shareSessions/{CODE}/
  *   host: uid
  *   createdAt: ts
- *   slots/{uid}/  { name, role, snapshot(base64), updatedAt }
+ *   slots/{uid}/  { name, role, currentPage, snapshots/{pageIndex}(base64), updatedAt }
  * ```
- * Each participant keeps their own canvas; we sync a downscaled Base64 snapshot per stroke so the
- * others see it live in a split/grid view. Max [MAX_SLOTS] participants.
+ * Each participant keeps their own canvas; we sync a downscaled Base64 snapshot per page whenever
+ * that page changes (stroke end or page switch), keyed by page index — so others can browse any of
+ * a participant's [com.g1.sketchbook.sketchbook.MAX_PAGES] pages, not just whichever one they're
+ * currently on. `currentPage` says which one is "live" (drives the default view). Max [MAX_SLOTS]
+ * participants.
  */
 class ShareRepository {
 
@@ -33,7 +36,8 @@ class ShareRepository {
         val uid: String,
         val name: String,
         val role: String,
-        val snapshot: String?,   // Base64 PNG/WebP of their canvas, or null before first stroke
+        val currentPage: Int,          // page they're actively drawing right now (the "live" view)
+        val snapshots: Map<Int, String>, // pageIndex -> Base64 JPEG, only pages they've pushed so far
         val updatedAt: Long,
     )
 
@@ -64,10 +68,15 @@ class ShareRepository {
         return Result.success(Unit)
     }
 
-    /** Pushes the caller's latest canvas snapshot (fire-and-forget). */
-    fun pushSnapshot(code: String, uid: String, base64: String) {
+    /** Pushes the caller's latest canvas snapshot for [page] (fire-and-forget) — also marks [page]
+     *  as their current/"live" page so viewers who haven't pinned a specific page see this one. */
+    fun pushSnapshot(code: String, uid: String, page: Int, base64: String) {
         val slot = root.child(code).child("slots").child(uid)
-        slot.updateChildren(mapOf("snapshot" to base64, "updatedAt" to ServerValue.TIMESTAMP))
+        slot.updateChildren(mapOf(
+            "currentPage" to page,
+            "snapshots/$page" to base64,
+            "updatedAt" to ServerValue.TIMESTAMP,
+        ))
     }
 
     /** Emits the session's participants whenever anything changes. */
@@ -77,11 +86,17 @@ class ShareRepository {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val slots = snapshot.child("slots").children.mapNotNull { c ->
                     val uid = c.key ?: return@mapNotNull null
+                    val snapshots = c.child("snapshots").children.mapNotNull { sc ->
+                        val pageIndex = sc.key?.toIntOrNull() ?: return@mapNotNull null
+                        val b64 = sc.getValue(String::class.java) ?: return@mapNotNull null
+                        pageIndex to b64
+                    }.toMap()
                     Slot(
                         uid = uid,
                         name = c.child("name").getValue(String::class.java) ?: "친구",
                         role = c.child("role").getValue(String::class.java) ?: "guest",
-                        snapshot = c.child("snapshot").getValue(String::class.java),
+                        currentPage = c.child("currentPage").getValue(Int::class.java) ?: 0,
+                        snapshots = snapshots,
                         updatedAt = c.child("updatedAt").getValue(Long::class.java) ?: 0L,
                     )
                 }

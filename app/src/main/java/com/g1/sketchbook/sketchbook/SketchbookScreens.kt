@@ -581,7 +581,9 @@ private fun PageThumbnailPanel(repo: SketchbookRepository?, book: Sketchbook?, o
 @Composable
 private fun PageThumbnailCell(repo: SketchbookRepository?, bookId: String, index: Int) {
     var thumb by remember(bookId, index) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(bookId, index, repo) { thumb = withContext(Dispatchers.IO) { repo?.loadPageThumb(bookId, index) } }
+    // 3열 패널의 썸네일은 PagePanel 그리드 셀(기본 160px)보다 훨씬 넓게 그려져서, 기본값 그대로면
+    // 확대돼 흐릿하게 보였다 — 이 자리 전용으로 더 높은 해상도를 요청한다.
+    LaunchedEffect(bookId, index, repo) { thumb = withContext(Dispatchers.IO) { repo?.loadPageThumb(bookId, index, reqPx = 480) } }
     Box(
         Modifier.fillMaxWidth().aspectRatio(Dimens.Home.coverRatio).clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
@@ -1085,6 +1087,15 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
+            // 현재 페이지 표기 — 페이지 우측 하단에 작게 떠 있는 배지(다른 화면들의 반투명 라벨과
+            // 같은 스타일: 검정 60% 배경 + 흰 글자).
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(10.dp)
+                    .background(Color(0x99000000), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text("${page + 1} / $pageCount", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         }
         // 버튼바 둘 다: 기본 위치에 붙지만(떠 있는 오버레이라 캔버스 크기는 안 바뀜), 손잡이를 길게
         // 눌러 드래그하면 자유롭게 2D로 움직이다가 놓은 위치에서 가장 가까운 가장자리로 옮겨 붙는다

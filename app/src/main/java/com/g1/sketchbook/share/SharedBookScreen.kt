@@ -8,16 +8,20 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.RowScope
@@ -25,6 +29,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,6 +47,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,10 +77,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.brush.alignment
+import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.bgDrawable
 import com.g1.sketchbook.ui.bounceClick
@@ -156,7 +167,8 @@ fun SharedBookScreen(
 
     fun pushMine() {
         val b = view?.exportBitmap() ?: return
-        scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) }
+        val pg = page
+        scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, pg, encodeSnapshot(b)) }
     }
     // Sync save of the current page (strokes only) before any page load — avoids the switch race.
     fun saveLocal() {
@@ -194,7 +206,7 @@ fun SharedBookScreen(
         v.onStrokeEnd = {
             val pg = page
             v.exportContent()?.let { c -> scope.launch(Dispatchers.IO) { sbRepo.savePage(book.id, pg, c) } }   // local page: strokes only
-            v.exportBitmap()?.let { b -> scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, encodeSnapshot(b)) } } // partner: with paper
+            v.exportBitmap()?.let { b -> scope.launch(Dispatchers.Default) { share.pushSnapshot(code, myUid, pg, encodeSnapshot(b)) } } // partner: with paper
         }
     }
     com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
@@ -432,7 +444,7 @@ internal fun ModeToggleButton(gridMode: Boolean, onToggle: () -> Unit) {
  *  더 이상 캔버스 위 별도 줄이 아니라 캔버스 좌측 상단에 겹쳐 뜨는 작은 배지 — 화면 공간을 최대한
  *  캔버스에 내주기 위해(2026-08-20). Slot에는 동기화된 이모지가 없어 모두 같은 사람 아이콘을 쓴다. */
 @Composable
-internal fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, content: @Composable () -> Unit) {
+internal fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, content: @Composable BoxScope.() -> Unit) {
     Box(
         modifier
             .background(MaterialTheme.colorScheme.surface, RectangleShape)
@@ -460,36 +472,145 @@ internal fun PaneFrame(modifier: Modifier, title: String, accent: Boolean, conte
     }
 }
 
-/** Decodes one participant's latest snapshot — re-decodes only when their data actually changes.
- *  Others' panes are plain images (no BrushView), so unlike `mine` they don't need movableContentOf:
- *  moving between grid/maximize layouts is cheap to just re-render. */
+/** Decodes one participant's snapshot for a specific [page] — re-decodes only when that page's
+ *  data actually changes. Others' panes are plain images (no BrushView), so unlike `mine` they
+ *  don't need movableContentOf: moving between grid/maximize layouts is cheap to just re-render. */
 @Composable
-private fun participantBitmap(slot: ShareRepository.Slot?): Bitmap? {
-    var bmp by remember(slot?.uid) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(slot?.updatedAt, slot?.snapshot) {
-        val s = slot?.snapshot
-        bmp = if (s == null) null else withContext(Dispatchers.Default) { decodeSnapshot(s) }
+private fun participantBitmap(slot: ShareRepository.Slot?, page: Int): Bitmap? {
+    var bmp by remember(slot?.uid, page) { mutableStateOf<Bitmap?>(null) }
+    val b64 = slot?.snapshots?.get(page)
+    LaunchedEffect(b64) {
+        bmp = if (b64 == null) null else withContext(Dispatchers.Default) { decodeSnapshot(b64) }
     }
     return bmp
 }
 
-/** One other participant's pane — their latest snapshot, or a waiting/blank-canvas message.
- *  [slot] null means "nobody's joined yet" (only meaningful in the 2-pane branch — [GridCell]
- *  renders a plain empty box instead once there's already at least one other participant). */
+/** One other participant's pane — a snapshot of whichever page is being viewed, or a waiting/
+ *  blank-canvas message. [slot] null means "nobody's joined yet" (only meaningful in the 2-pane
+ *  branch — [GridCell] renders a plain empty box instead once there's already at least one other
+ *  participant). Defaults to their "live" page ([ShareRepository.Slot.currentPage]) — tapping the
+ *  page badge lets me pin a look at any of their [MAX_PAGES] pages via [PartnerPagePicker]. */
 @Composable
 private fun OtherPane(slot: ShareRepository.Slot?, code: String, modifier: Modifier) {
-    val bmp = participantBitmap(slot)
+    var viewedPage by remember(slot?.uid) { mutableStateOf<Int?>(null) }
+    var pagePickerOpen by remember { mutableStateOf(false) }
+    val effectivePage = viewedPage ?: slot?.currentPage ?: 0
+    val bmp = participantBitmap(slot, effectivePage)
     PaneFrame(modifier, slot?.name ?: "상대", accent = false) {
         if (bmp != null) {
             Image(bmp.asImageBitmap(), "${slot?.name ?: "상대"} 그림", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    if (slot == null) "아직 아무도 없어요\n코드 $code 를 공유해 보세요" else "아직 그리기 전이에요",
+                    when {
+                        slot == null -> "아직 아무도 없어요\n코드 $code 를 공유해 보세요"
+                        viewedPage != null -> "이 페이지는 아직 안 그렸어요"
+                        else -> "아직 그리기 전이에요"
+                    },
                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
                 )
             }
         }
+        if (slot != null) {
+            // 상대방 페이지 선택 배지 — 우측 하단, 탭하면 상대가 지금까지 올린 페이지들을 골라 볼
+            // 수 있는 선택창이 뜬다. LIVE면 지금 상대가 그리고 있는 페이지를 실시간으로 따라간다.
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(4.dp).bounceClick { pagePickerOpen = true }
+                    .background(Color(0x99000000), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+            ) {
+                Text(
+                    "${effectivePage + 1}p" + if (viewedPage == null) " · LIVE" else "",
+                    fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color.White,
+                )
+            }
+        }
+    }
+    if (pagePickerOpen && slot != null) {
+        PartnerPagePicker(
+            name = slot.name, snapshots = slot.snapshots, currentPage = slot.currentPage,
+            selected = viewedPage,
+            onSelect = { p -> viewedPage = p; pagePickerOpen = false },
+            onDismiss = { pagePickerOpen = false },
+        )
+    }
+}
+
+/** Popup for picking which of a partner's [MAX_PAGES] pages to view — pages they haven't pushed a
+ *  snapshot for yet show as blank placeholders (still tappable, just empty). "실시간으로" clears
+ *  the pin and goes back to following whichever page they're actively drawing. */
+@Composable
+private fun PartnerPagePicker(
+    name: String, snapshots: Map<Int, String>, currentPage: Int, selected: Int?,
+    onSelect: (Int?) -> Unit, onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Color(0x55000000)), contentAlignment = Alignment.Center) {
+            Surface(
+                shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.background,
+                shadowElevation = 16.dp, tonalElevation = 3.dp,
+                modifier = Modifier.width(292.dp),
+            ) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("$name 의 페이지", fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { onSelect(null) }, enabled = selected != null) { Text("실시간으로") }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.heightIn(max = 320.dp),
+                    ) {
+                        items(MAX_PAGES) { index ->
+                            PartnerPageCell(
+                                index = index, base64 = snapshots[index],
+                                isLive = index == currentPage,
+                                isSelected = (selected ?: currentPage) == index,
+                                onClick = { onSelect(index) },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onDismiss) { Text("닫기") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PartnerPageCell(index: Int, base64: String?, isLive: Boolean, isSelected: Boolean, onClick: () -> Unit) {
+    var thumb by remember(base64) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(base64) { thumb = base64?.let { b -> withContext(Dispatchers.Default) { decodeSnapshotThumb(b) } } }
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(Dimens.Home.coverRatio).clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(
+                    if (isSelected) 2.dp else 1.dp,
+                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                    RoundedCornerShape(8.dp),
+                ),
+        ) {
+            thumb?.let {
+                Image(it.asImageBitmap(), null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)))
+            }
+            if (isLive) {
+                Text(
+                    "LIVE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                    modifier = Modifier.align(Alignment.TopStart).padding(4.dp)
+                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(2.dp))
+        Text("${index + 1}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -501,16 +622,31 @@ private fun GridCell(slot: ShareRepository.Slot?, code: String, modifier: Modifi
 }
 
 // ---- snapshot codec (downscaled JPEG -> Base64, API 24 safe) ----
+// 2026-08-23: maxSide 700/quality 70이었을 때 상대방 화면이 눈에 띄게 흐릿하다는 피드백으로 상향
+// (A4 캔버스 기준 원본 장변이 ~2300px라 700은 거의 1/3까지 줄던 것) — 스트로크마다 쏘는 스냅샷이라
+// 페이로드가 너무 커지지 않는 선(스케치는 대부분 단색 배경이라 JPEG 압축이 잘 먹음)에서 올렸다.
 private fun encodeSnapshot(src: Bitmap): String {
-    val maxSide = 700
+    val maxSide = 1400
     val s = min(1f, maxSide.toFloat() / max(src.width, src.height))
     val bmp = if (s < 1f) Bitmap.createScaledBitmap(src, (src.width * s).toInt(), (src.height * s).toInt(), true) else src
     val out = ByteArrayOutputStream()
-    bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
+    bmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
     return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
 }
 
 private fun decodeSnapshot(b64: String): Bitmap? = runCatching {
     val bytes = Base64.decode(b64, Base64.NO_WRAP)
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+}.getOrNull()
+
+/** Downsampled decode for [PartnerPageCell] thumbnails — the page picker can decode up to
+ *  [MAX_PAGES] snapshots at once, so full-resolution decodes there would be wasteful/janky
+ *  (same `inSampleSize` technique as `SketchbookRepository.loadPageThumb`). */
+private fun decodeSnapshotThumb(b64: String, reqPx: Int = 200): Bitmap? = runCatching {
+    val bytes = Base64.decode(b64, Base64.NO_WRAP)
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= reqPx) sample *= 2
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
 }.getOrNull()

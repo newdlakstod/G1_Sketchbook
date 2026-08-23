@@ -36,6 +36,8 @@ object Dimens {
         val navWidth = 80.dp        // 1열(SideNavRail) 고정 폭
         val contentWeight = 2f    // 2열(본문) 비율
         val sidePanelWeight = 1f    // 3열(서브패널) 비율 — 이 값이 0이 되진 않게(레이아웃이 사라짐)
+        val dividerWidth = 0.5.dp     // 1↔2열, 2↔3열 사이 얇은 구분선 두께
+        val sidePanelTintAlpha = 0.2f // 3열 배경에 얹는 미세한 명암차(surfaceVariant 위에 이 알파로 덧칠)
     }
 
     /** 온보딩 (Splash/Login) */
@@ -106,19 +108,19 @@ object Dimens {
         // 캔버스 px 기준 굵기(2026-08-17, BrushControls.SizeRange=4~96과 같은 스케일로 2배 상향 —
         // strokeSize가 화면 밀도/fitScale과 무관해지면서 예전 값 그대로면 캔버스에서 너무 얇았음).
         val penWidth = 10f
-        val penMinWidth = 5f
+        val penMinWidth = 1f
         val penMaxWidth = 30f
         val pencilWidth = 10f
-        val pencilMinWidth = 5f
+        val pencilMinWidth = 1f
         val pencilMaxWidth = 30f
-        val crayonWidth = 15f
-        val crayonMinWidth = 7f
-        val crayonMaxWidth = 45f
-        val waterWidth = 20f
-        val waterMinWidth = 10f
-        val waterMaxWidth = 80f
+        val crayonWidth = 10f
+        val crayonMinWidth = 1f
+        val crayonMaxWidth = 30f
+        val waterWidth = 10f
+        val waterMinWidth = 1f
+        val waterMaxWidth = 30f
         val eraserWidth = 10f
-        val eraserMinWidth = 5f
-        val eraserMaxWidth = 80f
+        val eraserMinWidth = 1f
+        val eraserMaxWidth = 30f
     }
 }
