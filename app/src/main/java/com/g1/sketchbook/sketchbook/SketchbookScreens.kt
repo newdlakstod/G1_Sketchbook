@@ -958,8 +958,9 @@ private fun cropSelectedRegion(src: Bitmap, frameWpx: Float, frameHpx: Float, sc
 }
 
 /** 갤러리 원본은 화면·저장용으로 쓰기엔 너무 커서, 긴 변이 [maxDim]을 넘지 않도록 다운샘플링해
- *  디코드한다(표지 그림과 같은 원리, `SketchbookRepository.loadPageThumb`와 동일 패턴). */
-private fun decodeCoverBitmap(context: Context, uri: Uri, maxDim: Int): Bitmap? {
+ *  디코드한다(표지 그림과 같은 원리, `SketchbookRepository.loadPageThumb`와 동일 패턴). internal —
+ *  계정 아바타 사진 선택(SettingsTab)에서도 그대로 재사용한다. */
+internal fun decodeCoverBitmap(context: Context, uri: Uri, maxDim: Int): Bitmap? {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         val source = ImageDecoder.createSource(context.contentResolver, uri)
         return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->

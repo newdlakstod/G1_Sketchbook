@@ -1,10 +1,18 @@
 package com.g1.sketchbook.ui.main
 
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -29,21 +37,23 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Colorize
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,6 +62,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +73,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -76,16 +88,18 @@ import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookCover
 import com.g1.sketchbook.sketchbook.SketchbookCoverShape
 import com.g1.sketchbook.sketchbook.SketchbookRepository
+import com.g1.sketchbook.sketchbook.decodeCoverBitmap
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Dimens
 import com.g1.sketchbook.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
 fun MainScreen(
     nickname: String,
-    avatar: String,
+    avatarVersion: Int,
     tab: Int,
     theme: ThemeMode,
     myUid: String,
@@ -93,7 +107,7 @@ fun MainScreen(
     onTheme: (ThemeMode) -> Unit,
     onSignOut: () -> Unit,
     onRename: (String) -> Unit,
-    onSetAvatar: (String) -> Unit,
+    onSetAvatarImage: (Bitmap) -> Unit,
     onOpenBook: (String) -> Unit,
     onOpenDiary: (String) -> Unit,
     onOpenCalendar: (Int, Int) -> Unit,
@@ -119,7 +133,7 @@ fun MainScreen(
                 onOpenCalendar = onOpenCalendar,
                 previewMarkedDates = previewDiaryDates,
             )
-            else -> SettingsTab(nickname, avatar, theme, onTheme, onSignOut, onRename, onSetAvatar)
+            else -> SettingsTab(nickname, avatarVersion, theme, onTheme, onSignOut, onRename, onSetAvatarImage)
         }
     }
     MainTabLayout(tab, onTab) { content() }
@@ -359,46 +373,68 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
 }
 
 @Composable
-private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTheme: (ThemeMode) -> Unit,
-                        onSignOut: () -> Unit, onRename: (String) -> Unit, onSetAvatar: (String) -> Unit) {
+private fun SettingsTab(nickname: String, avatarVersion: Int, theme: ThemeMode, onTheme: (ThemeMode) -> Unit,
+                        onSignOut: () -> Unit, onRename: (String) -> Unit, onSetAvatarImage: (Bitmap) -> Unit) {
     var editing by remember { mutableStateOf(false) }
-    var avatarEditing by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val session = remember { SessionStore(context) }
+    val scope = rememberCoroutineScope()
     var gesture2Tap by remember { mutableStateOf(session.twoFingerTapAction) }
     var gesture3Tap by remember { mutableStateOf(session.threeFingerTapAction) }
     var gestureLongPress by remember { mutableStateOf(session.longPressAction) }
+    // 계정 이미지 — 갤러리에서 골라 512px로 다운샘플 디코드 후 저장(표지 사진 선택과 동일 패턴).
+    val pickAvatar = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
+        if (uri != null) scope.launch {
+            val bmp = withContext(Dispatchers.IO) { decodeCoverBitmap(context, uri, 512) }
+            bmp?.let(onSetAvatarImage)
+        }
+    }
+    // 가로모드 3열(서브패널)은 이 탭에선 내용 없이 레이아웃만 — sidePanel 생략(기본값 null).
     MainTabPage(
         title = "Setting",
         modifier = Modifier.verticalScroll(rememberScrollState()),
         contentFillsRemaining = false,
+        actions = {
+            // 화면 테마 — 라이트/다크 토글 스위치(시안처럼). "시스템" 값이면 지금 실제로 보이는
+            // 쪽(라이트/다크)을 스위치 상태로 보여주되, 건드리는 순간부터는 명시적 라이트/다크로
+            // 고정된다(토글 하나로 3단계를 표현할 수 없어서 — 다시 "시스템 따라가기"로 되돌리는
+            // 별도 진입점은 없음).
+            val isDark = when (theme) {
+                ThemeMode.DARK -> true
+                ThemeMode.LIGHT -> false
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+            Switch(
+                checked = isDark,
+                onCheckedChange = { onTheme(if (it) ThemeMode.DARK else ThemeMode.LIGHT) },
+                thumbContent = {
+                    Icon(
+                        if (isDark) Icons.Filled.DarkMode else Icons.Filled.LightMode, null,
+                        modifier = Modifier.size(14.dp),
+                    )
+                },
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = MaterialTheme.colorScheme.onSurface,
+                    checkedThumbColor = MaterialTheme.colorScheme.surface,
+                    checkedIconColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            )
+        },
     ) {
         SettingLabel("프로필")
         Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.clickable { avatarEditing = true }) { Avatar(avatar, 56.dp) }
+                Box(Modifier.clickable {
+                    pickAvatar.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }) { Avatar(avatarVersion, 56.dp) }
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text("별명", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(nickname, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("아바타를 눌러 변경", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("계정 이미지를 눌러 갤러리에서 선택", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { editing = true }) { Icon(Icons.Filled.Edit, "별명 수정") }
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-        SettingLabel("화면")
-        Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-            Column(Modifier.padding(18.dp)) {
-                Text("화면 테마", fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(theme == ThemeMode.SYSTEM, { onTheme(ThemeMode.SYSTEM) }, label = { Text("시스템") })
-                    FilterChip(theme == ThemeMode.LIGHT, { onTheme(ThemeMode.LIGHT) }, label = { Text("라이트") })
-                    FilterChip(theme == ThemeMode.DARK, { onTheme(ThemeMode.DARK) }, label = { Text("다크") })
-                }
             }
         }
         Spacer(Modifier.height(18.dp))
@@ -446,24 +482,6 @@ private fun SettingsTab(nickname: String, avatar: String, theme: ThemeMode, onTh
             dismissButton = { TextButton(onClick = { editing = false }) { Text("취소") } },
         )
     }
-
-    if (avatarEditing) {
-        AlertDialog(
-            onDismissRequest = { avatarEditing = false },
-            title = { Text("아바타 선택") },
-            text = {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("🦆", "🐱", "🐸", "🐰", "🐻", "🐥", "🐨", "🦊", "🐼", "🐧", "🐤", "🐢").forEach { e ->
-                        Box(Modifier.size(46.dp).clip(CircleShape)
-                            .background(if (e == avatar) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { onSetAvatar(e); avatarEditing = false },
-                            contentAlignment = Alignment.Center) { Text(e, fontSize = 24.sp) }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { avatarEditing = false }) { Text("닫기") } },
-        )
-    }
 }
 
 @Composable
@@ -489,27 +507,63 @@ private fun gestureActionIcon(a: GestureAction): ImageVector = when (a) {
     GestureAction.TOGGLE_TOOLBARS -> Icons.Filled.UnfoldLess
 }
 
-/** One gesture's mapping: a label plus a chip row of the four possible actions. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** One gesture's mapping: a label plus a row of circular icon buttons (시안: Procreate 제스처 설정
+ *  화면처럼 원형 버튼 + 아래 라벨, 선택된 것만 굵은 테두리). 5개가 좁은 화면에서 다 안 들어갈 수
+ *  있어 가로 스크롤 허용(시안도 마지막 항목이 화면 밖으로 살짝 잘려 스크롤되는 형태였음). */
 @Composable
 private fun GestureActionRow(label: String, selected: GestureAction, onSelect: (GestureAction) -> Unit) {
     Column {
         Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GestureAction.entries.forEach { a ->
-                FilterChip(
-                    selected == a, { onSelect(a) },
-                    label = { Icon(gestureActionIcon(a), gestureActionLabel(a), modifier = Modifier.size(18.dp)) },
-                )
-            }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            GestureAction.entries.forEach { a -> GestureCircleButton(a, selected == a) { onSelect(a) } }
         }
     }
 }
 
 @Composable
-private fun Avatar(emoji: String, size: androidx.compose.ui.unit.Dp) {
-    Box(Modifier.size(size).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
-        Text(emoji.ifBlank { "🦆" }, fontSize = (size.value * 0.52f).sp)
+private fun GestureCircleButton(action: GestureAction, selected: Boolean, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(58.dp)) {
+        Box(
+            Modifier.size(48.dp).clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(
+                    if (selected) 2.dp else 1.dp,
+                    if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant,
+                    CircleShape,
+                )
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(gestureActionIcon(action), gestureActionLabel(action), modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            gestureActionLabel(action), fontSize = 10.sp, textAlign = TextAlign.Center, maxLines = 2,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 계정 이미지 — 한 번이라도 갤러리에서 골랐으면 그 사진(원형 크롭), 아니면 로그인 실루엣
+ *  아이콘(동그란 머리+몸통, [Icons.Filled.Person])을 기본값으로 보여준다. [avatarVersion]이
+ *  바뀔 때만 파일을 다시 읽는다(스케치북 표지의 coverVersion과 같은 캐시무효화 패턴). */
+@Composable
+private fun Avatar(avatarVersion: Int, size: androidx.compose.ui.unit.Dp) {
+    val context = LocalContext.current
+    var bmp by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(avatarVersion) { bmp = withContext(Dispatchers.IO) { SessionStore(context).loadAvatarImage() } }
+    Box(Modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+        val b = bmp
+        if (b != null) {
+            Image(b.asImageBitmap(), "계정 이미지", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else {
+            Icon(Icons.Filled.Person, "기본 계정 이미지", tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(size * 0.7f))
+        }
     }
 }

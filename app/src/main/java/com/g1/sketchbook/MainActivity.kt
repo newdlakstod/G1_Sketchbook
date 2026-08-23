@@ -50,7 +50,7 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
             )
             else -> MainScreen(
                 nickname = state.nickname ?: "친구",
-                avatar = state.avatar,
+                avatarVersion = state.avatarVersion,
                 tab = state.tab,
                 theme = state.theme,
                 myUid = state.uid ?: "",
@@ -58,7 +58,7 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
                 onTheme = vm::setTheme,
                 onSignOut = vm::signOut,
                 onRename = vm::saveNickname,
-                onSetAvatar = vm::setAvatar,
+                onSetAvatarImage = vm::setAvatarImage,
                 onOpenBook = vm::openBook,
                 onOpenDiary = vm::openDiary,
                 onOpenCalendar = vm::openCleanCalendar,

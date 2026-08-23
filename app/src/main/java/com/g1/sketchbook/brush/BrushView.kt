@@ -201,6 +201,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var strokeStarted = false
     private var acc = 0f
     private var lx = 0f; private var ly = 0f; private var lt = 0L
+    // 터치 이벤트 사이 순간속도(dd/dt)는 샘플링 간격이 들쭉날쭉해서 프레임마다 크게 튄다 — 그대로
+    // 굵기에 매핑하면 세그먼트마다 굵기가 뚝뚝 끊겨 소세지처럼 보인다(캡슐 모양 선분이 이웃과
+    // 부드럽게 안 이어짐). 지수이동평균으로 완만하게 눌러서 굵기 변화가 스트로크를 따라 서서히
+    // 일어나게 한다.
+    private var smoothedSpeed = 0f
 
     /** Creates the canvas bitmaps at [w]x[h] px (capped for memory). Call once when opening a page-set. */
     fun initCanvas(w: Int, h: Int) {
@@ -492,7 +497,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pinching = false
-                val p = mapPoint(e.x, e.y); acc = 0f; lx = p[0]; ly = p[1]; lt = now
+                val p = mapPoint(e.x, e.y); acc = 0f; lx = p[0]; ly = p[1]; lt = now; smoothedSpeed = 0f
                 downX = e.x; downY = e.y
                 beginStroke(lx, ly)
                 if (longPressAction != GestureAction.NONE) {
@@ -557,8 +562,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     prevDist = d; prevMidX = mx; prevMidY = my
                 } else if (strokeStarted && !pinching) {
                     val p = mapPoint(e.x, e.y); val x = p[0]; val y = p[1]
-                    val dd = hypot(x - lx, y - ly); val v = dd / max(1L, now - lt)
-                    strokeMove(lx, ly, x, y, v); lx = x; ly = y; lt = now; invalidate()
+                    val dd = hypot(x - lx, y - ly); val vRaw = dd / max(1L, now - lt)
+                    // 지수이동평균(EMA) — 0.35는 반응성:부드러움 비율. 올리면 순간속도에 더 민감하게
+                    // (더 소세지스럽게), 내리면 더 뭉근하게(더 느리게 두께가 따라옴) 반응한다.
+                    smoothedSpeed += (vRaw - smoothedSpeed) * 0.05f
+                    strokeMove(lx, ly, x, y, smoothedSpeed); lx = x; ly = y; lt = now; invalidate()
                     if (longPressPending && hypot(e.x - downX, e.y - downY) > tapSlopPx) {
                         longPressPending = false; removeCallbacks(longPressRunnable)
                     }
@@ -787,9 +795,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         paint.maskFilter = if (eraserBlur > 0f) BlurMaskFilter(eraserBlur, BlurMaskFilter.Blur.NORMAL) else null
     }
 
+    // 지우개도 브러시들처럼 strokeSize에 배율을 곱한다 — 지우개는 BrushType이 아니라 별도 플래그라
+    // scaleFor()의 when절에 못 넣고 여기 따로 둔다.
+    private fun eraserDiameter() = strokeSize * EraserScale
+
     private fun strokeStart(x: Float, y: Float) {
         when {
-            erasing -> { applyEraseStyle(eraseFill); content?.drawCircle(x, y, max(1f, strokeSize / 2f), eraseFill) }
+            erasing -> { applyEraseStyle(eraseFill); content?.drawCircle(x, y, max(1f, eraserDiameter() / 2f), eraseFill) }
             brush == BrushType.PEN -> { penDot(x, y); composite() }
             brush == BrushType.WATER -> { stampWater(x, y, r0() * scaleFor()); composite() }
             else -> stampDispatch(x, y, r0() * scaleFor())
@@ -799,7 +811,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         if (fillMode) return   // 페인트통은 드래그로 아무것도 안 그림 — 손을 뗄 때 endStroke에서 한 번만 채운다.
         when {
             erasing -> {
-                eraseStroke.strokeWidth = max(1f, strokeSize)
+                eraseStroke.strokeWidth = max(1f, eraserDiameter())
                 applyEraseStyle(eraseStroke)
                 content?.drawLine(x0, y0, x1, y1, eraseStroke)
             }
@@ -811,11 +823,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     private fun penDot(x: Float, y: Float) { fill.color = color or (0xFF shl 24); strokeLayer?.drawCircle(x, y, max(1f, r0()), fill) }
     private fun penSeg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
-        val r = max(1f, r0() * (1 - minOf(0.45f, speed * 0.06f)))
+        // PEN 속도별 굵기 조절 — 0.65f: 최대 감소율(65%까지), 0.2f: speed(캔버스 px/ms) 민감도.
+        val r = max(1f, r0() * (1 - minOf(0.65f, speed * 0.2f)))
         pen.color = color or (0xFF shl 24); pen.strokeWidth = r * 2; strokeLayer?.drawLine(x0, y0, x1, y1, pen)
     }
 
-    private fun scaleFor(): Float = when (brush) { BrushType.PEN -> 1f; BrushType.PENCIL -> 1.5f; BrushType.CRAYON -> 3f; BrushType.WATER -> 6f }
+    private fun scaleFor(): Float = when (brush) { BrushType.PEN -> 1f; BrushType.PENCIL -> 1f; BrushType.CRAYON -> 2f; BrushType.WATER -> 6f }
+    private val EraserScale = 2f
 
     private fun seg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         var r = r0() * scaleFor()

@@ -34,7 +34,7 @@ private fun MainTabPreview(tab: Int) {
     DaymoryTheme(mode = ThemeMode.LIGHT) {
         MainScreen(
             nickname = "Minjun",
-            avatar = "🦆",
+            avatarVersion = 0,
             tab = tab,
             theme = ThemeMode.LIGHT,
             myUid = "preview-user",
@@ -42,7 +42,7 @@ private fun MainTabPreview(tab: Int) {
             onTheme = {},
             onSignOut = {},
             onRename = {},
-            onSetAvatar = {},
+            onSetAvatarImage = {},
             onOpenBook = {},
             onOpenDiary = {},
             onOpenCalendar = { _, _ -> },

@@ -443,8 +443,11 @@ fun ScreenControls(
         // Surface color 자체에 알파를 줘서 낸다 — alpha()로 감싸면 그 레이어 크기에 맞춰 그림자까지
         // 잘려버렸다(2026-08-20).
         Surface(
+            // shadowElevation을 주면 원형 Surface 뒤로 흰색 팔각형 그림자가 비쳐 보이는 문제가
+            // 있어(안드로이드가 원형 아웃라인의 그림자를 다각형으로 근사해서 생기는 렌더링 artifact)
+            // 뺐다 — tonalElevation만으로도 은은한 깊이감은 유지된다.
             shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-            shadowElevation = 8.dp, tonalElevation = 2.dp,
+            tonalElevation = 2.dp,
         ) {
             Box(Modifier.padding(6.dp)) {
                 IconBtn(Icons.Filled.Tune, "화면 설정 열기", onClick = { expanded = true })

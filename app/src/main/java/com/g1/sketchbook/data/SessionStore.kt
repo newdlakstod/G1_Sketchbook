@@ -1,13 +1,18 @@
 package com.g1.sketchbook.data
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.GestureAction
 import com.g1.sketchbook.ui.theme.Dimens
+import java.io.File
+import java.io.FileOutputStream
 
 /** Local persistence for user preferences that should survive app restarts. */
 class SessionStore(context: Context) {
     private val prefs = context.getSharedPreferences("g1_session", Context.MODE_PRIVATE)
+    private val avatarFile = File(context.filesDir, "avatar.png")
 
     /** User's chosen nickname (null until they set it after first sign-in). */
     var nickname: String?
@@ -21,10 +26,12 @@ class SessionStore(context: Context) {
         get() = prefs.getString(KEY_THEME, "system") ?: "system"
         set(value) = prefs.edit().putString(KEY_THEME, value).apply()
 
-    /** Emoji avatar. */
-    var avatar: String
-        get() = prefs.getString(KEY_AVATAR, "🦆") ?: "🦆"
-        set(value) = prefs.edit().putString(KEY_AVATAR, value).apply()
+    /** 계정 이미지(갤러리에서 선택) — 파일이 없으면(한 번도 선택 안 했으면) 기본 실루엣 아이콘을
+     *  대신 보여준다(호출부 책임, 여기선 null만 반환). */
+    fun saveAvatarImage(bmp: Bitmap) {
+        FileOutputStream(avatarFile).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+    fun loadAvatarImage(): Bitmap? = if (avatarFile.exists()) BitmapFactory.decodeFile(avatarFile.absolutePath) else null
 
     /** Five editable colour favourites (ARGB longs) for the brush toolbar. */
     var favoriteColors: List<Long>
@@ -88,7 +95,6 @@ class SessionStore(context: Context) {
     companion object {
         private const val KEY_NICK = "nickname"
         private const val KEY_THEME = "theme_mode"
-        private const val KEY_AVATAR = "avatar"
         private const val KEY_FAVS = "fav_colors"
         private const val KEY_GESTURE_2TAP = "gesture_2tap"
         private const val KEY_GESTURE_3TAP = "gesture_3tap"

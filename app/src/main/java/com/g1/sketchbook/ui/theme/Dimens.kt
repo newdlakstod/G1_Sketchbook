@@ -107,20 +107,20 @@ object Dimens {
     object Brush {
         // 캔버스 px 기준 굵기(2026-08-17, BrushControls.SizeRange=4~96과 같은 스케일로 2배 상향 —
         // strokeSize가 화면 밀도/fitScale과 무관해지면서 예전 값 그대로면 캔버스에서 너무 얇았음).
-        val penWidth = 10f
-        val penMinWidth = 1f
+        val penWidth = 4f
+        val penMinWidth = 0.5f
         val penMaxWidth = 30f
-        val pencilWidth = 10f
+        val pencilWidth = 8f
         val pencilMinWidth = 1f
-        val pencilMaxWidth = 30f
-        val crayonWidth = 10f
-        val crayonMinWidth = 1f
-        val crayonMaxWidth = 30f
-        val waterWidth = 10f
+        val pencilMaxWidth = 60f
+        val crayonWidth = 8f
+        val crayonMinWidth = 1.5f
+        val crayonMaxWidth = 60f
+        val waterWidth = 5f
         val waterMinWidth = 1f
-        val waterMaxWidth = 30f
-        val eraserWidth = 10f
+        val waterMaxWidth = 95f
+        val eraserWidth = 5f
         val eraserMinWidth = 1f
-        val eraserMaxWidth = 30f
+        val eraserMaxWidth = 95f
     }
 }

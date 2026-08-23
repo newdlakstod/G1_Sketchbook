@@ -1,15 +1,18 @@
 package com.g1.sketchbook.ui
 
 import android.app.Application
+import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.g1.sketchbook.SketchApp
 import com.g1.sketchbook.ui.theme.ThemeMode
 import com.google.firebase.auth.FirebaseUser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class RootState(
     val user: FirebaseUser? = null,
@@ -18,7 +21,9 @@ data class RootState(
     val busy: Boolean = false,
     val error: String? = null,
     val theme: ThemeMode = ThemeMode.SYSTEM,
-    val avatar: String = "🦆",
+    /** 계정 이미지 파일이 바뀔 때마다 올라간다 — 스케치북 표지의 coverVersion과 같은 캐시 무효화
+     *  용도(파일 경로는 고정이라 이 값이 바뀌어야 Compose가 다시 읽어온다). */
+    val avatarVersion: Int = 0,
     val tab: Int = 0, // Home is the first tab
     val openBookId: String? = null, // when set, a sketchbook canvas is shown full-screen
     val openDiaryDate: String? = null, // when set, the diary editor for this date is full-screen
@@ -36,7 +41,6 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
             nickname = graph.sessionStore.nickname,
             needsNickname = graph.authClient.currentUser != null && graph.sessionStore.nickname.isNullOrBlank(),
             theme = graph.sessionStore.themeMode.toThemeMode(),
-            avatar = graph.sessionStore.avatar,
             uid = graph.authClient.currentUser?.uid,
         )
     )
@@ -85,9 +89,11 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(theme = mode)
     }
 
-    fun setAvatar(emoji: String) {
-        graph.sessionStore.avatar = emoji
-        _state.value = _state.value.copy(avatar = emoji)
+    fun setAvatarImage(bmp: Bitmap) {
+        viewModelScope.launch(Dispatchers.IO) {
+            graph.sessionStore.saveAvatarImage(bmp)
+            withContext(Dispatchers.Main) { _state.value = _state.value.copy(avatarVersion = _state.value.avatarVersion + 1) }
+        }
     }
 
     private fun String.toThemeMode() = when (this) {
