@@ -83,7 +83,7 @@ class BackupRepository {
             "eraserBlur" to record.eraserBlur, "updatedAt" to record.updatedAt,
         )
         if (avatarBmp != null) payload["avatarImage"] = encode(avatarBmp)
-        root.child(uid).child("settings").setValue(payload)
+        root.child(uid).child("settings").updateChildren(payload)
     }
 
     suspend fun pullAll(uid: String): RemoteSnapshot {
