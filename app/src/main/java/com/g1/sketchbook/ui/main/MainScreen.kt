@@ -118,6 +118,7 @@ fun MainScreen(
         when (tab) {
             0 -> HomeTab(
                 onOpenBook = onOpenBook,
+                myUid = myUid,
                 previewBooks = previewBooks,
             )
             1 -> com.g1.sketchbook.sketchbook.SketchbookTab(
@@ -142,10 +143,13 @@ fun MainScreen(
 @Composable
 private fun HomeTab(
     onOpenBook: (String) -> Unit,
+    myUid: String,
     previewBooks: List<Sketchbook>? = null,
 ) {
     val context = LocalContext.current
     val repo = if (previewBooks == null) remember(context) { SketchbookRepository(context) } else null
+    val scope = rememberCoroutineScope()
+    val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     var refresh by remember { mutableStateOf(0) }
     val allBooks = previewBooks ?: remember(repo, refresh) { repo!!.list() }
     // 우상단 개인/공유 아이콘 버튼으로 노트를 전환해서 봄 — 스케치북 리스트 탭의 개인/공유받음
@@ -193,7 +197,7 @@ private fun HomeTab(
             title = { Text("스케치북 삭제") },
             text = { Text("'${target.name}' 을(를) 삭제할까요?\n안에 그린 그림도 함께 사라지고 되돌릴 수 없어요.") },
             confirmButton = {
-                TextButton(onClick = { repo?.delete(target.id); refresh++; pendingDelete = null }) {
+                TextButton(onClick = { repo?.let { r -> com.g1.sketchbook.sketchbook.deleteSynced(scope, r, backup, myUid, target.id) }; refresh++; pendingDelete = null }) {
                     Text("삭제", color = MaterialTheme.colorScheme.error)
                 }
             },
@@ -210,12 +214,15 @@ private fun HomeTab(
             repo = repo,
             onCancel = { editing = null },
             onSave = { name, newCover, removeCover, newColor ->
-                repo?.rename(current.id, name)
-                if (newCover != null) repo?.saveCover(current.id, newCover) else if (removeCover) repo?.removeCover(current.id)
-                repo?.setCoverColor(current.id, newColor)
+                repo?.let { r ->
+                    com.g1.sketchbook.sketchbook.renameSynced(scope, r, backup, myUid, current.id, name)
+                    if (newCover != null) com.g1.sketchbook.sketchbook.saveCoverSynced(scope, r, backup, myUid, current.id, newCover)
+                    else if (removeCover) com.g1.sketchbook.sketchbook.removeCoverSynced(scope, r, backup, myUid, current.id)
+                    com.g1.sketchbook.sketchbook.setCoverColorSynced(scope, r, backup, myUid, current.id, newColor)
+                }
                 refresh++; editing = null
             },
-            onToggleFav = { repo?.toggleFav(current.id); refresh++ },
+            onToggleFav = { repo?.let { r -> com.g1.sketchbook.sketchbook.toggleFavSynced(scope, r, backup, myUid, current.id) }; refresh++ },
             onDelete = { editing = null; pendingDelete = current },
         )
     }
