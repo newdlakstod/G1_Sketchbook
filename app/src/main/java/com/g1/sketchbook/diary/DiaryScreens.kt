@@ -163,6 +163,22 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     val size = remember { Catalog.size("a4") }
     val cw = size.pxW(); val ch = size.pxH()
+    val storesTransparentContent = remember(repo, date) {
+        repo != null && (!repo.hasEntry(date) || repo.hasContent(date))
+    }
+    fun saveCurrent(v: BrushView) {
+        val composited = v.exportBitmap() ?: return
+        val content = if (storesTransparentContent) v.exportContent() else null
+        scope.launch(Dispatchers.IO) {
+            if (content != null) repo?.saveContent(date, content)
+            repo?.save(date, composited)
+            if (myUid.isNotBlank()) repo?.let {
+                backup.pushDiaryDay(myUid, date, composited, it.updatedAt(date))
+            }
+            content?.recycle()
+            composited.recycle()
+        }
+    }
     // 스케치북/공유노트와 동일한 오버레이+dock+드래그+최소화+잠금+전체화면 구조로 통일(2026-08-20,
     // 예전엔 캔버스 아래 고정된 단순 바 하나뿐이었음). 다이어리는 하루 단위라 페이지 버튼만 없다.
     var fullscreen by remember { mutableStateOf(false) }
@@ -195,7 +211,7 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                             BrushView(c).also { v ->
                                 v.paper = BitmapFactory.decodeResource(c.resources, R.drawable.paper_watercolor)
                                 v.initCanvas(cw, ch)
-                                v.loadContent(repo?.load(date))
+                                v.loadContent(repo?.loadContent(date) ?: repo?.load(date))
                                 view = v
                             }
                         },
@@ -213,14 +229,7 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                             v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
                             v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
                             v.onLassoTapOutside = { lassoActive = false; erasing = preLassoErasing; fillActive = preLassoFillActive }
-                            v.onStrokeEnd = {
-                                v.exportBitmap()?.let { b ->
-                                    scope.launch(Dispatchers.IO) {
-                                        repo?.save(date, b)
-                                        if (myUid.isNotBlank()) repo?.let { backup.pushDiaryDay(myUid, date, b, it.updatedAt(date)) }
-                                    }
-                                }
-                            }
+                            v.onStrokeEnd = { saveCurrent(v) }
                         },
                     )
                     eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
@@ -244,12 +253,7 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
             onClear = {
                 view?.clearCanvas()
-                view?.exportBitmap()?.let { b ->
-                    scope.launch(Dispatchers.IO) {
-                        repo?.save(date, b)
-                        if (myUid.isNotBlank()) repo?.let { backup.pushDiaryDay(myUid, date, b, it.updatedAt(date)) }
-                    }
-                }
+                view?.let(::saveCurrent)
             },
             onBack = onBack,
             favorites = favorites,
@@ -585,6 +589,18 @@ private fun CleanDetailBody(
                             val status = saveToGallery(ctx, bmp, "daymory_$date")
                             Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
                         },
+                        onTransparent = {
+                            showDownloadDialog = false
+                            val content = repo?.loadContent(date)
+                            val status = if (content == null) {
+                                "기존 일기는 투명 배경 저장을 지원하지 않아요"
+                            } else {
+                                saveToGallery(ctx, content, "daymory_${date}_transparent").also {
+                                    content.recycle()
+                                }
+                            }
+                            Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
+                        },
                         onFramed = {
                             showDownloadDialog = false
                             val framed = renderFramedDiaryBitmap(ctx, bmp, date)
@@ -632,10 +648,16 @@ private fun CleanDetailBody(
     }
 }
 
-/** 저장 아이콘 탭 시 뜨는 다운로드 버전 선택 시트 (3가지 — 스케치만 / 액자 구성 / 달력 오버레이).
+/** 저장 아이콘 탭 시 뜨는 다운로드 버전 선택 시트 (4가지 — 스케치 / 투명 PNG / 액자 / 달력).
  *  텍스트 없이 아이콘만 나란히 보여준다. */
 @Composable
-private fun DownloadOptionsDialog(onDismiss: () -> Unit, onPlain: () -> Unit, onFramed: () -> Unit, onOverlay: () -> Unit) {
+private fun DownloadOptionsDialog(
+    onDismiss: () -> Unit,
+    onPlain: () -> Unit,
+    onTransparent: () -> Unit,
+    onFramed: () -> Unit,
+    onOverlay: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("이미지로 저장") },
@@ -643,6 +665,9 @@ private fun DownloadOptionsDialog(onDismiss: () -> Unit, onPlain: () -> Unit, on
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 DownloadChoiceIcon("스케치만 다운로드", onPlain) { tint ->
                     Icon(Icons.Filled.Image, null, tint = tint, modifier = Modifier.size(24.dp))
+                }
+                DownloadChoiceIcon("투명 배경 PNG로 다운로드", onTransparent) { tint ->
+                    Icon(Icons.Filled.Opacity, null, tint = tint, modifier = Modifier.size(24.dp))
                 }
                 DownloadChoiceIcon("액자 구성으로 다운로드", onFramed) { tint ->
                     PolaroidIcon(tint = tint, modifier = Modifier.size(24.dp))

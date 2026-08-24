@@ -8,6 +8,12 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+internal fun diaryContentFileName(date: String) = "${date}_content.png"
+
+internal fun diaryDateFromCompositeFile(name: String): String? =
+    name.takeIf { it.endsWith(".png") && !it.endsWith("_content.png") }
+        ?.removeSuffix(".png")
+
 /**
  * Personal picture-diary: one page per calendar day, stored locally as PNG
  * (filesDir/diary/yyyy-MM-dd.png). Today is editable; past days are locked (the "midnight archive").
@@ -19,10 +25,15 @@ class DiaryRepository(context: Context) {
     fun today(): String = fmt.format(java.util.Date())
 
     private fun file(date: String) = File(dir, "$date.png")
+    private fun contentFile(date: String) = File(dir, diaryContentFileName(date))
     fun hasEntry(date: String) = file(date).exists()
+    fun hasContent(date: String) = contentFile(date).exists()
 
     fun load(date: String): Bitmap? =
         file(date).takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.absolutePath) }
+
+    fun loadContent(date: String): Bitmap? =
+        contentFile(date).takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.absolutePath) }
 
     fun loadThumb(date: String, reqPx: Int = 160): Bitmap? {
         val f = file(date); if (!f.exists()) return null
@@ -37,10 +48,14 @@ class DiaryRepository(context: Context) {
         FileOutputStream(file(date)).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    fun saveContent(date: String, bmp: Bitmap) {
+        FileOutputStream(contentFile(date)).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     /** 로컬에 그림이 있는 모든 날짜("yyyy-MM-dd") — 백업 동기화가 "이 기기에만 있고 아직 클라우드에
      *  안 올라간 일기"를 찾을 때 쓴다(달력 UI는 안 씀, 그건 월 단위로 하루씩 hasEntry로 확인). */
-    fun listDates(): List<String> = dir.listFiles { f -> f.name.endsWith(".png") }
-        ?.map { it.name.removeSuffix(".png") } ?: emptyList()
+    fun listDates(): List<String> = dir.listFiles()
+        ?.mapNotNull { diaryDateFromCompositeFile(it.name) } ?: emptyList()
 
     /** 해당 날짜 파일이 마지막으로 저장된 시각 — 파일시스템 mtime. 항목이 없으면 0. */
     fun updatedAt(date: String): Long = file(date).lastModified()
