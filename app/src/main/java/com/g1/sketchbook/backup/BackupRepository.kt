@@ -74,7 +74,7 @@ class BackupRepository {
      *  [record].avatarBase64 is a read-direction-only field (populated by [pullAll]), ignored here. */
     fun pushSettings(uid: String, record: RemoteSettings, avatarBmp: Bitmap?) {
         val payload = mutableMapOf<String, Any?>(
-            "nickname" to record.nickname, "themeMode" to record.themeMode,
+            "themeMode" to record.themeMode,
             "favoriteColors" to record.favoriteColors, "gesture2Tap" to record.gesture2Tap,
             "gesture3Tap" to record.gesture3Tap, "gestureLongPress" to record.gestureLongPress,
             "gridColumns" to record.gridColumns, "brushColor" to record.brushColor,
@@ -82,6 +82,9 @@ class BackupRepository {
             "eraserSize" to record.eraserSize, "eraserOpacity" to record.eraserOpacity,
             "eraserBlur" to record.eraserBlur, "updatedAt" to record.updatedAt,
         )
+        // updateChildren treats an explicit null as "delete this key", so a device that hasn't set a
+        // nickname yet would wipe the one already in the cloud — same reason avatarImage is conditional.
+        if (record.nickname != null) payload["nickname"] = record.nickname
         if (avatarBmp != null) payload["avatarImage"] = encode(avatarBmp)
         root.child(uid).child("settings").updateChildren(payload)
     }
