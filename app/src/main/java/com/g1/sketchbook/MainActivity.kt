@@ -75,6 +75,7 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
                 tab = state.tab,
                 theme = state.theme,
                 myUid = state.uid ?: "",
+                syncGeneration = state.syncGeneration,
                 onTab = vm::selectTab,
                 onTheme = vm::setTheme,
                 onSignOut = vm::signOut,

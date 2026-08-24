@@ -3,6 +3,7 @@ package com.g1.sketchbook.ui
 import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.g1.sketchbook.SketchApp
@@ -32,6 +33,10 @@ data class RootState(
     val openDiaryDate: String? = null, // when set, the diary editor for this date is full-screen
     val cleanCalendar: Pair<Int, Int>? = null, // (year, month) → full-screen clean calendar (slides 3/4)
     val uid: String? = null,        // Firebase uid, needed for shared sketchbooks
+    /** Bumped after every successful background sync — HomeTab/SketchbookTab watch this to
+     *  know when to re-read from disk (reconcileBackup writes files directly, bypassing
+     *  Compose's normal recomposition triggers). */
+    val syncGeneration: Int = 0,
 )
 
 /** Top-level app state for Phase 1: auth, nickname onboarding, theme, and bottom-tab selection. */
@@ -75,7 +80,26 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
      *  signed out. */
     fun syncNow(context: Context) {
         val uid = _state.value.uid ?: return
-        viewModelScope.launch(Dispatchers.IO) { runCatching { reconcileBackup(context, uid, graph.backupRepository) } }
+        // The coroutine can outlive the Activity this was called from (fast rotation, or navigating
+        // away right at ON_START); reconcileBackup only needs a Context for file access.
+        val appContext = context.applicationContext
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { reconcileBackup(appContext, uid, graph.backupRepository) }
+                .onSuccess {
+                    // reconcileSettings writes straight into SessionStore, which RootState was only
+                    // seeded from once (at construction) — re-publish it, then let the tabs know
+                    // there is new data on disk to re-read.
+                    withContext(Dispatchers.Main) {
+                        _state.value = _state.value.copy(
+                            theme = graph.sessionStore.themeMode.toThemeMode(),
+                            nickname = graph.sessionStore.nickname,
+                            avatarVersion = _state.value.avatarVersion + 1,
+                            syncGeneration = _state.value.syncGeneration + 1,
+                        )
+                    }
+                }
+                .onFailure { e -> Log.w("RootViewModel", "syncNow failed", e) }
+        }
     }
 
     /** Pushes the current settings snapshot to the cloud backup — called from MainActivity's

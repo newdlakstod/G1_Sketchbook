@@ -103,6 +103,9 @@ fun MainScreen(
     tab: Int,
     theme: ThemeMode,
     myUid: String,
+    /** Bumped by RootViewModel after each successful background sync — the tabs that cache a list
+     *  behind a local `refresh` counter re-read from disk when this changes. */
+    syncGeneration: Int = 0,
     onTab: (Int) -> Unit,
     onTheme: (ThemeMode) -> Unit,
     onSignOut: () -> Unit,
@@ -119,15 +122,18 @@ fun MainScreen(
             0 -> HomeTab(
                 onOpenBook = onOpenBook,
                 myUid = myUid,
+                syncGeneration = syncGeneration,
                 previewBooks = previewBooks,
             )
             1 -> com.g1.sketchbook.sketchbook.SketchbookTab(
                 nickname = nickname, myUid = myUid, onOpenBook = onOpenBook,
+                syncGeneration = syncGeneration,
                 previewBooks = previewBooks,
             )
             2 -> com.g1.sketchbook.sketchbook.SketchbookTab(
                 nickname = nickname, myUid = myUid, onOpenBook = onOpenBook,
-                initialShowShared = true, previewBooks = previewBooks,
+                initialShowShared = true, syncGeneration = syncGeneration,
+                previewBooks = previewBooks,
             )
             3 -> com.g1.sketchbook.diary.DiaryCalendarScreen(
                 onOpenDiary = onOpenDiary,
@@ -144,6 +150,7 @@ fun MainScreen(
 private fun HomeTab(
     onOpenBook: (String) -> Unit,
     myUid: String,
+    syncGeneration: Int = 0,
     previewBooks: List<Sketchbook>? = null,
 ) {
     val context = LocalContext.current
@@ -151,6 +158,8 @@ private fun HomeTab(
     val scope = rememberCoroutineScope()
     val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     var refresh by remember { mutableStateOf(0) }
+    // 백그라운드 동기화가 파일을 직접 써서 Compose가 모르므로, 동기화가 끝나면 목록을 다시 읽는다.
+    LaunchedEffect(syncGeneration) { if (syncGeneration > 0) refresh++ }
     val allBooks = previewBooks ?: remember(repo, refresh) { repo!!.list() }
     // 우상단 개인/공유 아이콘 버튼으로 노트를 전환해서 봄 — 스케치북 리스트 탭의 개인/공유받음
     // 필터와 같은 개념, 홈 캐러셀에도 적용.

@@ -211,6 +211,7 @@ private fun SizeIcon(key: String, color: Color, modifier: Modifier) {
 fun SketchbookTab(
     nickname: String,
     myUid: String,
+    syncGeneration: Int = 0,
     onOpenBook: (String) -> Unit,
     initialShowShared: Boolean = false,
     openWizardAs: WType? = null,
@@ -222,6 +223,8 @@ fun SketchbookTab(
     val scope = rememberCoroutineScope()
     val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     var refresh by remember { mutableIntStateOf(0) }
+    // 백그라운드 동기화가 파일을 직접 써서 Compose가 모르므로, 동기화가 끝나면 목록을 다시 읽는다.
+    LaunchedEffect(syncGeneration) { if (syncGeneration > 0) refresh++ }
     val books = previewBooks ?: remember(refresh) { repo!!.list() }
     var creating by remember { mutableStateOf(false) }
     var wizardType by remember { mutableStateOf<WType?>(null) }
