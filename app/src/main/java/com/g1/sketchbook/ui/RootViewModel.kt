@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.g1.sketchbook.SketchApp
+import com.g1.sketchbook.backup.reconcileBackup
+import com.g1.sketchbook.backup.syncSettingsUp
 import com.g1.sketchbook.ui.theme.ThemeMode
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.Dispatchers
@@ -59,12 +61,30 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
                         user = user, busy = false, uid = user.uid,
                         needsNickname = nick.isNullOrBlank(), nickname = nick,
                     )
+                    syncNow(activityContext)
                 },
                 onFailure = { e ->
                     _state.value = _state.value.copy(busy = false, error = e.message ?: "로그인 실패")
                 },
             )
         }
+    }
+
+    /** Full pull+merge pass against the cloud backup — called right after sign-in and again every
+     *  time the app comes back to the foreground (MainActivity's lifecycle observer). No-ops while
+     *  signed out. */
+    fun syncNow(context: Context) {
+        val uid = _state.value.uid ?: return
+        viewModelScope.launch(Dispatchers.IO) { runCatching { reconcileBackup(context, uid, graph.backupRepository) } }
+    }
+
+    /** Pushes the current settings snapshot to the cloud backup — called from MainActivity's
+     *  ON_STOP so brush/gesture/grid-column changes made during the session sync without needing a
+     *  push call at every individual setter (see the plan's Global Constraints). No-ops while
+     *  signed out. */
+    fun flushSettings() {
+        val uid = _state.value.uid ?: return
+        viewModelScope.launch(Dispatchers.IO) { syncSettingsUp(graph.sessionStore, graph.backupRepository, uid) }
     }
 
     fun saveNickname(name: String) {
@@ -90,12 +110,14 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     fun setTheme(mode: ThemeMode) {
         graph.sessionStore.themeMode = mode.name.lowercase()
         _state.value = _state.value.copy(theme = mode)
+        flushSettings()
     }
 
     fun setAvatarImage(bmp: Bitmap) {
         viewModelScope.launch(Dispatchers.IO) {
             graph.sessionStore.saveAvatarImage(bmp)
             withContext(Dispatchers.Main) { _state.value = _state.value.copy(avatarVersion = _state.value.avatarVersion + 1) }
+            _state.value.uid?.let { syncSettingsUp(graph.sessionStore, graph.backupRepository, it) }
         }
     }
 
