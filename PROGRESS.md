@@ -4,6 +4,9 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **v2.9.9 배포 준비** (2026-08-24): 공용 PageCurl 신버전이 적용된 읽기모드 APK를 새 GitHub
+  Release로 배포하기 위해 versionName을 `2.9.9`, versionCode를 `113`으로 올렸다. 기존 v2.9.8
+  릴리스와 자산은 덮어쓰지 않는다.
 - **읽기모드 구형 컬 엔진 제거 + 공용 PageCurl 신버전 이식** (2026-08-24): 앱 내부의
   `ReadModeRenderer`/`ReadModeSurface`/`readmode/curl`/`readmode/input`과 전용 테스트를 삭제하고,
   공용 `:pagecurl` 모듈의 controlled `PageCurl`을 `ReadModeScreen`에 연결했다. 앱에는 저장된 페이지
