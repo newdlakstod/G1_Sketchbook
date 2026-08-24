@@ -36,4 +36,12 @@ class DiaryRepository(context: Context) {
     fun save(date: String, bmp: Bitmap) {
         FileOutputStream(file(date)).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
+
+    /** 로컬에 그림이 있는 모든 날짜("yyyy-MM-dd") — 백업 동기화가 "이 기기에만 있고 아직 클라우드에
+     *  안 올라간 일기"를 찾을 때 쓴다(달력 UI는 안 씀, 그건 월 단위로 하루씩 hasEntry로 확인). */
+    fun listDates(): List<String> = dir.listFiles { f -> f.name.endsWith(".png") }
+        ?.map { it.name.removeSuffix(".png") } ?: emptyList()
+
+    /** 해당 날짜 파일이 마지막으로 저장된 시각 — 파일시스템 mtime. 항목이 없으면 0. */
+    fun updatedAt(date: String): Long = file(date).lastModified()
 }
