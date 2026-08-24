@@ -219,6 +219,8 @@ fun SketchbookTab(
 ) {
     val context = LocalContext.current
     val repo = if (previewBooks == null) remember(context) { SketchbookRepository(context) } else null
+    val scope = rememberCoroutineScope()
+    val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     var refresh by remember { mutableIntStateOf(0) }
     val books = previewBooks ?: remember(refresh) { repo!!.list() }
     var creating by remember { mutableStateOf(false) }
@@ -243,12 +245,13 @@ fun SketchbookTab(
         onNewShared = { wizardType = WType.SHARED_NEW; creating = true },
         onJoinShared = { wizardType = WType.SHARED_JOIN; creating = true },
         onOpen = { onOpenBook(it.id) },
-        onDelete = { repo?.delete(it.id); refresh++ },
-        onToggleFav = { repo?.toggleFav(it.id); refresh++ },
+        onDelete = { repo?.let { r -> deleteSynced(scope, r, backup, myUid, it.id) }; refresh++ },
+        onToggleFav = { repo?.let { r -> toggleFavSynced(scope, r, backup, myUid, it.id) }; refresh++ },
         onEditBook = { book, name, newCover, removeCover, newColor ->
-            repo?.rename(book.id, name)
-            if (newCover != null) repo?.saveCover(book.id, newCover) else if (removeCover) repo?.removeCover(book.id)
-            repo?.setCoverColor(book.id, newColor)
+            repo?.let { r -> renameSynced(scope, r, backup, myUid, book.id, name) }
+            if (newCover != null) repo?.let { r -> saveCoverSynced(scope, r, backup, myUid, book.id, newCover) }
+            else if (removeCover) repo?.let { r -> removeCoverSynced(scope, r, backup, myUid, book.id) }
+            repo?.let { r -> setCoverColorSynced(scope, r, backup, myUid, book.id, newColor) }
             refresh++
         },
     )
@@ -268,6 +271,7 @@ private fun CreateWizard(
     initialType: WType? = null,
 ) {
     val scope = rememberCoroutineScope()
+    val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     // A preset type (e.g. from the home screen's 새 노트/공유/참여 buttons) skips straight past
     // the "무엇을 만들까요?" step into the flow for that type.
     var step by remember { mutableStateOf(if (initialType == null) WStep.TYPE else if (initialType == WType.SHARED_JOIN) WStep.CODE else WStep.NAME) }
@@ -279,7 +283,7 @@ private fun CreateWizard(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    fun finishPersonal() { repo?.create(name, sizeKey, bgKey)?.let(onCreated) }
+    fun finishPersonal() { repo?.let { createSynced(scope, it, backup, myUid, name, sizeKey, bgKey) }?.let(onCreated) }
     fun finishSharedNew() {
         val targetRepo = repo ?: return
         busy = true; error = null
@@ -998,6 +1002,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
         return
     }
     val scope = rememberCoroutineScope()
+    val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     var view by remember { mutableStateOf<BrushView?>(null) }
     // 색상/굵기/투명도는 SessionStore에 저장해 앱을 다시 켜도 이어서 쓸 수 있게 한다(브러시 종류
     // 자체나 지우개 여부는 저장하지 않고 매번 펜으로 시작).
@@ -1084,7 +1089,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
                     v.onThreeFingerSwipe = { dir -> goTo(page + dir) }
                     v.onLassoTapOutside = { lassoActive = false; erasing = preLassoErasing; fillActive = preLassoFillActive }
-                    v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> scope.launch(Dispatchers.IO) { repo.savePage(book.id, pg, b) } } }
+                    v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> savePageSynced(scope, repo, backup, myUid, book.id, pg, b) } }
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
