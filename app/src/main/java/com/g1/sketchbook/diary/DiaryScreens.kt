@@ -134,9 +134,10 @@ import java.util.Calendar
 // ---------------- 그림일기 편집 (full-screen A4 editor for one date) ----------------
 
 @Composable
-fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = false) {
+fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, previewMode: Boolean = false) {
     val ctx = LocalContext.current
     val repo = if (previewMode) null else remember(ctx) { DiaryRepository(ctx) }
+    val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     val scope = rememberCoroutineScope()
     var view by remember { mutableStateOf<BrushView?>(null) }
     var brush by remember { mutableStateOf(BrushType.PEN) }
@@ -212,7 +213,14 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
                             v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
                             v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
                             v.onLassoTapOutside = { lassoActive = false; erasing = preLassoErasing; fillActive = preLassoFillActive }
-                            v.onStrokeEnd = { v.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo?.save(date, b) } } }
+                            v.onStrokeEnd = {
+                                v.exportBitmap()?.let { b ->
+                                    scope.launch(Dispatchers.IO) {
+                                        repo?.save(date, b)
+                                        if (myUid.isNotBlank()) repo?.let { backup.pushDiaryDay(myUid, date, b, it.updatedAt(date)) }
+                                    }
+                                }
+                            }
                         },
                     )
                     eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
@@ -234,7 +242,15 @@ fun DiaryEditorScreen(date: String, onBack: () -> Unit, previewMode: Boolean = f
             onToggleErase = { erasing = !erasing; if (erasing) { lassoActive = false; fillActive = false } },
             eraserBlur = eraserBlur, onEraserBlur = { eraserBlur = it },
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
-            onClear = { view?.clearCanvas(); view?.exportBitmap()?.let { b -> scope.launch(Dispatchers.IO) { repo?.save(date, b) } } },
+            onClear = {
+                view?.clearCanvas()
+                view?.exportBitmap()?.let { b ->
+                    scope.launch(Dispatchers.IO) {
+                        repo?.save(date, b)
+                        if (myUid.isNotBlank()) repo?.let { backup.pushDiaryDay(myUid, date, b, it.updatedAt(date)) }
+                    }
+                }
+            },
             onBack = onBack,
             favorites = favorites,
             onEditFavorite = { i, c ->
