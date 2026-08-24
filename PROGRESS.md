@@ -4,6 +4,15 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **읽기모드 구형 컬 엔진 제거 + 공용 PageCurl 신버전 이식** (2026-08-24): 앱 내부의
+  `ReadModeRenderer`/`ReadModeSurface`/`readmode/curl`/`readmode/input`과 전용 테스트를 삭제하고,
+  공용 `:pagecurl` 모듈의 controlled `PageCurl`을 `ReadModeScreen`에 연결했다. 앱에는 저장된 페이지
+  PNG를 요청 크기로 공급하는 `SketchbookPageSource`와 닫기/현재 페이지 상태만 남겼다. A4뿐 아니라
+  모바일·데스크톱 등 기존 모든 캔버스 비율을 보존하도록 공용 source의 `pageAspectRatio`를 사용한다.
+  공유 모듈 위치는 커밋되지 않는 `local.properties`의 `pagecurl.dir`로 지정하고 저장소 기본값은
+  `../pagecurl`이다. 분리 빌드 경로에서 module 84/84 tests, app 11/11 tests, portability 검사와 debug
+  APK assembly가 통과했다. APK SHA-256은
+  `2FDF0D01E8D694393A5327A153127A24F8FCEBA20592CA1C3D9708AF38A1CAFF`이다.
 - **구글 계정 백업/동기화 — 전체 브랜치 코드리뷰 지적사항 최종 수정 웨이브 완료**
   (2026-08-24, 커밋 `d36bc21` / `ce1ac1c` / `effc8b9`): 리뷰에서 나온 Critical/Important 9건 중
   앞선 세션이 Fix 1~5(`be24678`, `ecdaf3f`, `6597017`, `2b750e5`)를 끝냈고, 이번 세션이 남은 3건을 마무리.
@@ -1215,6 +1224,7 @@
   흰색(#FFFFFF)으로 변경(로고가 검정 위주라 대비 확보). `assembleDebug` 빌드 검증 완료.
 
 ## Next (Phase 2~4)
+- 읽기모드 신버전을 에뮬레이터/실기기에서 세로 왕복, 가로 두 페이지 왕복, 각 캔버스 비율별로 시각 확인한다.
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
 - **Phase 3 — 그림일기 + 달력**: 개인 전용, 사용자당 1개, 날짜별 1장, 자정 잠금(이미지화). 달력(가로 4:3 / 세로 상단달력+하단일기), 이미지 저장.
@@ -1222,6 +1232,8 @@
   - 남은 후보: 화면 디테일 다듬기, 공유 페이지 동기화 옵션(같은 페이지 함께 넘기기), 저장/내보내기 등.
 
 ## Decisions
+- 읽기모드는 앱 내부에 GLES/curl 구현을 복제하지 않고 공용 `:pagecurl`만 사용한다. 앱은
+  `SketchbookPageSource`로 페이지 Bitmap과 실제 `width / height` 비율만 공급한다.
 - 메인 탭의 브랜드·타이틀·액션 영역은 콘텐츠 크기에 따라 측정하지 않고 `Dimens.Screen`의
   고정 높이를 사용한다. 화면별 액션은 `MainTabPage.actions`로만 전달해 타이틀 아래 우측에 둔다.
 - Android Studio Preview 카탈로그는 Android Studio에서 항상 발견할 수 있도록

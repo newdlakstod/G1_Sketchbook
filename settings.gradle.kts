@@ -1,3 +1,5 @@
+import java.util.Properties
+
 pluginManagement {
     repositories {
         google {
@@ -21,3 +23,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "G1 Sketchbook"
 include(":app")
+include(":pagecurl")
+val localProperties = Properties().apply {
+    file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+}
+val pageCurlDirectory = localProperties.getProperty("pagecurl.dir") ?: "../pagecurl"
+project(":pagecurl").projectDir = file(pageCurlDirectory)
