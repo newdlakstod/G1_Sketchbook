@@ -1,5 +1,6 @@
 package com.g1.sketchbook.readmode
 
+import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -25,10 +26,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.gdo.pagecurl.PageCurl
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
+import com.g1.sketchbook.sketchbook.bgDrawable
 
 internal fun normalizeReadPage(startPage: Int, pageCount: Int): Int {
     require(pageCount > 0) { "pageCount must be positive" }
@@ -47,12 +50,17 @@ fun ReadModeScreen(
         mutableIntStateOf(normalizeReadPage(startPage, book.pageCount))
     }
     var errorMessage by remember(book.id) { mutableStateOf<String?>(null) }
-    val source = remember(repo, book.id, book.pageCount, book.sizeKey) {
+    val context = LocalContext.current
+    val paper = remember(context, book.bgKey) {
+        BitmapFactory.decodeResource(context.resources, bgDrawable(book.bgKey))
+    }
+    val source = remember(repo, book.id, book.pageCount, book.sizeKey, paper) {
         SketchbookPageSource(
             repo = repo,
             bookId = book.id,
             pageCount = book.pageCount,
             pageAspectRatio = book.size.ratio,
+            paper = paper,
         )
     }
 

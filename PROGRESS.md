@@ -4,6 +4,13 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **읽기모드 작성 페이지 검정 표시 수정** (2026-08-25): 편집기는 페이지를 종이 없이 투명한
+  필기 PNG로 저장하는데, 새 PageCurl 셰이더가 투명 픽셀의 RGB(0,0,0)를 불투명하게 출력해 작성된
+  페이지 배경이 검게 보였다. 앱 경계인 `SketchbookPageSource`에서 선택한 `bgKey` 종이 재질을
+  편집 캔버스와 같은 cover-fit 방식으로 먼저 그리고 필기 PNG를 그 위에 합성한 불투명 Bitmap을
+  PageCurl에 공급하도록 수정했다. 빈 페이지도 흰 임시 Bitmap 대신 같은 종이 재질을 사용한다.
+  레이어 순서 회귀 테스트를 추가했고, 공용 PageCurl 전체 테스트 + 앱 전체 테스트 + debug APK
+  assembly가 통과했다. 연결된 에뮬레이터가 없어 시각 검증은 남아 있다.
 - **v2.9.9 배포 완료** (2026-08-24): 공용 PageCurl 신버전이 적용된 읽기모드 APK를
   versionName `2.9.9`, versionCode `113`으로 빌드해 GitHub Release `v2.9.9`에
   `daymory-v2.9.9-113.apk`로 공개했다. SHA-256은
@@ -1238,7 +1245,8 @@
 
 ## Decisions
 - 읽기모드는 앱 내부에 GLES/curl 구현을 복제하지 않고 공용 `:pagecurl`만 사용한다. 앱은
-  `SketchbookPageSource`로 페이지 Bitmap과 실제 `width / height` 비율만 공급한다.
+  `SketchbookPageSource`로 페이지 Bitmap과 실제 `width / height` 비율만 공급한다. 저장된 페이지는
+  투명 필기 레이어이므로 source가 스케치북의 종이 재질과 합성한 최종 불투명 Bitmap으로 변환한다.
 - 메인 탭의 브랜드·타이틀·액션 영역은 콘텐츠 크기에 따라 측정하지 않고 `Dimens.Screen`의
   고정 높이를 사용한다. 화면별 액션은 `MainTabPage.actions`로만 전달해 타이틀 아래 우측에 둔다.
 - Android Studio Preview 카탈로그는 Android Studio에서 항상 발견할 수 있도록
