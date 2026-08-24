@@ -7,6 +7,8 @@ data class RemoteSketchbook(
     val createdAt: Long, val pageCount: Int, val fav: Boolean, val coverColor: Long?,
     val updatedAt: Long, val deleted: Boolean,
     val coverBase64: String?, val coverUpdatedAt: Long?,
+    /** 표지 삭제 툼스톤 — 노드를 지우면 "원래 표지가 없었음"과 구분이 안 돼서 다른 기기가 되살린다. */
+    val coverRemoved: Boolean = false,
     val pages: Map<Int, Pair<Long, String>>, // index -> (updatedAt, base64)
 )
 

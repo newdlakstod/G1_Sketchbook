@@ -45,8 +45,11 @@ fun saveCoverSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: B
 fun removeCoverSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, id: String) {
     repo.removeCover(id)
     if (uid.isNotBlank()) scope.launch(Dispatchers.IO) {
-        repo.get(id)?.let { backup.pushSketchbookMeta(uid, it) }
-        backup.deleteSketchbookCover(uid, id)
+        // 표지 파일은 방금 지워져서 coverUpdatedAt은 0이다 — removeCover가 막 갱신한 book 메타의
+        // updatedAt을 툼스톤 시각으로 쓴다.
+        val book = repo.get(id)
+        book?.let { backup.pushSketchbookMeta(uid, it) }
+        backup.deleteSketchbookCover(uid, id, book?.updatedAt ?: System.currentTimeMillis())
     }
 }
 

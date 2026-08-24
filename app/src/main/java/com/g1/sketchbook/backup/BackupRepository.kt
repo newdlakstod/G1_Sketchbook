@@ -49,8 +49,12 @@ class BackupRepository {
             .setValue(mapOf("updatedAt" to updatedAt, "image" to encode(bmp)))
     }
 
-    fun deleteSketchbookCover(uid: String, bookId: String) {
-        root.child(uid).child("sketchbooks").child(bookId).child("cover").removeValue()
+    /** Marks the cover removed instead of deleting the node — same reason [deleteSketchbook] leaves a
+     *  tombstone: a hard remove is indistinguishable from "never had a cover" on another device's
+     *  next pull, which would push its own stale cover back and resurrect it. */
+    fun deleteSketchbookCover(uid: String, bookId: String, updatedAt: Long) {
+        root.child(uid).child("sketchbooks").child(bookId).child("cover")
+            .setValue(mapOf("removed" to true, "updatedAt" to updatedAt))
     }
 
     fun pushSketchbookPage(uid: String, bookId: String, index: Int, bmp: Bitmap, updatedAt: Long) {
@@ -114,6 +118,7 @@ class BackupRepository {
                 deleted = c.child("deleted").getValue(Boolean::class.java) ?: false,
                 coverBase64 = c.child("cover").child("image").getValue(String::class.java),
                 coverUpdatedAt = c.child("cover").child("updatedAt").getValue(Long::class.java),
+                coverRemoved = c.child("cover").child("removed").getValue(Boolean::class.java) ?: false,
                 pages = pages,
             )
         }

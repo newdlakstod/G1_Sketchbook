@@ -43,20 +43,23 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
         }
         if (r?.deleted == true) continue // just tombstoned/deleted locally above — nothing else to sync for it
 
-        val localCoverAt = repo.loadCover(id)?.let { repo.coverUpdatedAt(id) }
-        when (decideSyncAction(localCoverAt, r?.coverUpdatedAt)) {
+        // mtime > 0 은 파일 존재 확인 그 자체다(없으면 File.lastModified()가 0) — 있는지 보려고
+        // 표지 비트맵을 통째로 디코드할 이유가 없다.
+        val localCoverAt = repo.coverUpdatedAt(id).takeIf { it > 0L }
+        when (decideSyncAction(localCoverAt, r?.coverUpdatedAt, r?.coverRemoved ?: false)) {
+            SyncAction.DELETE_LOCAL -> repo.removeCover(id)
             // 받아온 표지 파일의 mtime을 원격 타임스탬프로 되돌려 찍는다 — 안 그러면 "방금 저장 =
             // 지금"이라 다음 동기화가 이걸 곧바로 되밀어 올린다(핑퐁 + 매번 JPEG 재인코딩).
             SyncAction.PULL -> if (r?.coverBase64 != null && r.coverUpdatedAt != null) {
                 backup.decodeImage(r.coverBase64)?.let { repo.saveCover(id, it); repo.setCoverUpdatedAt(id, r.coverUpdatedAt) }
             }
             SyncAction.PUSH -> repo.loadCover(id)?.let { backup.pushSketchbookCover(uid, id, it, repo.coverUpdatedAt(id)) }
-            else -> {}
+            SyncAction.NOOP -> {}
         }
 
         val pageCount = maxOf(l?.pageCount ?: 0, r?.pageCount ?: MAX_PAGES)
         for (index in 0 until pageCount) {
-            val localPageAt = repo.loadPage(id, index)?.let { repo.pageUpdatedAt(id, index) }
+            val localPageAt = repo.pageUpdatedAt(id, index).takeIf { it > 0L } // 표지와 같은 이유 — 디코드 불필요
             val remotePage = r?.pages?.get(index)
             when (decideSyncAction(localPageAt, remotePage?.first)) {
                 SyncAction.PULL -> if (remotePage != null) {
