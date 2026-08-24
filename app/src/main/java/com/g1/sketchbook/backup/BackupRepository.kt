@@ -19,7 +19,7 @@ import kotlin.math.min
  * sketchbooks are NOT covered here — those already sync live via ShareRepository.
  */
 class BackupRepository {
-    private val root = FirebaseDatabase.getInstance().reference.child("backups")
+    private val root by lazy { FirebaseDatabase.getInstance().reference.child("backups") }
 
     private fun encode(bmp: Bitmap, maxSide: Int = 1800, quality: Int = 90): String {
         val s = min(1f, maxSide.toFloat() / max(bmp.width, bmp.height))
