@@ -45,7 +45,11 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
 
         val localCoverAt = repo.loadCover(id)?.let { repo.coverUpdatedAt(id) }
         when (decideSyncAction(localCoverAt, r?.coverUpdatedAt)) {
-            SyncAction.PULL -> r?.coverBase64?.let(backup::decodeImage)?.let { repo.saveCover(id, it) }
+            // 받아온 표지 파일의 mtime을 원격 타임스탬프로 되돌려 찍는다 — 안 그러면 "방금 저장 =
+            // 지금"이라 다음 동기화가 이걸 곧바로 되밀어 올린다(핑퐁 + 매번 JPEG 재인코딩).
+            SyncAction.PULL -> if (r?.coverBase64 != null && r.coverUpdatedAt != null) {
+                backup.decodeImage(r.coverBase64)?.let { repo.saveCover(id, it); repo.setCoverUpdatedAt(id, r.coverUpdatedAt) }
+            }
             SyncAction.PUSH -> repo.loadCover(id)?.let { backup.pushSketchbookCover(uid, id, it, repo.coverUpdatedAt(id)) }
             else -> {}
         }
@@ -55,7 +59,9 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
             val localPageAt = repo.loadPage(id, index)?.let { repo.pageUpdatedAt(id, index) }
             val remotePage = r?.pages?.get(index)
             when (decideSyncAction(localPageAt, remotePage?.first)) {
-                SyncAction.PULL -> remotePage?.let { backup.decodeImage(it.second) }?.let { repo.savePage(id, index, it) }
+                SyncAction.PULL -> if (remotePage != null) {
+                    backup.decodeImage(remotePage.second)?.let { repo.savePage(id, index, it); repo.setPageUpdatedAt(id, index, remotePage.first) }
+                }
                 SyncAction.PUSH -> repo.loadPage(id, index)?.let { backup.pushSketchbookPage(uid, id, index, it, repo.pageUpdatedAt(id, index)) }
                 else -> {}
             }
@@ -69,7 +75,9 @@ private fun reconcileDiary(repo: DiaryRepository, backup: BackupRepository, uid:
         val localAt = if (repo.hasEntry(date)) repo.updatedAt(date) else null
         val remotePair = remote[date]
         when (decideSyncAction(localAt, remotePair?.first)) {
-            SyncAction.PULL -> remotePair?.let { backup.decodeImage(it.second) }?.let { repo.save(date, it) }
+            SyncAction.PULL -> if (remotePair != null) {
+                backup.decodeImage(remotePair.second)?.let { repo.save(date, it); repo.setUpdatedAt(date, remotePair.first) }
+            }
             SyncAction.PUSH -> repo.load(date)?.let { backup.pushDiaryDay(uid, date, it, repo.updatedAt(date)) }
             SyncAction.DELETE_LOCAL, SyncAction.NOOP -> {} // diary has no delete feature — tombstones never occur
         }

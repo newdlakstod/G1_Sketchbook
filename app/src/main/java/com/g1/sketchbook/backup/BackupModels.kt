@@ -31,7 +31,8 @@ enum class SyncAction { PUSH, PULL, DELETE_LOCAL, NOOP }
 /** [localUpdatedAt]/[remoteUpdatedAt] are epoch millis; null means the item doesn't exist on that
  *  side. [remoteDeleted] is only meaningful for sketchbooks (tombstone) — when true every other
  *  field is ignored: the item is deleted locally if we still have it, otherwise left alone. Ties
- *  (equal timestamps) resolve to PUSH — harmless, since pushing identical data is a no-op remotely. */
+ *  (equal timestamps) resolve to NOOP — the item is already in sync, so re-uploading it would just
+ *  re-encode and re-send identical bytes on every single reconcile pass. */
 fun decideSyncAction(localUpdatedAt: Long?, remoteUpdatedAt: Long?, remoteDeleted: Boolean = false): SyncAction {
     if (remoteDeleted) return if (localUpdatedAt != null) SyncAction.DELETE_LOCAL else SyncAction.NOOP
     return when {
@@ -39,6 +40,7 @@ fun decideSyncAction(localUpdatedAt: Long?, remoteUpdatedAt: Long?, remoteDelete
         localUpdatedAt == null -> SyncAction.PULL
         remoteUpdatedAt == null -> SyncAction.PUSH
         remoteUpdatedAt > localUpdatedAt -> SyncAction.PULL
+        remoteUpdatedAt == localUpdatedAt -> SyncAction.NOOP
         else -> SyncAction.PUSH
     }
 }

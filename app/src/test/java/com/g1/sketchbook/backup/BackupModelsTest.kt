@@ -24,8 +24,8 @@ class BackupModelsTest {
         assertEquals(SyncAction.PUSH, decideSyncAction(200L, 100L))
     }
 
-    @Test fun tieGoesToLocalPush() {
-        assertEquals(SyncAction.PUSH, decideSyncAction(100L, 100L))
+    @Test fun tieMeansAlreadySynced() {
+        assertEquals(SyncAction.NOOP, decideSyncAction(100L, 100L))
     }
 
     @Test fun remoteTombstoneWithLocalCopyDeletesLocal() {

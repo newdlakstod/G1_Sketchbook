@@ -44,4 +44,8 @@ class DiaryRepository(context: Context) {
 
     /** 해당 날짜 파일이 마지막으로 저장된 시각 — 파일시스템 mtime. 항목이 없으면 0. */
     fun updatedAt(date: String): Long = file(date).lastModified()
+
+    /** PULL로 받아 저장한 일기에 **원격 타임스탬프**를 다시 찍는다 — 안 그러면 방금 저장한 mtime이
+     *  "지금"이라 항상 원격보다 최신으로 보여서, 다음 동기화가 곧바로 그걸 되밀어 올린다(핑퐁). */
+    fun setUpdatedAt(date: String, timestamp: Long) { file(date).setLastModified(timestamp) }
 }

@@ -157,6 +157,10 @@ class SketchbookRepository(private val context: Context) {
      *  필요). 안 그려진 페이지는 0을 반환한다(파일이 없으면 File.lastModified()는 0). */
     fun pageUpdatedAt(id: String, index: Int): Long = pageFile(id, index).lastModified()
 
+    /** PULL로 받아 저장한 페이지에 **원격 타임스탬프**를 다시 찍는다 — 안 그러면 방금 저장한 mtime이
+     *  "지금"이라 항상 원격보다 최신으로 보여서, 다음 동기화가 곧바로 그걸 되밀어 올린다(핑퐁). */
+    fun setPageUpdatedAt(id: String, index: Int, timestamp: Long) { pageFile(id, index).setLastModified(timestamp) }
+
     /** 페이지 순서 바꾸기(길게 눌러 드래그) — [order]\[새 위치\] = 그 자리에 와야 할 예전 인덱스.
      *  파일을 직접 맞바꿔서 반영하므로 다른 코드는 그대로 인덱스로 읽기만 하면 된다. 중간에 원본을
      *  덮어쓰지 않도록 전부 임시파일로 옮긴 뒤 최종 위치에 다시 쓴다. */
@@ -204,6 +208,9 @@ class SketchbookRepository(private val context: Context) {
 
     /** 표지 파일이 마지막으로 저장된 시각 — [pageUpdatedAt]과 같은 이유로 mtime을 그대로 씀. */
     fun coverUpdatedAt(id: String): Long = coverFile(id).lastModified()
+
+    /** [setPageUpdatedAt]과 같은 이유 — PULL로 받은 표지에 원격 타임스탬프를 찍어 핑퐁을 막는다. */
+    fun setCoverUpdatedAt(id: String, timestamp: Long) { coverFile(id).setLastModified(timestamp) }
 
     fun setCoverColor(id: String, color: Long?) {
         save(list().map { if (it.id == id) it.copy(coverColor = color, updatedAt = System.currentTimeMillis()) else it })
