@@ -1,6 +1,7 @@
 package com.g1.sketchbook.ui
 
 import android.app.Application
+import android.content.Context
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -46,10 +47,12 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     )
     val state: StateFlow<RootState> = _state.asStateFlow()
 
-    fun signIn() {
+    /** [activityContext] must be an Activity context — GoogleAuthClient needs it to show the
+     *  account-picker sheet; an Application context can hang or crash on some devices. */
+    fun signIn(activityContext: Context) {
         _state.value = _state.value.copy(busy = true, error = null)
         viewModelScope.launch {
-            graph.authClient.signIn().fold(
+            graph.authClient.signIn(activityContext).fold(
                 onSuccess = { user ->
                     val nick = graph.sessionStore.nickname
                     _state.value = _state.value.copy(

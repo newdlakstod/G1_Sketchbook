@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.g1.sketchbook.ui.LoginScreen
@@ -29,11 +30,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AppRoot(vm: RootViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     DaymoryTheme(mode = state.theme) {
         var splash by remember { mutableStateOf(true) }
         when {
             splash -> SplashScreen(onEnter = { splash = false })
-            state.user == null -> LoginScreen(busy = state.busy, error = state.error, onSignIn = vm::signIn)
+            state.user == null -> LoginScreen(busy = state.busy, error = state.error, onSignIn = { vm.signIn(context) })
             state.needsNickname -> {
                 LoginScreen(busy = false, error = null, onSignIn = {})
                 NicknameDialog(onCancel = vm::signOut, onConfirm = vm::saveNickname)
