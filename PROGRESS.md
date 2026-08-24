@@ -4,6 +4,30 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **구글 계정 백업/동기화 — 전체 브랜치 코드리뷰 지적사항 최종 수정 웨이브 완료**
+  (2026-08-24, 커밋 `d36bc21` / `ce1ac1c` / `effc8b9`): 리뷰에서 나온 Critical/Important 9건 중
+  앞선 세션이 Fix 1~5(`be24678`, `ecdaf3f`, `6597017`, `2b750e5`)를 끝냈고, 이번 세션이 남은 3건을 마무리.
+  1. **Fix 9 — `BackupRepository.root`를 lazy로** (`d36bc21`): `BackupRepository()`가 Compose
+     Preview에서도 무조건 생성되는데 `FirebaseDatabase.getInstance()`가 생성 시점에 터졌음.
+     `by lazy`로 미뤄서 실제로 DB를 쓰는 호출에서만 예외가 나도록 함(한 줄).
+  2. **Fix 7 — `signOut()`이 `uid`도 비우도록** (`ce1ac1c`): `uid`가 남아 있어서 로그아웃 뒤에도
+     로컬 편집이 남의 uid 경로로 push될 수 있었음(모든 `*Synced`/`syncNow`/`flushSettings`가
+     `uid ?: return`로 게이트됨).
+  3. **Fix 6 — 백그라운드 동기화 후 UI 갱신** (`effc8b9`, 4파일): `reconcileBackup`이 파일/
+     SharedPreferences를 직접 써서 Compose가 알 방법이 없었음 — 다른 기기에서 당겨온 페이지/표지/
+     스케치북이 무관한 편집으로 `refresh++`가 될 때까지 안 보였음. `RootState.syncGeneration`
+     카운터를 신설해 `syncNow` 성공마다 올리고, `MainActivity` → `MainScreen` → `HomeTab`/
+     `SketchbookTab`(자체 `refresh` 카운터를 쓰는 두 탭)까지 내려서 `LaunchedEffect(syncGeneration)`
+     로 다시 읽게 함. `syncNow`는 덤으로 (a) `SessionStore`에 직접 쓰인 theme/nickname을 다시
+     `RootState`에 반영(생성 시 1회만 시드됐었음), (b) Activity context 대신 applicationContext를
+     캡처(코루틴이 Activity보다 오래 살 수 있음), (c) 실패 시 `Log.w`만 남기고 에러 UI는 안 띄움.
+  - `compileDebugKotlin` BUILD SUCCESSFUL(에러 0, 기존 deprecation 경고 2건만),
+    `testDebugUnitTest` 10개 스위트 46테스트 전부 통과(`BackupModelsTest` 8/8 포함).
+    이번엔 `R.jar` 파일 잠금 이슈 없었음. 상세 리포트:
+    `.superpowers/sdd/2026-08-24-google-account-backup-sync/final-fix-wave-continuation-report.md`
+  - **남은 것(스코프 밖, 후속 후보)**: 일기 탭(`DiaryCalendarScreen`)과 열려 있는 캔버스
+    (`SketchbookCanvasScreen`)는 `syncGeneration`을 안 받아서 여전히 재진입해야 갱신됨.
+    `MainScreen` 호출부에 값이 이미 있으니 붙이는 건 작은 작업.
 - **가로모드 3열 썸네일 화질 개선 + 공유모드 화질 개선 + 현재 페이지 표기 + 공유 상대방 페이지 선택**
   (2026-08-23, 버전 미상향, 아직 커밋 안 함): 사용자가 4가지 요청.
   1. **가로모드 List/Share 탭 3열 썸네일 화질**: `PageThumbnailCell`(`SketchbookScreens.kt`)이
