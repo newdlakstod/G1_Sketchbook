@@ -62,6 +62,13 @@ class BackupRepository {
             .setValue(mapOf("updatedAt" to updatedAt, "image" to encode(bmp)))
     }
 
+    /** No tombstone needed here (unlike [deleteSketchbookCover]): the only caller is a page reorder,
+     *  which immediately re-pushes the full new page set from the same device in the same operation —
+     *  there's no window for another device to see a bare absence and misread it. */
+    fun deleteSketchbookPage(uid: String, bookId: String, index: Int) {
+        root.child(uid).child("sketchbooks").child(bookId).child("pages").child(index.toString()).removeValue()
+    }
+
     /** Tombstones the book instead of removing the node outright — a hard remove would look like
      *  "never existed" to another device's next pull, which would resurrect it as a brand-new push. */
     fun deleteSketchbook(uid: String, bookId: String) {

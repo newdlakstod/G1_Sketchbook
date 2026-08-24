@@ -53,6 +53,20 @@ fun removeCoverSynced(scope: CoroutineScope, repo: SketchbookRepository, backup:
     }
 }
 
+/** 페이지 순서 바꾸기는 파일을 통째로 뒤섞는다(비게 된 인덱스의 파일은 삭제) — 로컬만 바꾸고 끝내면
+ *  다른 기기가 다음 동기화 때 "로컬엔 없고 원격엔 있는 페이지"로 보고 옛 그림을 되살려버린다. 그래서
+ *  순서를 바꾼 뒤 이 책의 페이지 전체 상태를 다시 올린다(없는 인덱스는 원격에서도 지움). */
+fun reorderPagesSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, id: String, order: List<Int>, pageCount: Int) {
+    repo.applyPageOrder(id, order)
+    if (uid.isNotBlank()) scope.launch(Dispatchers.IO) {
+        for (index in 0 until pageCount) {
+            val bmp = repo.loadPage(id, index)
+            if (bmp != null) backup.pushSketchbookPage(uid, id, index, bmp, repo.pageUpdatedAt(id, index))
+            else backup.deleteSketchbookPage(uid, id, index)
+        }
+    }
+}
+
 fun deleteSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, id: String) {
     repo.delete(id)
     if (uid.isNotBlank()) scope.launch(Dispatchers.IO) { backup.deleteSketchbook(uid, id) }

@@ -1161,7 +1161,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
             onSelect = { p -> goTo(p) },
             onReorder = { order ->
                 saveCurrent()
-                repo.applyPageOrder(book.id, order)
+                reorderPagesSynced(scope, repo, backup, myUid, book.id, order, pageCount)
                 val newPage = order.indexOf(page)
                 if (newPage != -1 && newPage != page) { page = newPage; view?.loadContent(repo.loadPage(book.id, newPage)) }
             },
