@@ -54,6 +54,10 @@ data class Sketchbook(
     /** 표지 이미지 파일이 바뀔 때마다 올라간다 — id는 그대로라 LaunchedEffect(book.id)만으론 새
      *  파일을 다시 읽어오지 않으므로, 이 값을 키에 함께 넣어 캐시를 무효화한다. */
     val coverVersion: Int = 0,
+    /** 메타(이름/즐겨찾기/표지색/표지버전)가 마지막으로 바뀐 시각 — 구글 계정 백업 동기화의
+     *  last-write-wins 비교에 쓰인다. 새로 만들 때(create)는 기본값(호출 시점)이 곧 맞는 값이라
+     *  따로 안 넘겨도 된다. */
+    val updatedAt: Long = System.currentTimeMillis(),
 ) {
     val size get() = Catalog.size(sizeKey)
     /** "2026.08.16" — shown under cover thumbnails (home carousel, sketchbook list). */
@@ -82,7 +86,8 @@ class SketchbookRepository(private val context: Context) {
                 Sketchbook(o.getString("id"), o.getString("name"), o.getString("size"),
                     o.getString("bg"), o.optLong("createdAt"), o.optInt("pages", 1), o.optBoolean("fav", false),
                     o.optBoolean("shared", false), o.optString("code", "").ifBlank { null },
-                    o.optLong("coverColor", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }, o.optInt("coverVer", 0))
+                    o.optLong("coverColor", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }, o.optInt("coverVer", 0),
+                    o.optLong("updatedAt", o.optLong("createdAt")))
             }.sortedWith(compareByDescending<Sketchbook> { it.fav }.thenByDescending { it.createdAt })
         }.getOrDefault(emptyList())
     }
@@ -101,17 +106,27 @@ class SketchbookRepository(private val context: Context) {
     }
 
     fun toggleFav(id: String) {
-        save(list().map { if (it.id == id) it.copy(fav = !it.fav) else it })
+        save(list().map { if (it.id == id) it.copy(fav = !it.fav, updatedAt = System.currentTimeMillis()) else it })
     }
 
     /** 표지 길게 눌러 수정하기 — 이름만 바꾼다(사이즈·종이 재질은 이미 그려둔 페이지에 쓰이므로 제외). */
     fun rename(id: String, name: String) {
-        save(list().map { if (it.id == id) it.copy(name = name.ifBlank { it.name }) else it })
+        save(list().map { if (it.id == id) it.copy(name = name.ifBlank { it.name }, updatedAt = System.currentTimeMillis()) else it })
     }
 
     fun delete(id: String) {
         save(list().filter { it.id != id })
         File(root, id).deleteRecursively()
+    }
+
+    /** [book]을 그대로 넣는다(같은 id가 있으면 교체, 없으면 추가) — [create]와 달리 새 id를 만들지
+     *  않는다. 구글 계정 백업에서 다른 기기가 만든 스케치북을 복원할 때 씀 — 클라우드의 id를
+     *  그대로 로컬 id로 써야 다음 동기화 때도 같은 항목으로 계속 매칭된다. */
+    fun upsert(book: Sketchbook) {
+        val current = list()
+        val next = if (current.any { it.id == book.id }) current.map { if (it.id == book.id) book else it } else current + book
+        save(next)
+        File(root, book.id).mkdirs()
     }
 
     fun pageFile(id: String, index: Int): File {
@@ -137,6 +152,10 @@ class SketchbookRepository(private val context: Context) {
     fun savePage(id: String, index: Int, bmp: Bitmap) {
         FileOutputStream(pageFile(id, index)).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
+
+    /** 페이지 파일이 마지막으로 저장된 시각 — 파일시스템 mtime을 그대로 씀(별도 타임스탐프 저장 불
+     *  필요). 안 그려진 페이지는 0을 반환한다(파일이 없으면 File.lastModified()는 0). */
+    fun pageUpdatedAt(id: String, index: Int): Long = pageFile(id, index).lastModified()
 
     /** 페이지 순서 바꾸기(길게 눌러 드래그) — [order]\[새 위치\] = 그 자리에 와야 할 예전 인덱스.
      *  파일을 직접 맞바꿔서 반영하므로 다른 코드는 그대로 인덱스로 읽기만 하면 된다. 중간에 원본을
@@ -183,14 +202,17 @@ class SketchbookRepository(private val context: Context) {
         bumpCoverVersion(id)
     }
 
+    /** 표지 파일이 마지막으로 저장된 시각 — [pageUpdatedAt]과 같은 이유로 mtime을 그대로 씀. */
+    fun coverUpdatedAt(id: String): Long = coverFile(id).lastModified()
+
     fun setCoverColor(id: String, color: Long?) {
-        save(list().map { if (it.id == id) it.copy(coverColor = color) else it })
+        save(list().map { if (it.id == id) it.copy(coverColor = color, updatedAt = System.currentTimeMillis()) else it })
     }
 
     /** id는 그대로 유지되는 book 갱신이라 `LaunchedEffect(book.id)`만으론 목록 썸네일이 새 표지
      *  이미지를 다시 읽어오지 않는다 — 이 값을 실제로 바꿔서 캐시를 무효화시킨다. */
     private fun bumpCoverVersion(id: String) {
-        save(list().map { if (it.id == id) it.copy(coverVersion = it.coverVersion + 1) else it })
+        save(list().map { if (it.id == id) it.copy(coverVersion = it.coverVersion + 1, updatedAt = System.currentTimeMillis()) else it })
     }
 
     private fun save(books: List<Sketchbook>) {
@@ -200,7 +222,8 @@ class SketchbookRepository(private val context: Context) {
                 .put("id", it.id).put("name", it.name).put("size", it.sizeKey)
                 .put("bg", it.bgKey).put("createdAt", it.createdAt).put("pages", it.pageCount).put("fav", it.fav)
                 .put("shared", it.shared).put("code", it.code ?: "")
-                .put("coverColor", it.coverColor ?: Long.MIN_VALUE).put("coverVer", it.coverVersion))
+                .put("coverColor", it.coverColor ?: Long.MIN_VALUE).put("coverVer", it.coverVersion)
+                .put("updatedAt", it.updatedAt))
         }
         prefs.edit().putString(KEY, arr.toString()).apply()
     }
