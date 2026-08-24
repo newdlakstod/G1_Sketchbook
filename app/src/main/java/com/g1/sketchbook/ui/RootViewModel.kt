@@ -96,7 +96,7 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOut() {
         graph.authClient.signOut()
-        _state.value = _state.value.copy(user = null, needsNickname = false)
+        _state.value = _state.value.copy(user = null, needsNickname = false, uid = null)
     }
 
     fun selectTab(i: Int) { _state.value = _state.value.copy(tab = i) }
