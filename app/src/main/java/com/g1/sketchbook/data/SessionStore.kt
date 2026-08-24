@@ -85,6 +85,13 @@ class SessionStore(context: Context) {
         get() = prefs.getFloat(KEY_ERASER_BLUR, 0f)
         set(value) = prefs.edit().putFloat(KEY_ERASER_BLUR, value).apply()
 
+    /** 마지막으로 구글 계정 백업과 설정값을 맞춘 시각(0 = 한 번도 안 함) — 클라우드 설정값의
+     *  updatedAt과 비교해서 더 최신이면 받아올지 판단하는 데 쓴다. 설정값은 필드마다 따로가
+     *  아니라 통째로 한 항목으로 동기화하므로, 이 값 하나면 충분하다. */
+    var settingsSyncedAt: Long
+        get() = prefs.getLong(KEY_SETTINGS_SYNCED_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_SETTINGS_SYNCED_AT, value).apply()
+
     private fun defaultBrushSize(type: BrushType): Float = when (type) {
         BrushType.PEN -> Dimens.Brush.penWidth
         BrushType.PENCIL -> Dimens.Brush.pencilWidth
@@ -106,6 +113,7 @@ class SessionStore(context: Context) {
         private const val KEY_ERASER_SIZE = "eraser_size"
         private const val KEY_ERASER_OPACITY = "eraser_opacity"
         private const val KEY_ERASER_BLUR = "eraser_blur"
+        private const val KEY_SETTINGS_SYNCED_AT = "settings_synced_at"
         val DefaultFavorites = listOf(0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L)
     }
 }
