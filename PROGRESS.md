@@ -4,6 +4,21 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **v2.9.12 배포: master 병합 + 색상 피커 RGB/HSL·즐겨찾기 20개 + 동기화 검정 배경 수정**
+  (2026-08-26, Claude): `codex/release-v2.9.9-pagecurl` 브랜치(fast-forward 가능, 히스토리 분기
+  없었음)를 master로 병합. 이번에 새로 추가된 것:
+  - 색상 피커에 R/G/B, H/S/L 숫자 입력칸 추가(SV사각형+Hue바 아래, 항상 표시, 서로 실시간 연동).
+  - 즐겨찾기 색상 5개 → 20개(`SessionStore.FavoritesCount`). 툴바엔 여전히 5개만 인라인, 나머지는
+    새 팔레트 버튼으로 여는 4x5 그리드 팝업에서. 백업 동기화의 `favoriteColors.size` 검증도 20으로 맞춤.
+  - **태블릿↔폰 전환 시 스케치 페이지 배경이 검게 바뀌던 버그 수정**: 스케치북 페이지는 로컬에
+    종이 없이 필기만 투명 PNG로 저장되는데(`exportContent()`), `BackupRepository.encode()`가
+    항상 JPEG(알파 없음)로 압축해서 올려 투명한 곳이 검게 눌러 붙었다. `pushSketchbookPage`만
+    PNG(`preserveAlpha=true`)로 바꿈 — 표지/일기/아바타는 원래 불투명이라 JPEG 유지.
+    **주의**: 이미 검게 오염되어 동기화된 기기의 로컬 페이지 파일은 자동 복구 안 됨 — 원본을 그린
+    기기가 그 페이지를 다시 저장(재동기화)해야 정상본으로 덮어써짐.
+  versionCode 116, APK `daymory-v2.9.12-116.apk`, SHA-256
+  `776349A491CEE4853762228614F0771EAD6FC5409701FD09354D5690AE05DA3C`, 로컬 빌드 후
+  `gh release create`로 수동 배포(자동 CI는 여전히 pagecurl 이슈로 실패 — 아래 항목 참고).
 - **v2.9.11 배포: 스케치 붓질 렉 수정** (2026-08-25, Claude): 구글 계정 백업/동기화 기능을 붙이며
   `SketchbookSync.savePageSynced`가 로컬 페이지 저장(`repo.savePage`, PNG 인코딩+디스크 쓰기)을
   `Dispatchers.IO`로 안 감싸고 호출 스레드(=`onStrokeEnd`가 불리는 메인 스레드)에서 그대로
