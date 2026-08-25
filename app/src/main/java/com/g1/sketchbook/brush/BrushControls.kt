@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -45,6 +46,7 @@ import androidx.compose.material.icons.filled.LineWeight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Opacity
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.UnfoldLess
@@ -53,12 +55,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -79,7 +83,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -173,6 +180,7 @@ fun BrushControls(
 ) {
     var colorWheelOpen by remember { mutableStateOf(false) }
     var editFavAt by remember { mutableIntStateOf(-1) } // -1 none, else favourites index being edited
+    var favoritesGridOpen by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
     // Which brush's width/opacity panel is open (hoisted here, same pattern as editFavAt above —
     // per-button local state + Popup turned out unreliable, this mirrors the known-good approach).
@@ -332,11 +340,12 @@ fun BrushControls(
                     onClick = onToggleFill)
             }
             add {
-                // 5 favourites: tap to pick; tap the already-selected one again to open a colour wheel for it.
+                // 5 favourites (of the 20 registered — the rest live in the "즐겨찾기 전체" grid below):
+                // tap to pick; tap the already-selected one again to open a colour wheel for it.
                 // Touch area is ButtonTapSize (visually bigger than the swatch), but the ripple itself is
                 // scoped to the visible 28dp swatch (shared InteractionSource: outer box detects the tap
                 // with no indication of its own, inner box — clipped to the swatch's own circle — draws it).
-                favorites.forEachIndexed { i, c ->
+                favorites.take(5).forEachIndexed { i, c ->
                     val on = !erasing && c == color
                     val interaction = remember { MutableInteractionSource() }
                     Box {
@@ -372,6 +381,15 @@ fun BrushControls(
                     }
                     if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
                         ColorPickerCard(color, onColor)
+                    }
+                }
+                // 즐겨찾기 전체(20개) 그리드 — 툴바 인라인 자리는 5개뿐이라 나머지는 여기서 고르거나 등록.
+                Box {
+                    IconBtn(Icons.Filled.Palette, "즐겨찾기 전체",
+                        tint = if (favoritesGridOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = { favoritesGridOpen = !favoritesGridOpen })
+                    if (favoritesGridOpen) Popup(popupAnchor, { favoritesGridOpen = false }, PopupProperties(focusable = true)) {
+                        FavoritesGridPopup(favorites, color, erasing, onColor, onEditFavorite)
                     }
                 }
                 // Eyedropper: arm it, then the next tap on the canvas picks that colour instead of drawing.
@@ -760,6 +778,147 @@ internal fun ColorPickerCard(color: Long, onColor: (Long) -> Unit) {
                 Spacer(Modifier.width(10.dp))
                 Text("#%06X".format(0xFFFFFF and AndroidColor.HSVToColor(floatArrayOf(hue, sat, value))),
                     fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+            Spacer(Modifier.height(12.dp))
+            ColorNumberFields(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
+        }
+    }
+}
+
+/** RGB(0~255)·HSL(H 0~360, S/L 0~100) 숫자 입력칸 — 위 SV사각형/Hue바와 같은 색을 다른 표기로 보여주고
+ *  직접 타이핑해서 고를 수도 있게 한다. 내부적으로는 항상 HSV(휠이 쓰는 표현)로 환산해 돌려준다. */
+@Composable
+private fun ColorNumberFields(hue: Float, sat: Float, value: Float, onHsv: (Float, Float, Float) -> Unit) {
+    val argb = remember(hue, sat, value) { AndroidColor.HSVToColor(floatArrayOf(hue, sat, value)) }
+    val r = (argb shr 16) and 0xFF
+    val g = (argb shr 8) and 0xFF
+    val b = argb and 0xFF
+    val hsl = remember(hue, sat, value) { rgbToHsl(r, g, b) }
+
+    var rText by remember { mutableStateOf(r.toString()) }
+    var gText by remember { mutableStateOf(g.toString()) }
+    var bText by remember { mutableStateOf(b.toString()) }
+    var hText by remember { mutableStateOf(hsl.first.roundToInt().toString()) }
+    var sText by remember { mutableStateOf((hsl.second * 100).roundToInt().toString()) }
+    var lText by remember { mutableStateOf((hsl.third * 100).roundToInt().toString()) }
+
+    // 휠 드래그든 아래 입력칸이든, 색이 바뀌면 6칸 전부 최신 값으로 다시 맞춘다 — 입력칸 하나를 고쳐서
+    // 바뀐 경우도 결국 이 값으로 되먹임되므로 화면상 숫자가 도중에 튀지는 않는다.
+    LaunchedEffect(argb) {
+        rText = r.toString(); gText = g.toString(); bText = b.toString()
+        hText = hsl.first.roundToInt().toString()
+        sText = (hsl.second * 100).roundToInt().toString()
+        lText = (hsl.third * 100).roundToInt().toString()
+    }
+
+    fun commitRgb(nr: Int, ng: Int, nb: Int) {
+        val out = FloatArray(3)
+        AndroidColor.RGBToHSV(nr.coerceIn(0, 255), ng.coerceIn(0, 255), nb.coerceIn(0, 255), out)
+        onHsv(out[0], out[1], out[2])
+    }
+    fun commitHsl(nh: Int, ns: Int, nl: Int) {
+        val (nr, ng, nb) = hslToRgb(nh.coerceIn(0, 360).toFloat(), ns.coerceIn(0, 100) / 100f, nl.coerceIn(0, 100) / 100f)
+        commitRgb(nr, ng, nb)
+    }
+
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ColorNumberField("R", rText, Modifier.weight(1f)) { s -> rText = s; s.toIntOrNull()?.let { commitRgb(it, gText.toIntOrNull() ?: g, bText.toIntOrNull() ?: b) } }
+        ColorNumberField("G", gText, Modifier.weight(1f)) { s -> gText = s; s.toIntOrNull()?.let { commitRgb(rText.toIntOrNull() ?: r, it, bText.toIntOrNull() ?: b) } }
+        ColorNumberField("B", bText, Modifier.weight(1f)) { s -> bText = s; s.toIntOrNull()?.let { commitRgb(rText.toIntOrNull() ?: r, gText.toIntOrNull() ?: g, it) } }
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ColorNumberField("H", hText, Modifier.weight(1f)) { s -> hText = s; s.toIntOrNull()?.let { commitHsl(it, sText.toIntOrNull() ?: 0, lText.toIntOrNull() ?: 0) } }
+        ColorNumberField("S", sText, Modifier.weight(1f)) { s -> sText = s; s.toIntOrNull()?.let { commitHsl(hText.toIntOrNull() ?: 0, it, lText.toIntOrNull() ?: 0) } }
+        ColorNumberField("L", lText, Modifier.weight(1f)) { s -> lText = s; s.toIntOrNull()?.let { commitHsl(hText.toIntOrNull() ?: 0, sText.toIntOrNull() ?: 0, it) } }
+    }
+}
+
+@Composable
+private fun ColorNumberField(label: String, text: String, modifier: Modifier = Modifier, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = text,
+        onValueChange = { s -> if (s.length <= 3 && s.all { it.isDigit() }) onChange(s) },
+        modifier = modifier,
+        singleLine = true,
+        label = { Text(label, fontSize = 11.sp) },
+        textStyle = TextStyle(fontSize = 13.sp),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+    )
+}
+
+/** RGB(0~255 각각) → HSL(H 0~360, S/L 0~1) — Android Color 클래스엔 HSL 변환이 없어 직접 구현. */
+private fun rgbToHsl(r: Int, g: Int, b: Int): Triple<Float, Float, Float> {
+    val rf = r / 255f; val gf = g / 255f; val bf = b / 255f
+    val max = maxOf(rf, gf, bf); val min = minOf(rf, gf, bf)
+    val l = (max + min) / 2f
+    if (max == min) return Triple(0f, 0f, l)
+    val d = max - min
+    val s = if (l > 0.5f) d / (2f - max - min) else d / (max + min)
+    val h = 60f * when (max) {
+        rf -> ((gf - bf) / d) + (if (gf < bf) 6f else 0f)
+        gf -> ((bf - rf) / d) + 2f
+        else -> ((rf - gf) / d) + 4f
+    }
+    return Triple(h, s, l)
+}
+
+/** HSL(H 0~360, S/L 0~1) → RGB(0~255 각각). */
+private fun hslToRgb(h: Float, s: Float, l: Float): Triple<Int, Int, Int> {
+    if (s == 0f) { val v = (l * 255).roundToInt().coerceIn(0, 255); return Triple(v, v, v) }
+    fun hue2rgb(p: Float, q: Float, tIn: Float): Float {
+        var t = tIn
+        if (t < 0f) t += 1f
+        if (t > 1f) t -= 1f
+        return when {
+            t < 1f / 6f -> p + (q - p) * 6f * t
+            t < 1f / 2f -> q
+            t < 2f / 3f -> p + (q - p) * (2f / 3f - t) * 6f
+            else -> p
+        }
+    }
+    val q = if (l < 0.5f) l * (1f + s) else l + s - l * s
+    val p = 2f * l - q
+    val hh = h / 360f
+    val r = (hue2rgb(p, q, hh + 1f / 3f) * 255).roundToInt().coerceIn(0, 255)
+    val g = (hue2rgb(p, q, hh) * 255).roundToInt().coerceIn(0, 255)
+    val b = (hue2rgb(p, q, hh - 1f / 3f) * 255).roundToInt().coerceIn(0, 255)
+    return Triple(r, g, b)
+}
+
+/** 즐겨찾기 20개를 4x5 그리드로 보여주는 팝업 — 인라인 5개와 같은 [favorites] 리스트를 그대로 쓰되
+ *  전체를 보여준다(같은 index를 그대로 [onEditFavorite]에 넘기므로 인라인 자리와 항상 같은 색을 가리킨다).
+ *  탭하면 선택, 이미 선택된 칸을 다시 탭하면 그 칸의 색을 바꾸는 색상휠이 뜬다(인라인 스와치와 동일). */
+@Composable
+private fun FavoritesGridPopup(favorites: List<Long>, color: Long, erasing: Boolean, onColor: (Long) -> Unit, onEditFavorite: (Int, Long) -> Unit) {
+    var editAt by remember { mutableIntStateOf(-1) }
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            for (row in 0 until 5) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    for (col in 0 until 4) {
+                        val i = row * 4 + col
+                        val c = favorites.getOrElse(i) { BrushPalette[i % BrushPalette.size] }
+                        val on = !erasing && c == color
+                        val interaction = remember { MutableInteractionSource() }
+                        Box {
+                            Box(
+                                Modifier.size(36.dp)
+                                    .clickable(interactionSource = interaction, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") {
+                                        if (on) editAt = i else onColor(c)
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(Modifier.size(32.dp).clip(CircleShape).indication(interaction, LocalIndication.current)
+                                    .background(Color(c))
+                                    .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape))
+                            }
+                            if (editAt == i) Popup(AboveAnchor(0, 0), { editAt = -1 }, PopupProperties(focusable = true)) {
+                                ColorPickerCard(c) { newColor -> onColor(newColor); onEditFavorite(i, newColor) }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

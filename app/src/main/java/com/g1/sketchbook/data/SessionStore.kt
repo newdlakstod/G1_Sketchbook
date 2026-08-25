@@ -33,12 +33,13 @@ class SessionStore(context: Context) {
     }
     fun loadAvatarImage(): Bitmap? = if (avatarFile.exists()) BitmapFactory.decodeFile(avatarFile.absolutePath) else null
 
-    /** Five editable colour favourites (ARGB longs) for the brush toolbar. */
+    /** 20 editable colour favourites (ARGB longs) — the toolbar shows the first 5 inline, the rest
+     *  live in the "즐겨찾기 전체" grid popup ([FavoritesCount]). */
     var favoriteColors: List<Long>
         get() {
             val raw = prefs.getString(KEY_FAVS, null) ?: return DefaultFavorites
             return runCatching { raw.split(",").map { it.toLong() } }
-                .getOrNull()?.takeIf { it.size == 5 } ?: DefaultFavorites
+                .getOrNull()?.takeIf { it.size == FavoritesCount } ?: DefaultFavorites
         }
         set(value) = prefs.edit().putString(KEY_FAVS, value.joinToString(",")).apply()
 
@@ -114,6 +115,12 @@ class SessionStore(context: Context) {
         private const val KEY_ERASER_OPACITY = "eraser_opacity"
         private const val KEY_ERASER_BLUR = "eraser_blur"
         private const val KEY_SETTINGS_SYNCED_AT = "settings_synced_at"
-        val DefaultFavorites = listOf(0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L)
+        const val FavoritesCount = 20
+        val DefaultFavorites = listOf(
+            0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L,
+            0xFF000000L, 0xFFFFFFFFL, 0xFF808080L, 0xFF2B4C9BL, 0xFF4DABF7L,
+            0xFF4ECDC4L, 0xFF9775FAL, 0xFFCE7A7AL, 0xFFFF8FA3L, 0xFFFFD93DL,
+            0xFF6B4226L, 0xFF2F5233L, 0xFF4B0082L, 0xFFD3D3D3L, 0xFFFF7F50L,
+        )
     }
 }

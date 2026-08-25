@@ -122,7 +122,7 @@ fun syncSettingsUp(session: SessionStore, backup: BackupRepository, uid: String)
 private fun applyRemoteSettings(session: SessionStore, backup: BackupRepository, r: RemoteSettings) {
     if (r.nickname != null) session.nickname = r.nickname
     session.themeMode = r.themeMode
-    if (r.favoriteColors.size == 5) session.favoriteColors = r.favoriteColors
+    if (r.favoriteColors.size == SessionStore.FavoritesCount) session.favoriteColors = r.favoriteColors
     session.twoFingerTapAction = runCatching { GestureAction.valueOf(r.gesture2Tap) }.getOrDefault(GestureAction.NONE)
     session.threeFingerTapAction = runCatching { GestureAction.valueOf(r.gesture3Tap) }.getOrDefault(GestureAction.NONE)
     session.longPressAction = runCatching { GestureAction.valueOf(r.gestureLongPress) }.getOrDefault(GestureAction.NONE)
