@@ -21,11 +21,15 @@ import kotlin.math.min
 class BackupRepository {
     private val root by lazy { FirebaseDatabase.getInstance().reference.child("backups") }
 
-    private fun encode(bmp: Bitmap, maxSide: Int = 1800, quality: Int = 90): String {
+    /** [preserveAlpha]는 스케치북 페이지 전용 — exportContent()로 만든 페이지는 종이 없이 필기만
+     *  투명 배경으로 저장되는데, JPEG은 알파 채널이 없어 투명한 곳이 검은색으로 눌러 붙는다(태블릿↔폰
+     *  전환 시 배경이 검게 보이던 원인). 표지·일기·아바타는 원래부터 불투명이라 지금처럼 JPEG로 용량을 아낀다. */
+    private fun encode(bmp: Bitmap, maxSide: Int = 1800, quality: Int = 90, preserveAlpha: Boolean = false): String {
         val s = min(1f, maxSide.toFloat() / max(bmp.width, bmp.height))
         val scaled = if (s < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * s).toInt(), (bmp.height * s).toInt(), true) else bmp
         val out = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        if (preserveAlpha) scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
+        else scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
         return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }
 
@@ -59,7 +63,7 @@ class BackupRepository {
 
     fun pushSketchbookPage(uid: String, bookId: String, index: Int, bmp: Bitmap, updatedAt: Long) {
         root.child(uid).child("sketchbooks").child(bookId).child("pages").child(index.toString())
-            .setValue(mapOf("updatedAt" to updatedAt, "image" to encode(bmp)))
+            .setValue(mapOf("updatedAt" to updatedAt, "image" to encode(bmp, preserveAlpha = true)))
     }
 
     /** No tombstone needed here (unlike [deleteSketchbookCover]): the only caller is a page reorder,
