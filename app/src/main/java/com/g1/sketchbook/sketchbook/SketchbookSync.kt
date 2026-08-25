@@ -72,10 +72,12 @@ fun deleteSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: Back
     if (uid.isNotBlank()) scope.launch(Dispatchers.IO) { backup.deleteSketchbook(uid, id) }
 }
 
+/** repo.savePage는 PNG 인코딩+디스크 쓰기라 매 붓질(onStrokeEnd)마다 호출되면 메인 스레드에서
+ *  체감될 만큼 느리다 — 반드시 백그라운드 스레드에서 돌려야 한다(동기화 붙이기 전엔 항상 그랬음). */
 fun savePageSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, bookId: String, index: Int, bmp: Bitmap) {
-    repo.savePage(bookId, index, bmp)
-    if (uid.isNotBlank()) scope.launch(Dispatchers.IO) {
-        backup.pushSketchbookPage(uid, bookId, index, bmp, repo.pageUpdatedAt(bookId, index))
+    scope.launch(Dispatchers.IO) {
+        repo.savePage(bookId, index, bmp)
+        if (uid.isNotBlank()) backup.pushSketchbookPage(uid, bookId, index, bmp, repo.pageUpdatedAt(bookId, index))
     }
 }
 
