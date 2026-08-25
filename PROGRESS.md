@@ -4,6 +4,27 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **v2.9.11 배포: 스케치 붓질 렉 수정** (2026-08-25, Claude): 구글 계정 백업/동기화 기능을 붙이며
+  `SketchbookSync.savePageSynced`가 로컬 페이지 저장(`repo.savePage`, PNG 인코딩+디스크 쓰기)을
+  `Dispatchers.IO`로 안 감싸고 호출 스레드(=`onStrokeEnd`가 불리는 메인 스레드)에서 그대로
+  실행하는 회귀가 있었다 — 백업 기능 붙이기 전엔 항상 IO 스레드에서 돌았음. 매 붓질마다
+  발생해 드로잉 렉으로 체감됨. 로컬 저장+백업 업로드를 하나의 IO 코루틴으로 다시 묶어서 고쳤다
+  (다이어리 쪽 `saveCurrent`는 원래도 올바르게 감싸져 있어서 이 버그 없었음). versionCode 115,
+  APK `daymory-v2.9.11-115.apk`, SHA-256 `3E86372ED1E7EB20681A7540B904A08033E67720D8EFD3B210F89463CC573FDB`,
+  GitHub Release로 수동 배포(아래 CI 이슈 때문에 자동 워크플로 대신 로컬 빌드 후 `gh release create`).
+  구글ID 백업/동기화 기능 자체(12개 태스크 + 전체검토 9건 수정)도 이번에 master에 완료·배포(v2.9.8).
+- **CI 릴리스 워크플로(`release.yml`)가 pagecurl 도입 이후 항상 실패함** (2026-08-25 발견, Claude):
+  `:app`이 `:pagecurl` 프로젝트에 의존하는데, 그 경로가 커밋 안 되는 `local.properties`의
+  `pagecurl.dir`(로컬 머신 전용 절대경로)로만 지정돼 있어 GitHub Actions의 fresh checkout에는
+  `:pagecurl` 프로젝트 자체가 없다 ("No matching variant of project :pagecurl was found. No
+  variants exist."). v2.9.9/2.9.10/2.9.11 모두 CI 빌드는 실패했고, 실제 배포는 로컬에서
+  `assembleDebug`로 만든 APK를 `gh release create`로 수동 업로드해서 이뤄짐 — 태그 푸시가 트리거하는
+  CI 실행 자체는 매번 실패로 남지만 릴리스 자산엔 영향 없음. 근본 수정(예: pagecurl을 git
+  submodule로 바꾸거나 CI에서 별도 checkout 스텝 추가)은 아직 안 함 — pagecurl 모듈 배치를 담당한
+  세션과 상의 필요.
+- **빌드 잠금 원인 재확인**: 기존 노트는 "Java 언어서버(redhat.java)"만 지목했는데, 실제로 R.jar를
+  물고 있던 건 VS Code의 **Kotlin** 언어서버(`fwcd.kotlin`, `org.javacs.kt.MainKt`, Android Studio
+  JBR의 java.exe로 구동됨)였다. redhat.java만 죽이면 안 풀리고, 이 프로세스를 찾아 죽여야 풀림.
 - **신규 다이어리 투명 필기 PNG 보조 저장 추가** (2026-08-25): 기존의 종이+필기 합성
   `yyyy-MM-dd.png`와 클라우드 백업 흐름은 그대로 유지하고, 새로 작성되는 다이어리에만 배경 없는
   `yyyy-MM-dd_content.png`를 로컬에 함께 저장한다. 편집기를 다시 열 때는 보조 파일이 있으면 필기
