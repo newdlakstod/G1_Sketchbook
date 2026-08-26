@@ -82,14 +82,16 @@ object Dimens {
         val summarySp = 16.sp       // 연월 타이틀 아래 "이번 달 N일 기록" 요약 글자 크기
     }
 
-    /** 클린 달력 (슬라이드 3·4, CleanCalendarScreen) — 배경화면 캡처용, 바 없음 */
+    /** 클린 달력 (슬라이드 3·4, CleanCalendarScreen) — 좌측 썸네일 달력 열(화면 폭의 42%)에 쓰인다.
+     *  좌우/하단은 좁은 열 안에서 표가 최대한 잘 보이도록 최소화했고(2026-08-26, 이전엔 전체화면
+     *  포스터용으로 71/63.5/45dp였음), 연/월 글자도 그만큼 줄였다. 상단은 그대로 둠. */
     object CleanCalendar {
-        val sidePadding = 71.dp     // 좌우 여백
+        val sidePadding = 12.dp     // 좌우 여백
         val topPadding = 63.5.dp    // 상단 여백
-        val bottomPadding = 45.dp   // 하단 여백
+        val bottomPadding = 12.dp   // 하단 여백
         val titleGap = 14.dp        // 타이틀과 표 사이 간격
-        val yearSp = 26.sp          // 연도 글자 크기
-        val monthSp = 78.sp         // 월 글자 크기
+        val yearSp = 14.sp          // 연도 글자 크기
+        val monthSp = 20.sp         // 월 글자 크기
     }
 
     /** 캔버스/드로잉 (BrushView, 캔버스 화면들) */

@@ -284,7 +284,7 @@ fun BrushControls(
                             .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
                     }
                     if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
-                        ColorPickerCard(color, onColor = onColor, opacity = opacity, favorites = favorites, erasing = erasing,
+                        ColorPickerCard(color, onColor = onColor, opacity = opacity,
                             onOpacity = onOpacity, onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
                     }
                 }
@@ -361,9 +361,26 @@ fun BrushControls(
                     }
                     IconBtn(Icons.Filled.UnfoldLess, "붓 종류 접기", onClick = { brushCategoryExpanded = false })
                 } else {
-                    Box(Modifier.size(ButtonTapSize).bounceClick { brushCategoryExpanded = true }, contentAlignment = Alignment.Center) {
-                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 펼치기",
-                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                    // 접힌 상태에서도 툴바 전체 최소화 모드와 같은 조작: 탭하면 붓 종류 미니 팝업,
+                    // 길게 누르면 지금 붓의 굵기/투명도 패널(2026-08-26). 줄 자체를 다시 펼치려면
+                    // 옆의 화살표 버튼.
+                    Box {
+                        Box(
+                            Modifier.size(ButtonTapSize).bounceClick(onLongClick = { collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 길게 눌러 굵기·투명도 조절",
+                                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                        }
+                        if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
+                            MiniBrushPopup(brush, erasing,
+                                onPick = { onBrush(it); miniBrushPickerOpen = false },
+                                onEraser = { onToggleErase(); miniBrushPickerOpen = false })
+                        }
+                        if (collapsedSizePanelOpen) Popup(sizePopupAnchor, { collapsedSizePanelOpen = false }, PopupProperties(focusable = true)) {
+                            SlidersPanel(!erasing, sizeDp, opacity, onSize, onOpacity,
+                                sizeRange = if (erasing) EraserSizeRange else brushSizeRange(brush))
+                        }
                     }
                     IconBtn(Icons.Filled.UnfoldMore, "붓 종류 펼치기", onClick = { brushCategoryExpanded = true })
                 }
@@ -400,7 +417,7 @@ fun BrushControls(
                         if (editFavAt == i) Popup(popupAnchor, { editFavAt = -1 }, PopupProperties(focusable = true)) {
                             ColorPickerCard(c,
                                 onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
-                                opacity = opacity, favorites = favorites, erasing = erasing,
+                                opacity = opacity,
                                 onOpacity = onOpacity, onEyedrop = { editFavAt = -1; onToggleEyedrop() })
                         }
                     }
@@ -420,7 +437,7 @@ fun BrushControls(
                             .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
                     }
                     if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
-                        ColorPickerCard(color, onColor = onColor, opacity = opacity, favorites = favorites, erasing = erasing,
+                        ColorPickerCard(color, onColor = onColor, opacity = opacity,
                             onOpacity = onOpacity, onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
                     }
                 }
@@ -784,14 +801,15 @@ internal fun RingSliderThumb(valueText: String, accentColor: Color = SliderAccen
     }
 }
 
-/** macOS "색상휠" 탭과 같은 구성: 원형 색상+채도 휠, 그 아래 밝기 바, RGB/HSL 숫자 입력, 그리고
- *  (브러시 툴바에서 열 때만) 불투명도·스포이드·즐겨찾기 미리보기(2026-08-26, 이전엔 SV사각형+Hue바였음).
- *  표지색·달력 오버레이 색상 등 브러시가 아닌 곳에서도 재사용하므로 [opacity]/[favorites]/[onOpacity]/
- *  [onEyedrop]는 전부 선택 — null이면(기본값) 해당 구역을 아예 그리지 않는다. */
+/** macOS "색상휠" 탭과 같은 구성: 원형 색상+채도 휠, 그 아래 밝기 바, RGB/HSL 탭, 그리고
+ *  (브러시 툴바에서 열 때만) 불투명도·스포이드(2026-08-26, 이전엔 SV사각형+Hue바였고 즐겨찾기
+ *  미리보기도 있었으나 툴바/즐겨찾기 전체 그리드와 중복이라 뺐음). 표지색·달력 오버레이 색상
+ *  등 브러시가 아닌 곳에서도 재사용하므로 [opacity]/[onOpacity]/[onEyedrop]는 전부 선택 —
+ *  null이면(기본값) 해당 구역을 아예 그리지 않는다. */
 @Composable
 internal fun ColorPickerCard(
     color: Long, onColor: (Long) -> Unit,
-    opacity: Float? = null, favorites: List<Long>? = null, erasing: Boolean = false,
+    opacity: Float? = null,
     onOpacity: ((Float) -> Unit)? = null, onEyedrop: (() -> Unit)? = null,
 ) {
     val init = remember { FloatArray(3).also { AndroidColor.colorToHSV((color and 0xFFFFFFFF).toInt(), it) } }
@@ -901,19 +919,6 @@ internal fun ColorPickerCard(
                     IconBtn(Icons.Filled.Colorize, "스포이드", onClick = onEyedrop)
                 }
             }
-            if (favorites != null) {
-                Spacer(Modifier.height(10.dp))
-                // 즐겨찾기 미리보기 — 탭하면 바로 적용(수정은 툴바의 "즐겨찾기 전체" 그리드에서).
-                FavoritesGrid(favorites) { i, c ->
-                    val on = !erasing && c == currentPacked
-                    Box(
-                        Modifier.size(FavoriteSwatchSize).clip(CircleShape)
-                            .background(Color(c))
-                            .border(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") { onColor(c) },
-                    )
-                }
-            }
         }
     }
 }
@@ -947,9 +952,9 @@ private fun RgbSliders(hue: Float, sat: Float, value: Float, onHsv: (Float, Floa
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        LabeledSliderRow("R", "$r", r.toFloat(), 0f..255f) { commit(it.roundToInt(), g, b) }
-        LabeledSliderRow("G", "$g", g.toFloat(), 0f..255f) { commit(r, it.roundToInt(), b) }
-        LabeledSliderRow("B", "$b", b.toFloat(), 0f..255f) { commit(r, g, it.roundToInt()) }
+        LabeledSliderRow("R", "$r", r.toFloat(), 0f..255f, listOf(Color(0, g, b), Color(255, g, b))) { commit(it.roundToInt(), g, b) }
+        LabeledSliderRow("G", "$g", g.toFloat(), 0f..255f, listOf(Color(r, 0, b), Color(r, 255, b))) { commit(r, it.roundToInt(), b) }
+        LabeledSliderRow("B", "$b", b.toFloat(), 0f..255f, listOf(Color(r, g, 0), Color(r, g, 255))) { commit(r, g, it.roundToInt()) }
     }
 }
 
@@ -969,17 +974,27 @@ private fun HslSliders(hue: Float, sat: Float, value: Float, onHsv: (Float, Floa
         onHsv(out[0], out[1], out[2])
     }
 
+    // 채도 막대는 지금 색상·밝기는 고정한 채 채도 0%(회색)~100%(꽉 찬 색)만 보여준다 — 밝기 막대는
+    // 순수 검정~흰색(어떤 색이든 밝기 축은 똑같이 보이도록, 이미지 시안과 동일).
+    val satColors = remember(hue, hsl.third) {
+        val (r0, g0, b0) = hslToRgb(hue, 0f, hsl.third)
+        val (r1, g1, b1) = hslToRgb(hue, 1f, hsl.third)
+        listOf(Color(r0, g0, b0), Color(r1, g1, b1))
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        LabeledSliderRow("H", "${hsl.first.roundToInt()}", hsl.first, 0f..360f) { commit(it, hsl.second, hsl.third) }
-        LabeledSliderRow("S", "${(hsl.second * 100).roundToInt()}", hsl.second * 100f, 0f..100f) { commit(hsl.first, it / 100f, hsl.third) }
-        LabeledSliderRow("L", "${(hsl.third * 100).roundToInt()}", hsl.third * 100f, 0f..100f) { commit(hsl.first, hsl.second, it / 100f) }
+        LabeledSliderRow("H", "${hsl.first.roundToInt()}", hsl.first, 0f..360f, HueWheel) { commit(it, hsl.second, hsl.third) }
+        LabeledSliderRow("S", "${(hsl.second * 100).roundToInt()}", hsl.second * 100f, 0f..100f, satColors) { commit(hsl.first, it / 100f, hsl.third) }
+        LabeledSliderRow("L", "${(hsl.third * 100).roundToInt()}", hsl.third * 100f, 0f..100f, listOf(Color.Black, Color.White)) { commit(hsl.first, hsl.second, it / 100f) }
     }
 }
 
-/** [IconSliderRow]와 같은 트랙/썸 스타일이지만 아이콘 대신 짧은 글자 라벨(R/G/B/H/S/L)을 쓴다. */
+/** [IconSliderRow]와 비슷한 라벨+슬라이더 한 줄이지만, 아이콘 대신 짧은 글자 라벨(R/G/B/H/S/L)을
+ *  쓰고 트랙은 그 축을 움직이면 실제로 어떤 색이 되는지 양 끝~중간까지 그라디언트로 보여준다
+ *  (2026-08-26, 무채색 트랙 대신 — 값 자체가 색이라 트랙에서 미리 보는 쪽이 더 쓸모 있었음). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LabeledSliderRow(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+private fun LabeledSliderRow(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, trackColors: List<Color>, onChange: (Float) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(16.dp))
         Spacer(Modifier.width(10.dp))
@@ -987,10 +1002,22 @@ private fun LabeledSliderRow(label: String, valueText: String, value: Float, ran
             value = value,
             onValueChange = onChange,
             valueRange = range,
-            track = { state -> GradientSliderTrack(state, NeutralSliderAccentColor) },
+            track = { ColorGradientTrack(trackColors) },
             thumb = { RingSliderThumb(valueText, NeutralSliderAccentColor) },
             modifier = Modifier.weight(1f),
         )
+    }
+}
+
+/** 슬라이더가 조절하는 축 전체(양 끝값)를 그대로 보여주는 트랙 — 지금 값까지만 칠하는 일반
+ *  진행바(GradientSliderTrack)와 달리, 위치 전체가 "여기로 옮기면 이 색"이라는 미리보기라 처음부터
+ *  끝까지 다 칠한다. */
+@Composable
+private fun ColorGradientTrack(colors: List<Color>) {
+    Canvas(Modifier.fillMaxWidth().height(SliderThumbTouchSize)) {
+        val strokeWidthPx = SliderTrackHeight.toPx()
+        val y = size.height / 2f
+        drawLine(brush = Brush.horizontalGradient(colors), start = Offset(0f, y), end = Offset(size.width, y), strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
     }
 }
 
@@ -1060,7 +1087,7 @@ private fun FavoritesGridPopup(
                     if (editAt == i) Popup(AboveAnchor(0, 0), { editAt = -1 }, PopupProperties(focusable = true)) {
                         ColorPickerCard(c,
                             onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
-                            opacity = opacity, favorites = favorites, erasing = erasing,
+                            opacity = opacity,
                             onOpacity = onOpacity, onEyedrop = { editAt = -1; onEyedrop() })
                     }
                 }
