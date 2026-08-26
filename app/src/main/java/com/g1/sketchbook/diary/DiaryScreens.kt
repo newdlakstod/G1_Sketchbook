@@ -126,6 +126,8 @@ import com.g1.sketchbook.ui.theme.Cavorting
 import com.g1.sketchbook.ui.theme.Dimens
 import com.g1.sketchbook.ui.theme.Pretendard
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.withContext
@@ -166,18 +168,43 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     val storesTransparentContent = remember(repo, date) {
         repo != null && (!repo.hasEntry(date) || repo.hasContent(date))
     }
-    fun saveCurrent(v: BrushView) {
-        val composited = v.exportBitmap() ?: return
-        val content = if (storesTransparentContent) v.exportContent() else null
-        scope.launch(Dispatchers.IO) {
-            if (content != null) repo?.saveContent(date, content)
-            repo?.save(date, composited)
-            if (myUid.isNotBlank()) repo?.let {
-                backup.pushDiaryDay(myUid, date, composited, it.updatedAt(date))
+    // 종이+필기를 합성한 exportBitmap()은 새 비트맵 할당 + 종이질감 합성 그리기라 붓질마다 부르면
+    // (특히 해칭처럼 짧은 붓질을 연달아 그을 때) 메인 스레드 렉으로 체감된다. 되돌리기에 쓰이는
+    // 필기 전용 content는 단순 복사라 가볍고 손실 위험도 없으니 매 붓질 그대로 저장하고, 무거운
+    // 합성 저장(달력 썸네일·백업용)만 그리기가 잠시 멈춘 뒤 한 번 모아서 한다(2026-08-26).
+    var pendingCompositeJob by remember { mutableStateOf<Job?>(null) }
+
+    fun scheduleCompositeSave(v: BrushView) {
+        pendingCompositeJob?.cancel()
+        pendingCompositeJob = scope.launch {
+            delay(800)
+            val composited = v.exportBitmap() ?: return@launch
+            withContext(Dispatchers.IO) {
+                repo?.save(date, composited)
+                if (myUid.isNotBlank()) repo?.let { backup.pushDiaryDay(myUid, date, composited, it.updatedAt(date)) }
+                composited.recycle()
             }
-            content?.recycle()
+        }
+    }
+
+    /** 화면을 나가거나 전체 지우기처럼 결과를 바로 반영해야 할 때 — 대기 중인 디바운스를 취소하고
+     *  지금 상태로 즉시 한 번 합성 저장한다. */
+    fun flushCompositeSave(v: BrushView) {
+        pendingCompositeJob?.cancel()
+        val composited = v.exportBitmap() ?: return
+        scope.launch(Dispatchers.IO) {
+            repo?.save(date, composited)
+            if (myUid.isNotBlank()) repo?.let { backup.pushDiaryDay(myUid, date, composited, it.updatedAt(date)) }
             composited.recycle()
         }
+    }
+
+    fun saveCurrent(v: BrushView) {
+        if (storesTransparentContent) {
+            val content = v.exportContent()
+            if (content != null) scope.launch(Dispatchers.IO) { repo?.saveContent(date, content); content.recycle() }
+        }
+        scheduleCompositeSave(v)
     }
     // 스케치북/공유노트와 동일한 오버레이+dock+드래그+최소화+잠금+전체화면 구조로 통일(2026-08-20,
     // 예전엔 캔버스 아래 고정된 단순 바 하나뿐이었음). 다이어리는 하루 단위라 페이지 버튼만 없다.
@@ -187,11 +214,14 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
     var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
+    // 나가기 전엔 디바운스 중이던 합성 저장을 기다리지 않고 바로 한 번 반영 — 마지막 몇 붓질이
+    // 최대 800ms 늦게 반영되는 것조차 남지 않도록.
+    val flushAndBack: () -> Unit = { view?.let(::flushCompositeSave); onBack() }
     com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
     BackHandler {
         when {
             fullscreen -> fullscreen = false
-            else -> onBack()
+            else -> flushAndBack()
         }
     }
     androidx.compose.foundation.layout.BoxWithConstraints(
@@ -253,9 +283,14 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
             onClear = {
                 view?.clearCanvas()
-                view?.let(::saveCurrent)
+                view?.let { v ->
+                    if (storesTransparentContent) v.exportContent()?.let { content ->
+                        scope.launch(Dispatchers.IO) { repo?.saveContent(date, content); content.recycle() }
+                    }
+                    flushCompositeSave(v)
+                }
             },
-            onBack = onBack,
+            onBack = flushAndBack,
             favorites = favorites,
             onEditFavorite = { i, c ->
                 val nf = favorites.toMutableList(); nf[i] = c; favorites = nf
