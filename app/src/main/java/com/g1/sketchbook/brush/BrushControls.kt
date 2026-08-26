@@ -215,6 +215,7 @@ fun BrushControls(
     var openEraserPanel by remember { mutableStateOf(false) }
     var miniBrushPickerOpen by remember { mutableStateOf(false) }
     var collapsedSizePanelOpen by remember { mutableStateOf(false) } // 최소화 모드: 브러시 아이콘 길게 누르면 굵기/투명도 패널
+    var brushCategoryExpanded by remember { mutableStateOf(true) } // 붓 종류(펜/연필/크레파스/수채화/지우개) 묶음 접기
     val gap = with(LocalDensity.current) { 8.dp.roundToPx() }
     val screenEdgeMargin = with(LocalDensity.current) { 20.dp.roundToPx() }
     val vertical = dock == ToolbarDock.LEFT || dock == ToolbarDock.RIGHT
@@ -317,43 +318,55 @@ fun BrushControls(
                 onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
             }
             add {
-                // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
-                // width/opacity panel (anchored, not a single shared control).
-                BrushBtnWithPanel(!erasing && brush == BrushType.PEN, sizeDp, opacity, true, sizePopupAnchor,
-                    panelOpen = openBrushPanel == BrushType.PEN,
-                    setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PEN else null; if (o) openEraserPanel = false },
-                    onClick = { onBrush(BrushType.PEN); openBrushPanel = null; openEraserPanel = false },
-                    onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.PEN)) { t ->
-                    Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
-                }
-                BrushBtnWithPanel(!erasing && brush == BrushType.PENCIL, sizeDp, opacity, true, sizePopupAnchor,
-                    panelOpen = openBrushPanel == BrushType.PENCIL,
-                    setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PENCIL else null; if (o) openEraserPanel = false },
-                    onClick = { onBrush(BrushType.PENCIL); openBrushPanel = null; openEraserPanel = false },
-                    onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.PENCIL)) { t ->
-                    Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
-                }
-                BrushBtnWithPanel(!erasing && brush == BrushType.CRAYON, sizeDp, opacity, true, sizePopupAnchor,
-                    panelOpen = openBrushPanel == BrushType.CRAYON,
-                    setPanelOpen = { o -> openBrushPanel = if (o) BrushType.CRAYON else null; if (o) openEraserPanel = false },
-                    onClick = { onBrush(BrushType.CRAYON); openBrushPanel = null; openEraserPanel = false },
-                    onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.CRAYON)) { t ->
-                    Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
-                }
-                BrushBtnWithPanel(!erasing && brush == BrushType.WATER, sizeDp, opacity, true, sizePopupAnchor,
-                    panelOpen = openBrushPanel == BrushType.WATER,
-                    setPanelOpen = { o -> openBrushPanel = if (o) BrushType.WATER else null; if (o) openEraserPanel = false },
-                    onClick = { onBrush(BrushType.WATER); openBrushPanel = null; openEraserPanel = false },
-                    onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.WATER)) { t ->
-                    Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
-                }
-                BrushBtnWithPanel(erasing, sizeDp, opacity, true, sizePopupAnchor,
-                    panelOpen = openEraserPanel,
-                    setPanelOpen = { o -> openEraserPanel = o; if (o) openBrushPanel = null },
-                    onClick = { onToggleErase(); openBrushPanel = null; openEraserPanel = false },
-                    onSize = onSize, onOpacity = onOpacity,
-                    showBlur = true, blur = eraserBlur, onBlur = onEraserBlur, sizeRange = EraserSizeRange) { t ->
-                    Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                // 붓 종류(펜/연필/크레파스/수채화/지우개) 묶음 — 접으면 지금 쓰는 도구 아이콘 하나만
+                // 남고, 탭하면 다시 5개가 펼쳐진다(2026-08-26, 툴바 전체 최소화와 별개로 이 묶음만
+                // 따로 접을 수 있게).
+                if (brushCategoryExpanded) {
+                    // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
+                    // width/opacity panel (anchored, not a single shared control).
+                    BrushBtnWithPanel(!erasing && brush == BrushType.PEN, sizeDp, opacity, true, sizePopupAnchor,
+                        panelOpen = openBrushPanel == BrushType.PEN,
+                        setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PEN else null; if (o) openEraserPanel = false },
+                        onClick = { onBrush(BrushType.PEN); openBrushPanel = null; openEraserPanel = false },
+                        onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.PEN)) { t ->
+                        Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                    }
+                    BrushBtnWithPanel(!erasing && brush == BrushType.PENCIL, sizeDp, opacity, true, sizePopupAnchor,
+                        panelOpen = openBrushPanel == BrushType.PENCIL,
+                        setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PENCIL else null; if (o) openEraserPanel = false },
+                        onClick = { onBrush(BrushType.PENCIL); openBrushPanel = null; openEraserPanel = false },
+                        onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.PENCIL)) { t ->
+                        Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                    }
+                    BrushBtnWithPanel(!erasing && brush == BrushType.CRAYON, sizeDp, opacity, true, sizePopupAnchor,
+                        panelOpen = openBrushPanel == BrushType.CRAYON,
+                        setPanelOpen = { o -> openBrushPanel = if (o) BrushType.CRAYON else null; if (o) openEraserPanel = false },
+                        onClick = { onBrush(BrushType.CRAYON); openBrushPanel = null; openEraserPanel = false },
+                        onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.CRAYON)) { t ->
+                        Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                    }
+                    BrushBtnWithPanel(!erasing && brush == BrushType.WATER, sizeDp, opacity, true, sizePopupAnchor,
+                        panelOpen = openBrushPanel == BrushType.WATER,
+                        setPanelOpen = { o -> openBrushPanel = if (o) BrushType.WATER else null; if (o) openEraserPanel = false },
+                        onClick = { onBrush(BrushType.WATER); openBrushPanel = null; openEraserPanel = false },
+                        onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.WATER)) { t ->
+                        Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                    }
+                    BrushBtnWithPanel(erasing, sizeDp, opacity, true, sizePopupAnchor,
+                        panelOpen = openEraserPanel,
+                        setPanelOpen = { o -> openEraserPanel = o; if (o) openBrushPanel = null },
+                        onClick = { onToggleErase(); openBrushPanel = null; openEraserPanel = false },
+                        onSize = onSize, onOpacity = onOpacity,
+                        showBlur = true, blur = eraserBlur, onBlur = onEraserBlur, sizeRange = EraserSizeRange) { t ->
+                        Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                    }
+                    IconBtn(Icons.Filled.UnfoldLess, "붓 종류 접기", onClick = { brushCategoryExpanded = false })
+                } else {
+                    Box(Modifier.size(ButtonTapSize).bounceClick { brushCategoryExpanded = true }, contentAlignment = Alignment.Center) {
+                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 펼치기",
+                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                    }
+                    IconBtn(Icons.Filled.UnfoldMore, "붓 종류 펼치기", onClick = { brushCategoryExpanded = true })
                 }
                 // 올가미(선택)·페인트통(채우기) — 굵기/불투명도 패널이 필요 없는 단순 토글이라
                 // 다른 브러시 버튼과 달리 팝업 없이 바로 켜고 끈다(스포이드 버튼과 같은 패턴).
