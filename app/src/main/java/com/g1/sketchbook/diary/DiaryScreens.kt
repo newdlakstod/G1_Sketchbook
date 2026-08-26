@@ -2,6 +2,7 @@ package com.g1.sketchbook.diary
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
@@ -89,6 +90,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -477,10 +479,9 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
     }
 }
 
-/** Slides 3 & 4 — clean, bar-less full-screen: 좌측엔 썸네일 달력(6×7), 우측엔 지금 고른 날짜의
- *  스케치를 항상 같이 보여준다(2026-08-26, 이전엔 달력만 보이다가 날짜를 탭해야 스케치로 전환되는
- *  1단계 방식이었음). 들어오자마자는 오늘 날짜가 우측에 뜨고, 달력에서 다른 날을 탭하거나 우측
- *  스케치를 좌우로 스와이프하면 우측이 그 날짜로 바뀐다(달력도 같이 그 달로 넘어감). */
+/** Slides 3 & 4 — clean, bar-less. 가로일 때만 좌측 썸네일 달력(6×7) + 우측 지금 고른 날짜의
+ *  스케치를 항상 같이 보여준다(2026-08-26). 세로는 원래 방향 그대로: 달력만 전체화면으로 보이다가
+ *  날짜를 탭하면 그 스케치로 화면이 통째로 바뀌는 1단계 방식(뒤로가기로 달력으로 돌아옴). */
 @Composable
 fun CleanCalendarScreen(
     year: Int,
@@ -493,15 +494,17 @@ fun CleanCalendarScreen(
     val ctx = LocalContext.current
     val repo = if (previewMode) null else remember(ctx) { DiaryRepository(ctx) }
     val today = remember(repo) { repo?.today() ?: "2026-08-17" }
-    // 우측 상세에서 좌우 스와이프로 날짜를 넘기면 월 경계를 넘을 수 있어 연/월을 내부 상태로 들고
-    // 있는다(파라미터 year/month는 최초 진입 시점의 값일 뿐).
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // 우측/전체 상세에서 좌우 스와이프로 날짜를 넘기면 월 경계를 넘을 수 있어 연/월을 내부 상태로
+    // 들고 있는다(파라미터 year/month는 최초 진입 시점의 값일 뿐).
     var curYear by remember { mutableIntStateOf(year) }
     var curMonth by remember { mutableIntStateOf(month) }
     var thumbs by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
     LaunchedEffect(curYear, curMonth, repo) {
         if (repo != null) thumbs = withContext(Dispatchers.IO) { buildThumbs(repo, curYear, curMonth) }
     }
-    var detailDate by remember { mutableStateOf(previewDetailDate ?: today) }
+    // null = (세로 전용) 달력만 보이는 상태. 가로에선 null이어도 오늘 날짜를 우측에 띄운다.
+    var detailDate by remember(previewDetailDate) { mutableStateOf(previewDetailDate) }
     fun navigate(newDate: String) {
         detailDate = newDate
         val parts = newDate.split("-")
@@ -509,23 +512,43 @@ fun CleanCalendarScreen(
         curMonth = parts[1].toInt() - 1
     }
 
-    BackHandler { onBack() }
+    BackHandler { if (!landscape && detailDate != null) detailDate = null else onBack() }
 
-    Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(
-            Modifier.weight(0.42f).fillMaxHeight().systemBarsPadding()
-                .padding(start = Dimens.CleanCalendar.sidePadding, end = Dimens.CleanCalendar.sidePadding,
-                    top = Dimens.CleanCalendar.topPadding, bottom = Dimens.CleanCalendar.bottomPadding),
-        ) {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$curYear", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(MonthNames[curMonth], fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.monthSp, maxLines = 1)
+    if (landscape) {
+        Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            Column(
+                Modifier.weight(0.42f).fillMaxHeight().systemBarsPadding()
+                    .padding(start = Dimens.CleanCalendar.landscapeSidePadding, end = Dimens.CleanCalendar.landscapeSidePadding,
+                        top = Dimens.CleanCalendar.topPadding, bottom = Dimens.CleanCalendar.landscapeBottomPadding),
+            ) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("$curYear", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.landscapeYearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(MonthNames[curMonth], fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.landscapeMonthSp, maxLines = 1)
+                }
+                Spacer(Modifier.height(Dimens.CleanCalendar.titleGap))
+                CleanGrid(curYear, curMonth, thumbs, Modifier.weight(1f).fillMaxWidth()) { navigate(it) }
             }
-            Spacer(Modifier.height(Dimens.CleanCalendar.titleGap))
-            CleanGrid(curYear, curMonth, thumbs, Modifier.weight(1f).fillMaxWidth()) { navigate(it) }
+            // 우측 상세는 남은 폭을 꽉 채운다 — 그림이 그 안을 채우고 날짜는 그 위 워터마크로만 표시.
+            CleanDetailBody(repo, detailDate ?: today, Modifier.weight(0.58f).fillMaxHeight(), previewBitmap = previewBitmap) { navigate(it) }
         }
-        // 우측 상세는 남은 폭을 꽉 채운다 — 그림이 그 안을 채우고 날짜는 그 위 워터마크로만 표시.
-        CleanDetailBody(repo, detailDate, Modifier.weight(0.58f).fillMaxHeight(), previewBitmap = previewBitmap) { navigate(it) }
+    } else {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            if (detailDate == null) {
+                Column(Modifier.fillMaxSize().systemBarsPadding()
+                    .padding(start = Dimens.CleanCalendar.sidePadding, end = Dimens.CleanCalendar.sidePadding,
+                        top = Dimens.CleanCalendar.topPadding, bottom = Dimens.CleanCalendar.bottomPadding)) {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("$curYear", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(MonthNames[curMonth], fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.monthSp, maxLines = 1)
+                    }
+                    Spacer(Modifier.height(Dimens.CleanCalendar.titleGap))
+                    CleanGrid(curYear, curMonth, thumbs, Modifier.weight(1f).fillMaxWidth()) { navigate(it) }
+                }
+            } else {
+                // 일자 상세는 전체화면 — 그림이 화면을 꽉 채우고 날짜는 그 위 워터마크로만 표시(별도 헤더 없음).
+                CleanDetailBody(repo, detailDate!!, Modifier.fillMaxSize(), previewBitmap = previewBitmap) { navigate(it) }
+            }
+        }
     }
 }
 

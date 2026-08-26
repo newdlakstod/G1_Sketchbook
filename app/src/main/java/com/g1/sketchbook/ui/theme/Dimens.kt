@@ -82,16 +82,21 @@ object Dimens {
         val summarySp = 16.sp       // 연월 타이틀 아래 "이번 달 N일 기록" 요약 글자 크기
     }
 
-    /** 클린 달력 (슬라이드 3·4, CleanCalendarScreen) — 좌측 썸네일 달력 열(화면 폭의 42%)에 쓰인다.
-     *  좌우/하단은 좁은 열 안에서 표가 최대한 잘 보이도록 최소화했고(2026-08-26, 이전엔 전체화면
-     *  포스터용으로 71/63.5/45dp였음), 연/월 글자도 그만큼 줄였다. 상단은 그대로 둠. */
+    /** 클린 달력 (슬라이드 3·4, CleanCalendarScreen). 세로는 원래대로 전체화면 포스터 느낌(달력만
+     *  꽉 채우다가 날짜를 탭하면 스케치로 전환) — 여백·글자가 크다. 가로는 좌측 썸네일 달력 열
+     *  (화면 폭의 42%)과 우측 스케치를 항상 같이 보여주므로(2026-08-26), 좁은 열 안에 표가 잘
+     *  들어가도록 landscape* 값들만 따로 훨씬 작게 뒀다. */
     object CleanCalendar {
-        val sidePadding = 12.dp     // 좌우 여백
-        val topPadding = 63.5.dp    // 상단 여백
-        val bottomPadding = 12.dp   // 하단 여백
-        val titleGap = 14.dp        // 타이틀과 표 사이 간격
-        val yearSp = 14.sp          // 연도 글자 크기
-        val monthSp = 20.sp         // 월 글자 크기
+        val sidePadding = 71.dp     // 좌우 여백 (세로)
+        val topPadding = 63.5.dp    // 상단 여백 (세로·가로 공통)
+        val bottomPadding = 45.dp   // 하단 여백 (세로)
+        val titleGap = 14.dp        // 타이틀과 표 사이 간격 (세로·가로 공통)
+        val yearSp = 26.sp          // 연도 글자 크기 (세로)
+        val monthSp = 78.sp         // 월 글자 크기 (세로)
+        val landscapeSidePadding = 12.dp
+        val landscapeBottomPadding = 12.dp
+        val landscapeYearSp = 14.sp
+        val landscapeMonthSp = 20.sp
     }
 
     /** 캔버스/드로잉 (BrushView, 캔버스 화면들) */
