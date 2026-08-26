@@ -617,6 +617,9 @@ internal const val MaxBrushSize = 96f
 private val SizeRange = MinBrushSize..MaxBrushSize
 private val BlurRange = 0f..32f
 private val SliderAccentColor = Color(0xFFE85555)
+// RGB/HSL 슬라이더 전용 — 이 슬라이더가 조절하는 값 자체가 색상이라, 트랙까지 색이 있으면 어떤 색을
+// 만들고 있는지 헷갈린다. 무채색으로 고정.
+private val NeutralSliderAccentColor = Color(0xFF8A8A8A)
 internal val SliderThumbSize = 30.dp
 internal val SliderThumbTouchSize = 40.dp
 internal val SliderTrackHeight = 6.dp
@@ -740,73 +743,89 @@ internal fun ColorPickerCard(
     fun emit() = onColor(currentPacked)
     val current = Color(currentPacked)
 
+    var tab by remember { mutableStateOf(PickerTab.WHEEL) }
+
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Column(Modifier.width(260.dp).padding(16.dp)) {
-            // 원형 휠: 각도=색상, 중심에서의 거리=채도 (밝기는 아래 별도 막대) — sweepGradient(색상)
-            // 위에 중심이 불투명 흰색인 radialGradient를 정상 알파합성으로 겹쳐서, 중심에 가까울수록
-            // 흰색과 섞여 채도가 낮아지는 정확한 HSV(V=1 단면) 색을 얻는다.
-            Box(
-                Modifier.fillMaxWidth().height(220.dp)
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val p = awaitPointerEvent().changes.first().position
-                                val cx = size.width / 2f; val cy = size.height / 2f
-                                val radius = min(cx, cy)
-                                val dx = p.x - cx; val dy = p.y - cy
-                                val dist = sqrt(dx * dx + dy * dy).coerceAtMost(radius)
-                                var angle = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
-                                if (angle < 0f) angle += 360f
-                                hue = angle
-                                sat = if (radius > 0f) dist / radius else 0f
-                                emit()
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val radius = min(size.width, size.height) / 2f
-                    val center = Offset(size.width / 2f, size.height / 2f)
-                    drawCircle(brush = Brush.sweepGradient(HueWheel), radius = radius, center = center)
-                    drawCircle(
-                        brush = Brush.radialGradient(listOf(Color.White, Color.White.copy(alpha = 0f)), center = center, radius = radius),
-                        radius = radius, center = center,
-                    )
-                    val angleRad = Math.toRadians(hue.toDouble())
-                    val pointR = sat * radius
-                    val p = Offset(center.x + (cos(angleRad) * pointR).toFloat(), center.y + (sin(angleRad) * pointR).toFloat())
-                    drawCircle(Color.White, 7.dp.toPx(), p, style = Stroke(2.5f.dp.toPx()))
-                    drawCircle(Color.Black.copy(alpha = 0.5f), 7.dp.toPx(), p, style = Stroke(1.dp.toPx()))
+            // 상단 탭: 휠 / 슬라이더 — 한 번에 하나만 보여서 카드가 RGB·HSL까지 항상 펼쳐 보일 때보다
+            // 훨씬 덜 길다(macOS 색상피커 탭 구성과 동일, 2026-08-26).
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PickerTabIcon(tab == PickerTab.WHEEL, "색상휠", { tab = PickerTab.WHEEL }) {
+                    Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.sweepGradient(HueWheel)))
+                }
+                PickerTabIcon(tab == PickerTab.SLIDERS, "RGB·HSL 슬라이더", { tab = PickerTab.SLIDERS }) {
+                    Icon(Icons.Filled.Tune, null, modifier = Modifier.size(20.dp))
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            // 밝기(Value) 막대 — 색상은 이제 휠이 담당하므로 이 막대는 흰색(밝음)~검정(어두움)만 표현.
-            Box(
-                Modifier.fillMaxWidth().height(22.dp).clip(RoundedCornerShape(11.dp))
-                    .background(Brush.horizontalGradient(listOf(Color.White, Color.Black)))
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val x = awaitPointerEvent().changes.first().position.x
-                                value = (1f - x / size.width).coerceIn(0f, 1f)
-                                emit()
-                            }
+            Spacer(Modifier.height(12.dp))
+            when (tab) {
+                PickerTab.WHEEL -> {
+                    // 원형 휠: 각도=색상, 중심에서의 거리=채도 (밝기는 아래 별도 막대) — sweepGradient(색상)
+                    // 위에 중심이 불투명 흰색인 radialGradient를 정상 알파합성으로 겹쳐서, 중심에 가까울수록
+                    // 흰색과 섞여 채도가 낮아지는 정확한 HSV(V=1 단면) 색을 얻는다.
+                    Box(
+                        Modifier.fillMaxWidth().height(220.dp)
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val p = awaitPointerEvent().changes.first().position
+                                        val cx = size.width / 2f; val cy = size.height / 2f
+                                        val radius = min(cx, cy)
+                                        val dx = p.x - cx; val dy = p.y - cy
+                                        val dist = sqrt(dx * dx + dy * dy).coerceAtMost(radius)
+                                        var angle = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
+                                        if (angle < 0f) angle += 360f
+                                        hue = angle
+                                        sat = if (radius > 0f) dist / radius else 0f
+                                        emit()
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Canvas(Modifier.fillMaxSize()) {
+                            val radius = min(size.width, size.height) / 2f
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            drawCircle(brush = Brush.sweepGradient(HueWheel), radius = radius, center = center)
+                            drawCircle(
+                                brush = Brush.radialGradient(listOf(Color.White, Color.White.copy(alpha = 0f)), center = center, radius = radius),
+                                radius = radius, center = center,
+                            )
+                            val angleRad = Math.toRadians(hue.toDouble())
+                            val pointR = sat * radius
+                            val p = Offset(center.x + (cos(angleRad) * pointR).toFloat(), center.y + (sin(angleRad) * pointR).toFloat())
+                            drawCircle(Color.White, 7.dp.toPx(), p, style = Stroke(2.5f.dp.toPx()))
+                            drawCircle(Color.Black.copy(alpha = 0.5f), 7.dp.toPx(), p, style = Stroke(1.dp.toPx()))
                         }
-                    },
-            ) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val r = size.height / 2f
-                    val x = ((1f - value) * size.width).coerceIn(r, size.width - r)
-                    drawCircle(Color.White, r - 1.dp.toPx(), Offset(x, r), style = Stroke(2.5f.dp.toPx()))
-                    drawCircle(Color.Black.copy(alpha = 0.5f), r - 1.dp.toPx(), Offset(x, r), style = Stroke(1.dp.toPx()))
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    // 밝기(Value) 막대 — 색상은 이제 휠이 담당하므로 이 막대는 흰색(밝음)~검정(어두움)만 표현.
+                    Box(
+                        Modifier.fillMaxWidth().height(22.dp).clip(RoundedCornerShape(11.dp))
+                            .background(Brush.horizontalGradient(listOf(Color.White, Color.Black)))
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val x = awaitPointerEvent().changes.first().position.x
+                                        value = (1f - x / size.width).coerceIn(0f, 1f)
+                                        emit()
+                                    }
+                                }
+                            },
+                    ) {
+                        Canvas(Modifier.fillMaxSize()) {
+                            val r = size.height / 2f
+                            val x = ((1f - value) * size.width).coerceIn(r, size.width - r)
+                            drawCircle(Color.White, r - 1.dp.toPx(), Offset(x, r), style = Stroke(2.5f.dp.toPx()))
+                            drawCircle(Color.Black.copy(alpha = 0.5f), r - 1.dp.toPx(), Offset(x, r), style = Stroke(1.dp.toPx()))
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text("#%06X".format(0xFFFFFF and AndroidColor.HSVToColor(floatArrayOf(hue, sat, value))),
+                        fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
+                PickerTab.SLIDERS -> ColorNumberFields(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
             }
-            Spacer(Modifier.height(10.dp))
-            Text("#%06X".format(0xFFFFFF and AndroidColor.HSVToColor(floatArrayOf(hue, sat, value))),
-                fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(8.dp))
-            ColorNumberFields(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
             if (opacity != null && onOpacity != null) {
                 Spacer(Modifier.height(12.dp))
                 IconSliderRow(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
@@ -841,6 +860,19 @@ internal fun ColorPickerCard(
             }
         }
     }
+}
+
+private enum class PickerTab { WHEEL, SLIDERS }
+
+/** 색상 카드 상단의 작은 탭 버튼 — 선택된 쪽만 옅게 배경이 들어온다. */
+@Composable
+private fun PickerTabIcon(selected: Boolean, desc: String, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
+            .background(if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = desc, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { content() }
 }
 
 /** RGB(0~255)·HSL(H 0~360, S/L 0~100) 슬라이더 — 위 원형 휠/밝기 막대와 같은 색을 다른 축으로도
@@ -886,8 +918,8 @@ private fun LabeledSliderRow(label: String, valueText: String, value: Float, ran
             value = value,
             onValueChange = onChange,
             valueRange = range,
-            track = { state -> GradientSliderTrack(state) },
-            thumb = { RingSliderThumb(valueText) },
+            track = { state -> GradientSliderTrack(state, NeutralSliderAccentColor) },
+            thumb = { RingSliderThumb(valueText, NeutralSliderAccentColor) },
             modifier = Modifier.weight(1f),
         )
     }
