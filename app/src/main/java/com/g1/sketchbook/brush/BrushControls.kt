@@ -99,7 +99,12 @@ import androidx.compose.ui.window.PopupProperties
 import com.g1.sketchbook.R
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Dimens
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** 버튼바를 붙여둘 화면 가장자리 — 길게 눌러 드래그하면 놓은 위치에서 가장 가까운 쪽으로 붙는다. */
 enum class ToolbarDock { TOP, BOTTOM, LEFT, RIGHT }
@@ -257,7 +262,8 @@ fun BrushControls(
                             .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
                     }
                     if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
-                        ColorPickerCard(color, onColor)
+                        ColorPickerCard(color, onColor = onColor, opacity = opacity, favorites = favorites, erasing = erasing,
+                            onOpacity = onOpacity, onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
                     }
                 }
                 onToggleCollapsed?.let { IconBtn(Icons.Filled.UnfoldMore, "버튼바 펼치기", onClick = it) }
@@ -361,7 +367,10 @@ fun BrushControls(
                                 .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape))
                         }
                         if (editFavAt == i) Popup(popupAnchor, { editFavAt = -1 }, PopupProperties(focusable = true)) {
-                            ColorPickerCard(c) { newColor -> onColor(newColor); onEditFavorite(i, newColor) }
+                            ColorPickerCard(c,
+                                onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
+                                opacity = opacity, favorites = favorites, erasing = erasing,
+                                onOpacity = onOpacity, onEyedrop = { editFavAt = -1; onToggleEyedrop() })
                         }
                     }
                 }
@@ -380,7 +389,8 @@ fun BrushControls(
                             .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
                     }
                     if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
-                        ColorPickerCard(color, onColor)
+                        ColorPickerCard(color, onColor = onColor, opacity = opacity, favorites = favorites, erasing = erasing,
+                            onOpacity = onOpacity, onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
                     }
                 }
                 // 즐겨찾기 전체(20개) 그리드 — 툴바 인라인 자리는 5개뿐이라 나머지는 여기서 고르거나 등록.
@@ -389,7 +399,8 @@ fun BrushControls(
                         tint = if (favoritesGridOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = { favoritesGridOpen = !favoritesGridOpen })
                     if (favoritesGridOpen) Popup(popupAnchor, { favoritesGridOpen = false }, PopupProperties(focusable = true)) {
-                        FavoritesGridPopup(favorites, color, erasing, onColor, onEditFavorite)
+                        FavoritesGridPopup(favorites, color, opacity, erasing, onColor, onOpacity, onEditFavorite,
+                            onEyedrop = { favoritesGridOpen = false; onToggleEyedrop() })
                     }
                 }
                 // Eyedropper: arm it, then the next tap on the canvas picks that colour instead of drawing.
@@ -717,49 +728,74 @@ internal fun RingSliderThumb(valueText: String, accentColor: Color = SliderAccen
     }
 }
 
-/** Hue/saturation/value picker: SV square + hue bar + preview, for choosing any custom colour. */
+/** macOS "색상휠" 탭과 같은 구성: 원형 색상+채도 휠, 그 아래 밝기 바, RGB/HSL 숫자 입력, 그리고
+ *  (브러시 툴바에서 열 때만) 불투명도·스포이드·즐겨찾기 미리보기(2026-08-26, 이전엔 SV사각형+Hue바였음).
+ *  표지색·달력 오버레이 색상 등 브러시가 아닌 곳에서도 재사용하므로 [opacity]/[favorites]/[onOpacity]/
+ *  [onEyedrop]는 전부 선택 — null이면(기본값) 해당 구역을 아예 그리지 않는다. */
 @Composable
-internal fun ColorPickerCard(color: Long, onColor: (Long) -> Unit) {
+internal fun ColorPickerCard(
+    color: Long, onColor: (Long) -> Unit,
+    opacity: Float? = null, favorites: List<Long>? = null, erasing: Boolean = false,
+    onOpacity: ((Float) -> Unit)? = null, onEyedrop: (() -> Unit)? = null,
+) {
     val init = remember { FloatArray(3).also { AndroidColor.colorToHSV((color and 0xFFFFFFFF).toInt(), it) } }
     var hue by remember { mutableFloatStateOf(init[0]) }
     var sat by remember { mutableFloatStateOf(init[1]) }
     var value by remember { mutableFloatStateOf(init[2]) }
-    fun emit() { onColor((AndroidColor.HSVToColor(floatArrayOf(hue, sat, value)).toLong() and 0xFFFFFFFF) or 0xFF000000L) }
-    val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(hue, 1f, 1f)))
-    val current = Color(AndroidColor.HSVToColor(floatArrayOf(hue, sat, value)))
+    val currentPacked = (AndroidColor.HSVToColor(floatArrayOf(hue, sat, value)).toLong() and 0xFFFFFFFF) or 0xFF000000L
+    fun emit() = onColor(currentPacked)
+    val current = Color(currentPacked)
 
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
-        Column(Modifier.width(248.dp).padding(16.dp)) {
+        Column(Modifier.width(260.dp).padding(16.dp)) {
+            // 원형 휠: 각도=색상, 중심에서의 거리=채도 (밝기는 아래 별도 막대) — sweepGradient(색상)
+            // 위에 중심이 불투명 흰색인 radialGradient를 정상 알파합성으로 겹쳐서, 중심에 가까울수록
+            // 흰색과 섞여 채도가 낮아지는 정확한 HSV(V=1 단면) 색을 얻는다.
             Box(
-                Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(10.dp))
-                    .background(Brush.horizontalGradient(listOf(Color.White, hueColor)))
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+                Modifier.fillMaxWidth().height(220.dp)
                     .pointerInput(Unit) {
                         awaitPointerEventScope {
                             while (true) {
                                 val p = awaitPointerEvent().changes.first().position
-                                sat = (p.x / size.width).coerceIn(0f, 1f)
-                                value = (1f - p.y / size.height).coerceIn(0f, 1f)
+                                val cx = size.width / 2f; val cy = size.height / 2f
+                                val radius = min(cx, cy)
+                                val dx = p.x - cx; val dy = p.y - cy
+                                val dist = sqrt(dx * dx + dy * dy).coerceAtMost(radius)
+                                var angle = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat()
+                                if (angle < 0f) angle += 360f
+                                hue = angle
+                                sat = if (radius > 0f) dist / radius else 0f
                                 emit()
                             }
                         }
                     },
+                contentAlignment = Alignment.Center,
             ) {
                 Canvas(Modifier.fillMaxSize()) {
-                    val c = Offset(sat * size.width, (1f - value) * size.height)
-                    drawCircle(Color.White, 7.dp.toPx(), c, style = Stroke(2.5f.dp.toPx()))
-                    drawCircle(Color.Black.copy(alpha = 0.5f), 7.dp.toPx(), c, style = Stroke(1.dp.toPx()))
+                    val radius = min(size.width, size.height) / 2f
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    drawCircle(brush = Brush.sweepGradient(HueWheel), radius = radius, center = center)
+                    drawCircle(
+                        brush = Brush.radialGradient(listOf(Color.White, Color.White.copy(alpha = 0f)), center = center, radius = radius),
+                        radius = radius, center = center,
+                    )
+                    val angleRad = Math.toRadians(hue.toDouble())
+                    val pointR = sat * radius
+                    val p = Offset(center.x + (cos(angleRad) * pointR).toFloat(), center.y + (sin(angleRad) * pointR).toFloat())
+                    drawCircle(Color.White, 7.dp.toPx(), p, style = Stroke(2.5f.dp.toPx()))
+                    drawCircle(Color.Black.copy(alpha = 0.5f), 7.dp.toPx(), p, style = Stroke(1.dp.toPx()))
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
+            // 밝기(Value) 막대 — 색상은 이제 휠이 담당하므로 이 막대는 흰색(밝음)~검정(어두움)만 표현.
             Box(
                 Modifier.fillMaxWidth().height(22.dp).clip(RoundedCornerShape(11.dp))
-                    .background(Brush.horizontalGradient(HueWheel))
+                    .background(Brush.horizontalGradient(listOf(Color.White, Color.Black)))
                     .pointerInput(Unit) {
                         awaitPointerEventScope {
                             while (true) {
                                 val x = awaitPointerEvent().changes.first().position.x
-                                hue = (x / size.width * 360f).coerceIn(0f, 360f)
+                                value = (1f - x / size.width).coerceIn(0f, 1f)
                                 emit()
                             }
                         }
@@ -767,20 +803,48 @@ internal fun ColorPickerCard(color: Long, onColor: (Long) -> Unit) {
             ) {
                 Canvas(Modifier.fillMaxSize()) {
                     val r = size.height / 2f
-                    val x = ((hue / 360f) * size.width).coerceIn(r, size.width - r)
+                    val x = ((1f - value) * size.width).coerceIn(r, size.width - r)
                     drawCircle(Color.White, r - 1.dp.toPx(), Offset(x, r), style = Stroke(2.5f.dp.toPx()))
+                    drawCircle(Color.Black.copy(alpha = 0.5f), r - 1.dp.toPx(), Offset(x, r), style = Stroke(1.dp.toPx()))
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(34.dp).clip(CircleShape).background(current)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
-                Spacer(Modifier.width(10.dp))
-                Text("#%06X".format(0xFFFFFF and AndroidColor.HSVToColor(floatArrayOf(hue, sat, value))),
-                    fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
+            Text("#%06X".format(0xFFFFFF and AndroidColor.HSVToColor(floatArrayOf(hue, sat, value))),
+                fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(8.dp))
             ColorNumberFields(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
+            if (opacity != null && onOpacity != null) {
+                Spacer(Modifier.height(12.dp))
+                IconSliderRow(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
+            }
+            if (onEyedrop != null) {
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.size(34.dp).clip(CircleShape).background(current)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
+                    IconBtn(Icons.Filled.Colorize, "스포이드", onClick = onEyedrop)
+                }
+            }
+            if (favorites != null) {
+                Spacer(Modifier.height(10.dp))
+                // 즐겨찾기 20개 미리보기 — 탭하면 바로 적용(수정은 툴바의 "즐겨찾기 전체" 그리드에서).
+                for (row in 0 until 5) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (col in 0 until 4) {
+                            val i = row * 4 + col
+                            val c = favorites.getOrElse(i) { BrushPalette[i % BrushPalette.size] }
+                            val on = !erasing && c == currentPacked
+                            Box(
+                                Modifier.size(22.dp).clip(CircleShape)
+                                    .background(Color(c))
+                                    .border(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
+                                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") { onColor(c) },
+                            )
+                        }
+                    }
+                    if (row < 4) Spacer(Modifier.height(8.dp))
+                }
+            }
         }
     }
 }
@@ -890,7 +954,10 @@ private fun hslToRgb(h: Float, s: Float, l: Float): Triple<Int, Int, Int> {
  *  전체를 보여준다(같은 index를 그대로 [onEditFavorite]에 넘기므로 인라인 자리와 항상 같은 색을 가리킨다).
  *  탭하면 선택, 이미 선택된 칸을 다시 탭하면 그 칸의 색을 바꾸는 색상휠이 뜬다(인라인 스와치와 동일). */
 @Composable
-private fun FavoritesGridPopup(favorites: List<Long>, color: Long, erasing: Boolean, onColor: (Long) -> Unit, onEditFavorite: (Int, Long) -> Unit) {
+private fun FavoritesGridPopup(
+    favorites: List<Long>, color: Long, opacity: Float, erasing: Boolean,
+    onColor: (Long) -> Unit, onOpacity: (Float) -> Unit, onEditFavorite: (Int, Long) -> Unit, onEyedrop: () -> Unit,
+) {
     var editAt by remember { mutableIntStateOf(-1) }
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -914,7 +981,10 @@ private fun FavoritesGridPopup(favorites: List<Long>, color: Long, erasing: Bool
                                     .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape))
                             }
                             if (editAt == i) Popup(AboveAnchor(0, 0), { editAt = -1 }, PopupProperties(focusable = true)) {
-                                ColorPickerCard(c) { newColor -> onColor(newColor); onEditFavorite(i, newColor) }
+                                ColorPickerCard(c,
+                                    onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
+                                    opacity = opacity, favorites = favorites, erasing = erasing,
+                                    onOpacity = onOpacity, onEyedrop = { editAt = -1; onEyedrop() })
                             }
                         }
                     }

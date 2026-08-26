@@ -765,9 +765,9 @@ internal fun EditCoverDialog(
                                 PopupProperties(focusable = true),
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    com.g1.sketchbook.brush.ColorPickerCard(selection.pendingColor!!) {
+                                    com.g1.sketchbook.brush.ColorPickerCard(selection.pendingColor!!, onColor = {
                                         selection = selection.previewColor(it)
-                                    }
+                                    })
                                     Row(
                                         Modifier.width(248.dp).background(MaterialTheme.colorScheme.surface)
                                             .padding(horizontal = 8.dp, vertical = 4.dp),

@@ -963,7 +963,7 @@ private fun CalendarSettingsDialog(
                     Spacer(Modifier.height(16.dp))
                     FontSizeEditor(style, selectedElement, onChange)
                     Spacer(Modifier.height(14.dp))
-                    ColorPickerCard(style.colorArgb) { onChange(style.copy(colorArgb = it)) }
+                    ColorPickerCard(style.colorArgb, onColor = { onChange(style.copy(colorArgb = it)) })
                     Spacer(Modifier.height(14.dp))
                     Text("서체", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(6.dp))
@@ -993,7 +993,7 @@ private fun CalendarSettingsDialog(
                             backgroundOpacity, 0f..1f, onChange = onBackgroundOpacityChange, accentColor = OverlayAccentColor,
                         )
                         Spacer(Modifier.height(10.dp))
-                        ColorPickerCard(backgroundColorArgb, onBackgroundColorChange)
+                        ColorPickerCard(backgroundColorArgb, onColor = onBackgroundColorChange)
                     }
                     Spacer(Modifier.height(16.dp))
                     TextButton(onClick = onDismiss) { Text("완료") }
