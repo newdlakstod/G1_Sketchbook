@@ -12,10 +12,19 @@ data class RemoteSketchbook(
     val pages: Map<Int, Pair<Long, String>>, // index -> (updatedAt, base64)
 )
 
+/** 공유 스케치북은 실제 그림이 아니라 "이 계정이 이 코드에 참여 중"이라는 사실만 계정 전체에
+ *  동기화한다 — 그림 자체는 이미 ShareRepository의 실시간 세션으로 기기와 무관하게 공유되므로,
+ *  여기선 다른 기기에도 같은 로컬 카드를 자동으로 만들어주는 데 필요한 정보만 있으면 된다. */
+data class RemoteSharedBookRef(
+    val code: String, val name: String, val sizeKey: String, val bgKey: String,
+    val createdAt: Long, val deleted: Boolean,
+)
+
 data class RemoteSnapshot(
     val sketchbooks: List<RemoteSketchbook>,
     val diary: Map<String, Pair<Long, String>>, // date -> (updatedAt, base64)
     val settings: RemoteSettings?,
+    val sharedBooks: List<RemoteSharedBookRef>,
 )
 
 data class RemoteSettings(

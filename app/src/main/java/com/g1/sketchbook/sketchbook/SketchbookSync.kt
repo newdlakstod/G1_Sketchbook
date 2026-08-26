@@ -67,9 +67,16 @@ fun reorderPagesSynced(scope: CoroutineScope, repo: SketchbookRepository, backup
     }
 }
 
+// 공유 스케치북은 그림이 아니라 "참여 중" 기록만 있는 별도 계정 동기화 대상이라(reconcileSharedBooks
+// 참고), 코드로 그 기록을 툼스톤한다 — 개인 스케치북과 같은 id 기반 tombstone을 쓰면 다른 기기가
+// 다음 동기화 때 이 코드를 다시 못 찾아 못 지운다.
 fun deleteSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, id: String) {
+    val book = repo.get(id)
     repo.delete(id)
-    if (uid.isNotBlank()) scope.launch(Dispatchers.IO) { backup.deleteSketchbook(uid, id) }
+    if (uid.isNotBlank()) scope.launch(Dispatchers.IO) {
+        val code = book?.code
+        if (book?.shared == true && code != null) backup.deleteSharedBookRef(uid, code) else backup.deleteSketchbook(uid, id)
+    }
 }
 
 /** repo.savePage는 PNG 인코딩+디스크 쓰기라 매 붓질(onStrokeEnd)마다 호출되면 메인 스레드에서

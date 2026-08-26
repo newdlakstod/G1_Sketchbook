@@ -22,6 +22,33 @@ suspend fun reconcileBackup(context: Context, uid: String, backup: BackupReposit
     reconcileSketchbooks(sketchbookRepo, backup, uid, remote.sketchbooks)
     reconcileDiary(diaryRepo, backup, uid, remote.diary)
     reconcileSettings(session, backup, uid, remote.settings)
+    reconcileSharedBooks(sketchbookRepo, backup, uid, remote.sharedBooks)
+}
+
+/** 공유 스케치북은 그림이 아니라 "참여 중"이라는 사실만 동기화한다(계정의 다른 기기에 같은 코드의
+ *  로컬 카드를 자동으로 만들어줌) — 실제 그림은 이미 ShareRepository의 실시간 세션이 기기와 무관하게
+ *  공유한다. 코드가 키라 last-write-wins 타임스탬프 비교가 필요 없고, 존재/툼스톤 두 상태만 있다. */
+private fun reconcileSharedBooks(repo: SketchbookRepository, backup: BackupRepository, uid: String, remote: List<RemoteSharedBookRef>) {
+    val local = repo.list().filter { it.shared && it.code != null }
+    val remoteByCode = remote.associateBy { it.code }
+    // 이번 패스에서 툼스톤 때문에 방금 지운 코드는 아래 두 번째 루프에서 다시 안 올린다 — local은
+    // 지우기 전 스냅샷이라 그대로 두면 방금 지운 걸 바로 되살려 올리게 된다.
+    val justDeleted = mutableSetOf<String>()
+
+    for (ref in remote) {
+        val existing = local.firstOrNull { it.code == ref.code }
+        if (ref.deleted) {
+            if (existing != null) { repo.delete(existing.id); justDeleted += ref.code }
+        } else if (existing == null) {
+            repo.create(ref.name, ref.sizeKey, ref.bgKey, shared = true, code = ref.code)
+        }
+    }
+    for (book in local) {
+        val code = book.code ?: continue
+        if (code in justDeleted) continue
+        val ref = remoteByCode[code]
+        if (ref == null || ref.deleted) backup.pushSharedBookRef(uid, code, book.name, book.sizeKey, book.bgKey, book.createdAt)
+    }
 }
 
 private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepository, uid: String, remote: List<RemoteSketchbook>) {

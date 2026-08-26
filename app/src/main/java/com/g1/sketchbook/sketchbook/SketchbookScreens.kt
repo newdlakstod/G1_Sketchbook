@@ -287,13 +287,20 @@ private fun CreateWizard(
     var error by remember { mutableStateOf<String?>(null) }
 
     fun finishPersonal() { repo?.let { createSynced(scope, it, backup, myUid, name, sizeKey, bgKey) }?.let(onCreated) }
+    // 그림 자체가 아니라 "이 계정이 이 코드에 참여 중"이라는 사실만 백업에 올려서, 같은 계정의
+    // 다른 기기가 다음 동기화 때 이 카드를 자동으로 만들어 보게 한다(그림은 이미 ShareRepository
+    // 실시간 세션이 기기 상관없이 공유).
+    fun pushSharedRef(book: Sketchbook) {
+        val code = book.code ?: return
+        if (myUid.isNotBlank()) scope.launch(Dispatchers.IO) { backup.pushSharedBookRef(myUid, code, book.name, book.sizeKey, book.bgKey, book.createdAt) }
+    }
     fun finishSharedNew() {
         val targetRepo = repo ?: return
         busy = true; error = null
         scope.launch {
             val share = ShareRepository()
             runCatching { share.createSession(myUid, nickname) }.fold(
-                onSuccess = { c -> onCreated(targetRepo.create(name, "a4", "watercolor", shared = true, code = c)) },
+                onSuccess = { c -> onCreated(targetRepo.create(name, "a4", "watercolor", shared = true, code = c).also(::pushSharedRef)) },
                 onFailure = { busy = false; error = it.message ?: "공유 세션을 만들지 못했어요." },
             )
         }
@@ -304,7 +311,7 @@ private fun CreateWizard(
         scope.launch {
             val share = ShareRepository()
             share.joinSession(code, myUid, nickname).fold(
-                onSuccess = { onCreated(targetRepo.create(name.ifBlank { "공유 스케치북" }, "a4", "watercolor", shared = true, code = code.uppercase())) },
+                onSuccess = { onCreated(targetRepo.create(name.ifBlank { "공유 스케치북" }, "a4", "watercolor", shared = true, code = code.uppercase()).also(::pushSharedRef)) },
                 onFailure = { busy = false; error = it.message ?: "참여하지 못했어요." },
             )
         }

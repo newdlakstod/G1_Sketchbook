@@ -80,6 +80,18 @@ class BackupRepository {
             .setValue(mapOf("deleted" to true, "updatedAt" to ServerValue.TIMESTAMP))
     }
 
+    /** 공유 스케치북 참여 사실을 계정에 기록 — 그림 데이터는 안 실음(ShareRepository가 이미 실시간
+     *  공유). 다른 기기의 다음 동기화가 이 [code]로 로컬 카드를 자동으로 만들어 볼 수 있게 해준다. */
+    fun pushSharedBookRef(uid: String, code: String, name: String, sizeKey: String, bgKey: String, createdAt: Long) {
+        root.child(uid).child("sharedBooks").child(code)
+            .setValue(mapOf("name" to name, "sizeKey" to sizeKey, "bgKey" to bgKey, "createdAt" to createdAt, "deleted" to false))
+    }
+
+    /** 툼스톤 — 하드 삭제하면 "원래 없었음"과 구분이 안 돼서 다른 기기가 되살린다(다른 delete* 함수와 동일 이유). */
+    fun deleteSharedBookRef(uid: String, code: String) {
+        root.child(uid).child("sharedBooks").child(code).setValue(mapOf("deleted" to true))
+    }
+
     fun pushDiaryDay(uid: String, date: String, bmp: Bitmap, updatedAt: Long) {
         root.child(uid).child("diary").child(date)
             .setValue(mapOf("updatedAt" to updatedAt, "image" to encode(bmp)))
@@ -164,6 +176,18 @@ class BackupRepository {
             updatedAt = s.child("updatedAt").getValue(Long::class.java) ?: 0L,
         )
 
-        return RemoteSnapshot(sketchbooks, diary, settings)
+        val sharedBooks = snap.child("sharedBooks").children.mapNotNull { c ->
+            val code = c.key ?: return@mapNotNull null
+            RemoteSharedBookRef(
+                code = code,
+                name = c.child("name").getValue(String::class.java) ?: "공유 스케치북",
+                sizeKey = c.child("sizeKey").getValue(String::class.java) ?: "a4",
+                bgKey = c.child("bgKey").getValue(String::class.java) ?: "watercolor",
+                createdAt = c.child("createdAt").getValue(Long::class.java) ?: 0L,
+                deleted = c.child("deleted").getValue(Boolean::class.java) ?: false,
+            )
+        }
+
+        return RemoteSnapshot(sketchbooks, diary, settings, sharedBooks)
     }
 }
