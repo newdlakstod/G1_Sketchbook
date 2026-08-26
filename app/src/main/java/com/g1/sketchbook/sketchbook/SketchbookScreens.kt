@@ -718,6 +718,17 @@ internal fun EditCoverDialog(
                 Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 14.dp)) {
                     Text("스케치북 표지 변경", fontWeight = FontWeight.Bold, fontSize = 18.sp,
                         modifier = Modifier.align(Alignment.Center))
+                    Row(Modifier.align(Alignment.CenterStart)) {
+                        IconButton(onClick = onToggleFav) {
+                            Icon(
+                                if (book.fav) Icons.Filled.Star else Icons.Filled.StarBorder, "즐겨찾기에 추가",
+                                tint = if (book.fav) Color(0xFFFFD43B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(onClick = onDelete) {
+                            Icon(Icons.Filled.Delete, "이 스케치북 삭제", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
                     IconButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterEnd)) {
                         Icon(Icons.Filled.Close, "닫기")
                     }
@@ -823,20 +834,6 @@ internal fun EditCoverDialog(
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.error,
                         )
-                    }
-                    Spacer(Modifier.height(20.dp))
-                    HorizontalDivider()
-
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                    ) {
-                        CoverActionIcon(
-                            if (book.fav) Icons.Filled.Star else Icons.Filled.StarBorder, "즐겨찾기에 추가",
-                            tint = if (book.fav) Color(0xFFFFD43B) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            onClick = onToggleFav,
-                        )
-                        CoverActionIcon(Icons.Filled.Delete, "이 스케치북 삭제", tint = MaterialTheme.colorScheme.error, onClick = onDelete)
                     }
                     Spacer(Modifier.height(20.dp))
                 }
