@@ -9,7 +9,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -55,14 +54,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -83,10 +80,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -849,8 +843,9 @@ internal fun ColorPickerCard(
     }
 }
 
-/** RGB(0~255)·HSL(H 0~360, S/L 0~100) 숫자 입력칸 — 위 SV사각형/Hue바와 같은 색을 다른 표기로 보여주고
- *  직접 타이핑해서 고를 수도 있게 한다. 내부적으로는 항상 HSV(휠이 쓰는 표현)로 환산해 돌려준다. */
+/** RGB(0~255)·HSL(H 0~360, S/L 0~100) 슬라이더 — 위 원형 휠/밝기 막대와 같은 색을 다른 축으로도
+ *  조절할 수 있게 한다(타이핑 입력이 아니라 브러시 굵기·불투명도와 같은 드래그 슬라이더 방식,
+ *  2026-08-26). 내부적으로는 항상 HSV(휠이 쓰는 표현)로 환산해 돌려준다. */
 @Composable
 private fun ColorNumberFields(hue: Float, sat: Float, value: Float, onHsv: (Float, Float, Float) -> Unit) {
     val argb = remember(hue, sat, value) { AndroidColor.HSVToColor(floatArrayOf(hue, sat, value)) }
@@ -859,56 +854,43 @@ private fun ColorNumberFields(hue: Float, sat: Float, value: Float, onHsv: (Floa
     val b = argb and 0xFF
     val hsl = remember(hue, sat, value) { rgbToHsl(r, g, b) }
 
-    var rText by remember { mutableStateOf(r.toString()) }
-    var gText by remember { mutableStateOf(g.toString()) }
-    var bText by remember { mutableStateOf(b.toString()) }
-    var hText by remember { mutableStateOf(hsl.first.roundToInt().toString()) }
-    var sText by remember { mutableStateOf((hsl.second * 100).roundToInt().toString()) }
-    var lText by remember { mutableStateOf((hsl.third * 100).roundToInt().toString()) }
-
-    // 휠 드래그든 아래 입력칸이든, 색이 바뀌면 6칸 전부 최신 값으로 다시 맞춘다 — 입력칸 하나를 고쳐서
-    // 바뀐 경우도 결국 이 값으로 되먹임되므로 화면상 숫자가 도중에 튀지는 않는다.
-    LaunchedEffect(argb) {
-        rText = r.toString(); gText = g.toString(); bText = b.toString()
-        hText = hsl.first.roundToInt().toString()
-        sText = (hsl.second * 100).roundToInt().toString()
-        lText = (hsl.third * 100).roundToInt().toString()
-    }
-
     fun commitRgb(nr: Int, ng: Int, nb: Int) {
         val out = FloatArray(3)
         AndroidColor.RGBToHSV(nr.coerceIn(0, 255), ng.coerceIn(0, 255), nb.coerceIn(0, 255), out)
         onHsv(out[0], out[1], out[2])
     }
-    fun commitHsl(nh: Int, ns: Int, nl: Int) {
-        val (nr, ng, nb) = hslToRgb(nh.coerceIn(0, 360).toFloat(), ns.coerceIn(0, 100) / 100f, nl.coerceIn(0, 100) / 100f)
+    fun commitHsl(nh: Float, ns: Float, nl: Float) {
+        val (nr, ng, nb) = hslToRgb(nh.coerceIn(0f, 360f), ns.coerceIn(0f, 1f), nl.coerceIn(0f, 1f))
         commitRgb(nr, ng, nb)
     }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ColorNumberField("R", rText, Modifier.weight(1f)) { s -> rText = s; s.toIntOrNull()?.let { commitRgb(it, gText.toIntOrNull() ?: g, bText.toIntOrNull() ?: b) } }
-        ColorNumberField("G", gText, Modifier.weight(1f)) { s -> gText = s; s.toIntOrNull()?.let { commitRgb(rText.toIntOrNull() ?: r, it, bText.toIntOrNull() ?: b) } }
-        ColorNumberField("B", bText, Modifier.weight(1f)) { s -> bText = s; s.toIntOrNull()?.let { commitRgb(rText.toIntOrNull() ?: r, gText.toIntOrNull() ?: g, it) } }
-    }
-    Spacer(Modifier.height(8.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ColorNumberField("H", hText, Modifier.weight(1f)) { s -> hText = s; s.toIntOrNull()?.let { commitHsl(it, sText.toIntOrNull() ?: 0, lText.toIntOrNull() ?: 0) } }
-        ColorNumberField("S", sText, Modifier.weight(1f)) { s -> sText = s; s.toIntOrNull()?.let { commitHsl(hText.toIntOrNull() ?: 0, it, lText.toIntOrNull() ?: 0) } }
-        ColorNumberField("L", lText, Modifier.weight(1f)) { s -> lText = s; s.toIntOrNull()?.let { commitHsl(hText.toIntOrNull() ?: 0, sText.toIntOrNull() ?: 0, it) } }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LabeledSliderRow("R", "$r", r.toFloat(), 0f..255f) { commitRgb(it.roundToInt(), g, b) }
+        LabeledSliderRow("G", "$g", g.toFloat(), 0f..255f) { commitRgb(r, it.roundToInt(), b) }
+        LabeledSliderRow("B", "$b", b.toFloat(), 0f..255f) { commitRgb(r, g, it.roundToInt()) }
+        Spacer(Modifier.height(4.dp))
+        LabeledSliderRow("H", "${hsl.first.roundToInt()}", hsl.first, 0f..360f) { commitHsl(it, hsl.second, hsl.third) }
+        LabeledSliderRow("S", "${(hsl.second * 100).roundToInt()}", hsl.second * 100f, 0f..100f) { commitHsl(hsl.first, it / 100f, hsl.third) }
+        LabeledSliderRow("L", "${(hsl.third * 100).roundToInt()}", hsl.third * 100f, 0f..100f) { commitHsl(hsl.first, hsl.second, it / 100f) }
     }
 }
 
+/** [IconSliderRow]와 같은 트랙/썸 스타일이지만 아이콘 대신 짧은 글자 라벨(R/G/B/H/S/L)을 쓴다. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ColorNumberField(label: String, text: String, modifier: Modifier = Modifier, onChange: (String) -> Unit) {
-    OutlinedTextField(
-        value = text,
-        onValueChange = { s -> if (s.length <= 3 && s.all { it.isDigit() }) onChange(s) },
-        modifier = modifier,
-        singleLine = true,
-        label = { Text(label, fontSize = 11.sp) },
-        textStyle = TextStyle(fontSize = 13.sp),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-    )
+private fun LabeledSliderRow(label: String, valueText: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(16.dp))
+        Spacer(Modifier.width(10.dp))
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = range,
+            track = { state -> GradientSliderTrack(state) },
+            thumb = { RingSliderThumb(valueText) },
+            modifier = Modifier.weight(1f),
+        )
+    }
 }
 
 /** RGB(0~255 각각) → HSL(H 0~360, S/L 0~1) — Android Color 클래스엔 HSL 변환이 없어 직접 구현. */

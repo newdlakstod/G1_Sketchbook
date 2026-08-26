@@ -208,7 +208,8 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     }
     // 스케치북/공유노트와 동일한 오버레이+dock+드래그+최소화+잠금+전체화면 구조로 통일(2026-08-20,
     // 예전엔 캔버스 아래 고정된 단순 바 하나뿐이었음). 다이어리는 하루 단위라 페이지 버튼만 없다.
-    var fullscreen by remember { mutableStateOf(false) }
+    // 공유모드와 동일하게 항상 전체화면 — 상태/내비게이션 바 자리까지 그림 영역으로 쓴다.
+    val fullscreen = true
     var locked by remember { mutableStateOf(false) }
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
@@ -218,12 +219,7 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     // 최대 800ms 늦게 반영되는 것조차 남지 않도록.
     val flushAndBack: () -> Unit = { view?.let(::flushCompositeSave); onBack() }
     com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
-    BackHandler {
-        when {
-            fullscreen -> fullscreen = false
-            else -> flushAndBack()
-        }
-    }
+    BackHandler { flushAndBack() }
     androidx.compose.foundation.layout.BoxWithConstraints(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .let { if (fullscreen) it else it.systemBarsPadding() },
@@ -321,7 +317,6 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
         com.g1.sketchbook.brush.ScreenControls(
             onRotate = { view?.rotate() },
             locked = locked, onToggleLock = { locked = !locked },
-            fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
             modifier = Modifier.align(Alignment.TopEnd),
         )
     }

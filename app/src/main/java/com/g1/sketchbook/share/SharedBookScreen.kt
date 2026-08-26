@@ -146,7 +146,8 @@ fun SharedBookScreen(
     var page by remember { mutableIntStateOf(0) }
     val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
     var pagesOpen by remember { mutableStateOf(false) }
-    var fullscreen by remember { mutableStateOf(false) }
+    // 공유모드는 항상 전체화면 — 여러 명이 같이 보는 캔버스라 상태/내비게이션 바 자리까지 그림 영역으로 쓴다.
+    val fullscreen = true
     var locked by remember { mutableStateOf(false) }
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
@@ -210,12 +211,7 @@ fun SharedBookScreen(
         }
     }
     com.g1.sketchbook.ui.ImmersiveModeEffect(hidden = fullscreen)
-    BackHandler {
-        when {
-            fullscreen -> fullscreen = false
-            else -> { saveLocal(); onBack() }
-        }
-    }
+    BackHandler { saveLocal(); onBack() }
 
     // 뒤로가기 버튼·상단 헤더 바를 없애고 캔버스에 화면을 최대한 내줬다(2026-08-20) — 나가기는
     // 시스템 뒤로가기(BackHandler, 위에서 처리)로만. 스케치북 이름은 화면 맨 위에 참가자 캔버스
@@ -395,7 +391,6 @@ fun SharedBookScreen(
                     onOpenPages = { pagesOpen = true },
                     onRotate = { view?.rotate() },
                     locked = locked, onToggleLock = { locked = !locked },
-                    fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
                 )
             }
         }
@@ -425,8 +420,11 @@ fun SharedBookScreen(
 internal fun ModeToggleButton(gridMode: Boolean, onToggle: () -> Unit) {
     Box(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
         Surface(
+            // shadowElevation을 주면 원형 Surface 뒤로 흰색 팔각형 그림자가 비쳐 보인다(안드로이드가
+            // 원형 아웃라인의 그림자를 다각형으로 근사해서 생기는 렌더링 artifact, ScreenControls와
+            // 같은 문제라 같은 방법으로 뺐다) — tonalElevation만으로도 은은한 깊이감은 유지된다.
             shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-            shadowElevation = 8.dp, tonalElevation = 2.dp,
+            tonalElevation = 2.dp,
         ) {
             Box(Modifier.padding(6.dp)) {
                 Box(Modifier.size(30.dp).bounceClick(onClick = onToggle), contentAlignment = Alignment.Center) {
