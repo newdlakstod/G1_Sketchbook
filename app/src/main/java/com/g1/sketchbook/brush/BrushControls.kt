@@ -184,11 +184,10 @@ fun BrushControls(
     eyedropArmed: Boolean = false,
     onToggleEyedrop: () -> Unit = {},
     /** 올가미(라소) 선택 도구 — 켜져 있으면 손가락으로 영역을 그려 선택하고, 안쪽을 드래그해서
-     *  옮길 수 있다. hasLassoSelection이 true면 선택을 지우는 버튼이 추가로 나타난다. */
+     *  옮길 수 있다. 선택을 지우는 버튼은 툴바가 아니라 [LassoDeleteButton]으로 선택 영역 바로
+     *  위에 뜬다(호출부가 BrushView.onLassoSelectionChanged를 받아 직접 띄움). */
     lassoActive: Boolean = false,
     onToggleLasso: () -> Unit = {},
-    hasLassoSelection: Boolean = false,
-    onDeleteLassoSelection: () -> Unit = {},
     /** 페인트통(채우기) 도구 — 켜져 있으면 탭한 지점과 이어진 같은 색 영역을 현재 색으로 단색 채운다. */
     fillActive: Boolean = false,
     onToggleFill: () -> Unit = {},
@@ -373,9 +372,6 @@ fun BrushControls(
                 IconBtn(Icons.Filled.Gesture, "올가미 선택",
                     tint = if (lassoActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                     onClick = onToggleLasso)
-                if (hasLassoSelection) {
-                    IconBtn(Icons.Filled.Delete, "선택 영역 지우기", onClick = onDeleteLassoSelection)
-                }
                 IconBtn(Icons.Filled.FormatColorFill, "페인트통",
                     tint = if (fillActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                     onClick = onToggleFill)
@@ -618,6 +614,28 @@ fun EyedropFloatingPreview(colorArgb: Int, xPx: Float, yPx: Float, modifier: Mod
             .background(Color(colorArgb))
             .border(3.dp, Color.White, CircleShape),
     )
+}
+
+/** 라소 선택 영역 바로 위에 뜨는 삭제 버튼 — BrushView.onLassoSelectionChanged가 주는 화면 px
+ *  좌표를 그대로 써서 [EyedropFloatingPreview]와 같은 방식으로 캔버스 위에 직접 띄운다(별도
+ *  Popup이 아니라, BrushView를 담은 Box 안에 형제로 넣어 쓰는 오버레이). */
+@Composable
+fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current.density
+    val sizePx = 40f * density
+    val liftPx = 46f * density
+    Box(
+        modifier
+            .offset { IntOffset((xPx - sizePx / 2f).roundToInt(), (yPx - liftPx).roundToInt()) }
+            .size(40.dp)
+            .shadow(6.dp, CircleShape, clip = false)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surface)
+            .bounceClick(onClick = onDelete),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Filled.Delete, "선택 영역 지우기", tint = Color(0xFFE85555))
+    }
 }
 
 /** Width (and, unless erasing, opacity) sliders for ONE specific brush — opened by tapping that

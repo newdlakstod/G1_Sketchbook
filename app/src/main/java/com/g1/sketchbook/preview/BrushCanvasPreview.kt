@@ -80,7 +80,7 @@ private fun BrushCanvasPreview() {
     var erasing by remember { mutableStateOf(false) }
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
-    var hasLassoSelection by remember { mutableStateOf(false) }
+    var lassoDeleteAt by remember { mutableStateOf<Offset?>(null) }
     var eraserOpacity by remember { mutableFloatStateOf(100f) }
     var eraserBlur by remember { mutableFloatStateOf(0f) }
     val effectiveOpacity = if (erasing) eraserOpacity else opacity
@@ -119,7 +119,7 @@ private fun BrushCanvasPreview() {
                     v.eraserBlur = eraserBlur
                     v.lassoMode = lassoActive
                     v.fillMode = fillActive
-                    v.onLassoSelectionChanged = { hasLassoSelection = it }
+                    v.onLassoSelectionChanged = { has, x, y -> lassoDeleteAt = if (has) Offset(x, y) else null }
                     v.eyedropArmed = eyedropArmed
                     v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
                     v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
@@ -128,6 +128,7 @@ private fun BrushCanvasPreview() {
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
+            lassoDeleteAt?.let { p -> com.g1.sketchbook.brush.LassoDeleteButton(p.x, p.y, onDelete = { view?.deleteLassoSelection() }) }
             fun barModifier(barDock: ToolbarDock, barCollapsed: Boolean, barDragPx: Offset) = Modifier
                 .align(barDock.alignment())
                 .let {
@@ -155,7 +156,6 @@ private fun BrushCanvasPreview() {
                 onToggleEyedrop = { eyedropArmed = !eyedropArmed },
                 lassoActive = lassoActive,
                 onToggleLasso = { lassoActive = !lassoActive; if (lassoActive) { erasing = false; fillActive = false } },
-                hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
                 fillActive = fillActive,
                 onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
                 collapsed = collapsed,

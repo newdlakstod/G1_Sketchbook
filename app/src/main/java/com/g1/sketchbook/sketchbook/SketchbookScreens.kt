@@ -1024,7 +1024,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     // 꺼진다(아래 onBrush/onToggleErase/onToggleLasso/onToggleFill이 서로를 끈다).
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
-    var hasLassoSelection by remember { mutableStateOf(false) }
+    var lassoDeleteAt by remember { mutableStateOf<Offset?>(null) }
     // 라소 켜기 직전 상태를 기억해뒀다가, 캔버스 바깥을 탭해 라소를 나갈 때 그대로 복원한다.
     var preLassoErasing by remember { mutableStateOf(false) }
     var preLassoFillActive by remember { mutableStateOf(false) }
@@ -1085,7 +1085,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
                     v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
                     v.lassoMode = lassoActive; v.fillMode = fillActive
-                    v.onLassoSelectionChanged = { hasLassoSelection = it }
+                    v.onLassoSelectionChanged = { has, x, y -> lassoDeleteAt = if (has) Offset(x, y) else null }
                     v.twoFingerTapAction = session.twoFingerTapAction
                     v.threeFingerTapAction = session.threeFingerTapAction
                     v.longPressAction = session.longPressAction
@@ -1103,6 +1103,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 },
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
+            lassoDeleteAt?.let { p -> com.g1.sketchbook.brush.LassoDeleteButton(p.x, p.y, onDelete = { view?.deleteLassoSelection() }) }
             // 현재 페이지 표기 — 페이지 우측 하단에 작게 떠 있는 배지(다른 화면들의 반투명 라벨과
             // 같은 스타일: 검정 60% 배경 + 흰 글자).
             Box(
@@ -1141,7 +1142,6 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 lassoActive = !lassoActive
                 if (lassoActive) { erasing = false; fillActive = false }
             },
-            hasLassoSelection = hasLassoSelection, onDeleteLassoSelection = { view?.deleteLassoSelection() },
             fillActive = fillActive,
             onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
             collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },

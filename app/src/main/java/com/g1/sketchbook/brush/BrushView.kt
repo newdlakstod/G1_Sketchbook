@@ -88,9 +88,10 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     /** 페인트통(채우기) 모드 — 켜져 있으면 손가락을 대는 즉시 그 지점과 이어진 같은 색 영역
      *  전체를 현재 색·불투명도로 채운다(정확히 같은 색만 — 허용오차 없음). */
     var fillMode: Boolean = false
-    /** 라소로 선택 영역이 생기면(true) / 없어지면(false) 알려준다 — 툴바의 "선택 지우기" 버튼을
-     *  선택이 있을 때만 보여주는 용도. */
-    var onLassoSelectionChanged: ((Boolean) -> Unit)? = null
+    /** 라소로 선택 영역이 생기면(true, 화면 px 좌표와 함께) / 없어지면(false) 알려준다 — "선택 지우기"
+     *  버튼을 툴바가 아니라 선택 영역 바로 위에 뜨는 팝업으로 보여주는 용도(2026-08-26, 드래그로
+     *  옮기는 중엔 위치가 안 맞으니 잠시 false로 숨겼다가 손을 떼면 새 위치로 다시 true). */
+    var onLassoSelectionChanged: ((Boolean, Float, Float) -> Unit)? = null
 
     /** 라소 모드에서 캔버스(페이지) 바깥의 여백(줌아웃했을 때 보이는 워크스페이스 영역)을 탭하면
      *  호출된다 — Compose 쪽에서 라소를 끄고 원래 쓰던 브러시로 돌아가는 용도. */
@@ -354,8 +355,17 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         if (selectionPath == null && !movingSelection) return
         selectionPath = null; selectionRegion = null; selectionBmp = null
         movingSelection = false; selTransforming = false; selectionTransform = Matrix(); lassoDrawing = false
-        onLassoSelectionChanged?.invoke(false)
+        onLassoSelectionChanged?.invoke(false, 0f, 0f)
         invalidate()
+    }
+
+    /** 선택 영역(캔버스 좌표)의 화면 px 상단-중앙 — 삭제 버튼을 그 바로 위에 띄우는 앵커. */
+    private fun selectionScreenAnchor(): FloatArray? {
+        val bounds = selectionRegion?.bounds ?: return null
+        if (bounds.isEmpty) return null
+        val rect = RectF(bounds)
+        disp.mapRect(rect)
+        return floatArrayOf(rect.centerX(), rect.top)
     }
     fun undo() { val b = undo.removeLastOrNull() ?: return; snapshotTo(redo); restore(b); invalidate() }
     fun redo() { val b = redo.removeLastOrNull() ?: return; snapshotTo(undo); restore(b); invalidate() }
@@ -441,6 +451,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                         selTransforming = false
                         selectionTransform = Matrix()
                         prevSelX = e.x; prevSelY = e.y
+                        onLassoSelectionChanged?.invoke(false, 0f, 0f) // 드래그 중엔 옛 위치라 잠시 숨김 — commitMove가 새 위치로 다시 띄운다
                     } else {
                         clearSelection()
                         lassoDrawing = true
@@ -680,7 +691,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         selectionPath = Path(lassoPath)
         selectionRegion = region
         lassoPath.reset()
-        onLassoSelectionChanged?.invoke(true)
+        selectionScreenAnchor()?.let { a -> onLassoSelectionChanged?.invoke(true, a[0], a[1]) }
         invalidate()
     }
 
@@ -697,6 +708,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         selectionPath?.let { sp -> selectionRegion = android.graphics.Region().apply { setPath(sp, android.graphics.Region(0, 0, cw, ch)) } }
         movingSelection = false; selTransforming = false; selectionTransform = Matrix(); selectionBmp = null
         redo.clear()
+        selectionScreenAnchor()?.let { a -> onLassoSelectionChanged?.invoke(true, a[0], a[1]) }
         invalidate(); onStrokeEnd?.invoke()
     }
 
