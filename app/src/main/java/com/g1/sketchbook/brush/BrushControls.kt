@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -139,6 +140,33 @@ private val HueWheel = listOf(
 // Arrangement.spacedBy로 버튼 간격을 더 좁히면(0 이하 포함) 이 탭 영역끼리 겹칠 수 있는데,
 // 겹쳐도 터치는 정상 동작하도록 의도된 것 — 실제 보이는 간격은 이 값과 spacedBy 둘이 함께 정한다.
 private val ButtonTapSize = 30.dp
+
+// 즐겨찾기 그리드 — 카드 폭에 실제로 몇 칸이 들어가는지 계산해서 항상 3줄을 채운다("폭에 7개
+// 들어가면 21개, 8개 들어가면 24개" 식, 2026-08-26). 카드 폭이 바뀌면 총 개수도 이 값들 그대로
+// 다시 계산되므로, 저장 쪽(SessionStore.FavoritesCount)도 지금 카드 폭 기준 결과(7×3=21)에 맞춰뒀다.
+private val FavoriteSwatchSize = 24.dp
+private val FavoriteSwatchGap = 8.dp
+private const val FavoriteGridRows = 3
+
+/** [favorites]를 카드 폭에 맞는 칸 수 × [FavoriteGridRows]줄로 배치 — 칸 하나하나의 생김새/동작은
+ *  호출부가 [cell]로 그린다(선택만 하는 미리보기용과, 다시 탭하면 편집 팝업이 뜨는 관리용이 서로
+ *  다르게 그려야 해서 여기서는 배치만 책임진다). */
+@Composable
+private fun FavoritesGrid(favorites: List<Long>, modifier: Modifier = Modifier, cell: @Composable (index: Int, color: Long) -> Unit) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val columns = ((maxWidth + FavoriteSwatchGap) / (FavoriteSwatchSize + FavoriteSwatchGap)).toInt().coerceAtLeast(1)
+        Column(verticalArrangement = Arrangement.spacedBy(FavoriteSwatchGap)) {
+            for (row in 0 until FavoriteGridRows) {
+                Row(horizontalArrangement = Arrangement.spacedBy(FavoriteSwatchGap)) {
+                    for (col in 0 until columns) {
+                        val i = row * columns + col
+                        cell(i, favorites.getOrElse(i) { BrushPalette[i % BrushPalette.size] })
+                    }
+                }
+            }
+        }
+    }
+}
 
 /** Single-row floating dock for brush/color/eraser tools. Page/rotate/lock/fullscreen live in the
  *  separate [ScreenControls] surface now — this one only keeps `onBack` (used by the diary editor). */
@@ -747,14 +775,17 @@ internal fun ColorPickerCard(
 
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Column(Modifier.width(260.dp).padding(16.dp)) {
-            // 상단 탭: 휠 / 슬라이더 — 한 번에 하나만 보여서 카드가 RGB·HSL까지 항상 펼쳐 보일 때보다
+            // 상단 탭: 휠 / RGB / HSL — 한 번에 하나만 보여서 카드가 셋 다 항상 펼쳐 보일 때보다
             // 훨씬 덜 길다(macOS 색상피커 탭 구성과 동일, 2026-08-26).
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PickerTabIcon(tab == PickerTab.WHEEL, "색상휠", { tab = PickerTab.WHEEL }) {
                     Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.sweepGradient(HueWheel)))
                 }
-                PickerTabIcon(tab == PickerTab.SLIDERS, "RGB·HSL 슬라이더", { tab = PickerTab.SLIDERS }) {
-                    Icon(Icons.Filled.Tune, null, modifier = Modifier.size(20.dp))
+                PickerTabIcon(tab == PickerTab.RGB, "RGB 슬라이더", { tab = PickerTab.RGB }) {
+                    Text("RGB", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                PickerTabIcon(tab == PickerTab.HSL, "HSL 슬라이더", { tab = PickerTab.HSL }) {
+                    Text("HSL", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -824,7 +855,8 @@ internal fun ColorPickerCard(
                     Text("#%06X".format(0xFFFFFF and AndroidColor.HSVToColor(floatArrayOf(hue, sat, value))),
                         fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
-                PickerTab.SLIDERS -> ColorNumberFields(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
+                PickerTab.RGB -> RgbSliders(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
+                PickerTab.HSL -> HslSliders(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
             }
             if (opacity != null && onOpacity != null) {
                 Spacer(Modifier.height(12.dp))
@@ -840,29 +872,22 @@ internal fun ColorPickerCard(
             }
             if (favorites != null) {
                 Spacer(Modifier.height(10.dp))
-                // 즐겨찾기 20개 미리보기 — 탭하면 바로 적용(수정은 툴바의 "즐겨찾기 전체" 그리드에서).
-                for (row in 0 until 5) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (col in 0 until 4) {
-                            val i = row * 4 + col
-                            val c = favorites.getOrElse(i) { BrushPalette[i % BrushPalette.size] }
-                            val on = !erasing && c == currentPacked
-                            Box(
-                                Modifier.size(22.dp).clip(CircleShape)
-                                    .background(Color(c))
-                                    .border(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-                                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") { onColor(c) },
-                            )
-                        }
-                    }
-                    if (row < 4) Spacer(Modifier.height(8.dp))
+                // 즐겨찾기 미리보기 — 탭하면 바로 적용(수정은 툴바의 "즐겨찾기 전체" 그리드에서).
+                FavoritesGrid(favorites) { i, c ->
+                    val on = !erasing && c == currentPacked
+                    Box(
+                        Modifier.size(FavoriteSwatchSize).clip(CircleShape)
+                            .background(Color(c))
+                            .border(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") { onColor(c) },
+                    )
                 }
             }
         }
     }
 }
 
-private enum class PickerTab { WHEEL, SLIDERS }
+private enum class PickerTab { WHEEL, RGB, HSL }
 
 /** 색상 카드 상단의 작은 탭 버튼 — 선택된 쪽만 옅게 배경이 들어온다. */
 @Composable
@@ -875,35 +900,48 @@ private fun PickerTabIcon(selected: Boolean, desc: String, onClick: () -> Unit, 
     ) { content() }
 }
 
-/** RGB(0~255)·HSL(H 0~360, S/L 0~100) 슬라이더 — 위 원형 휠/밝기 막대와 같은 색을 다른 축으로도
- *  조절할 수 있게 한다(타이핑 입력이 아니라 브러시 굵기·불투명도와 같은 드래그 슬라이더 방식,
- *  2026-08-26). 내부적으로는 항상 HSV(휠이 쓰는 표현)로 환산해 돌려준다. */
+/** RGB(0~255) 슬라이더 — 타이핑 입력이 아니라 브러시 굵기·불투명도와 같은 드래그 슬라이더 방식
+ *  (2026-08-26). 내부적으로는 항상 HSV(휠이 쓰는 표현)로 환산해 돌려준다. */
 @Composable
-private fun ColorNumberFields(hue: Float, sat: Float, value: Float, onHsv: (Float, Float, Float) -> Unit) {
+private fun RgbSliders(hue: Float, sat: Float, value: Float, onHsv: (Float, Float, Float) -> Unit) {
+    val argb = remember(hue, sat, value) { AndroidColor.HSVToColor(floatArrayOf(hue, sat, value)) }
+    val r = (argb shr 16) and 0xFF
+    val g = (argb shr 8) and 0xFF
+    val b = argb and 0xFF
+
+    fun commit(nr: Int, ng: Int, nb: Int) {
+        val out = FloatArray(3)
+        AndroidColor.RGBToHSV(nr.coerceIn(0, 255), ng.coerceIn(0, 255), nb.coerceIn(0, 255), out)
+        onHsv(out[0], out[1], out[2])
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LabeledSliderRow("R", "$r", r.toFloat(), 0f..255f) { commit(it.roundToInt(), g, b) }
+        LabeledSliderRow("G", "$g", g.toFloat(), 0f..255f) { commit(r, it.roundToInt(), b) }
+        LabeledSliderRow("B", "$b", b.toFloat(), 0f..255f) { commit(r, g, it.roundToInt()) }
+    }
+}
+
+/** HSL(H 0~360, S/L 0~100) 슬라이더 — [RgbSliders]와 같은 카드를 다른 축으로 조절하는 쌍둥이 탭. */
+@Composable
+private fun HslSliders(hue: Float, sat: Float, value: Float, onHsv: (Float, Float, Float) -> Unit) {
     val argb = remember(hue, sat, value) { AndroidColor.HSVToColor(floatArrayOf(hue, sat, value)) }
     val r = (argb shr 16) and 0xFF
     val g = (argb shr 8) and 0xFF
     val b = argb and 0xFF
     val hsl = remember(hue, sat, value) { rgbToHsl(r, g, b) }
 
-    fun commitRgb(nr: Int, ng: Int, nb: Int) {
+    fun commit(nh: Float, ns: Float, nl: Float) {
+        val (nr, ng, nb) = hslToRgb(nh.coerceIn(0f, 360f), ns.coerceIn(0f, 1f), nl.coerceIn(0f, 1f))
         val out = FloatArray(3)
         AndroidColor.RGBToHSV(nr.coerceIn(0, 255), ng.coerceIn(0, 255), nb.coerceIn(0, 255), out)
         onHsv(out[0], out[1], out[2])
     }
-    fun commitHsl(nh: Float, ns: Float, nl: Float) {
-        val (nr, ng, nb) = hslToRgb(nh.coerceIn(0f, 360f), ns.coerceIn(0f, 1f), nl.coerceIn(0f, 1f))
-        commitRgb(nr, ng, nb)
-    }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        LabeledSliderRow("R", "$r", r.toFloat(), 0f..255f) { commitRgb(it.roundToInt(), g, b) }
-        LabeledSliderRow("G", "$g", g.toFloat(), 0f..255f) { commitRgb(r, it.roundToInt(), b) }
-        LabeledSliderRow("B", "$b", b.toFloat(), 0f..255f) { commitRgb(r, g, it.roundToInt()) }
-        Spacer(Modifier.height(4.dp))
-        LabeledSliderRow("H", "${hsl.first.roundToInt()}", hsl.first, 0f..360f) { commitHsl(it, hsl.second, hsl.third) }
-        LabeledSliderRow("S", "${(hsl.second * 100).roundToInt()}", hsl.second * 100f, 0f..100f) { commitHsl(hsl.first, it / 100f, hsl.third) }
-        LabeledSliderRow("L", "${(hsl.third * 100).roundToInt()}", hsl.third * 100f, 0f..100f) { commitHsl(hsl.first, hsl.second, it / 100f) }
+        LabeledSliderRow("H", "${hsl.first.roundToInt()}", hsl.first, 0f..360f) { commit(it, hsl.second, hsl.third) }
+        LabeledSliderRow("S", "${(hsl.second * 100).roundToInt()}", hsl.second * 100f, 0f..100f) { commit(hsl.first, it / 100f, hsl.third) }
+        LabeledSliderRow("L", "${(hsl.third * 100).roundToInt()}", hsl.third * 100f, 0f..100f) { commit(hsl.first, hsl.second, it / 100f) }
     }
 }
 
@@ -964,9 +1002,10 @@ private fun hslToRgb(h: Float, s: Float, l: Float): Triple<Int, Int, Int> {
     return Triple(r, g, b)
 }
 
-/** 즐겨찾기 20개를 4x5 그리드로 보여주는 팝업 — 인라인 5개와 같은 [favorites] 리스트를 그대로 쓰되
- *  전체를 보여준다(같은 index를 그대로 [onEditFavorite]에 넘기므로 인라인 자리와 항상 같은 색을 가리킨다).
- *  탭하면 선택, 이미 선택된 칸을 다시 탭하면 그 칸의 색을 바꾸는 색상휠이 뜬다(인라인 스와치와 동일). */
+/** 즐겨찾기 전체를 [ColorPickerCard]와 같은 폭(260dp)의 그리드로 보여주는 팝업 — 인라인 5개와 같은
+ *  [favorites] 리스트를 그대로 쓰되 전체를 보여준다(같은 index를 그대로 [onEditFavorite]에 넘기므로
+ *  인라인 자리와 항상 같은 색을 가리킨다). 탭하면 선택, 이미 선택된 칸을 다시 탭하면 그 칸의 색을
+ *  바꾸는 색상휠이 뜬다(인라인 스와치와 동일). */
 @Composable
 private fun FavoritesGridPopup(
     favorites: List<Long>, color: Long, opacity: Float, erasing: Boolean,
@@ -974,33 +1013,24 @@ private fun FavoritesGridPopup(
 ) {
     var editAt by remember { mutableIntStateOf(-1) }
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            for (row in 0 until 5) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    for (col in 0 until 4) {
-                        val i = row * 4 + col
-                        val c = favorites.getOrElse(i) { BrushPalette[i % BrushPalette.size] }
-                        val on = !erasing && c == color
-                        val interaction = remember { MutableInteractionSource() }
-                        Box {
-                            Box(
-                                Modifier.size(36.dp)
-                                    .clickable(interactionSource = interaction, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") {
-                                        if (on) editAt = i else onColor(c)
-                                    },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Box(Modifier.size(32.dp).clip(CircleShape).indication(interaction, LocalIndication.current)
-                                    .background(Color(c))
-                                    .border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape))
-                            }
-                            if (editAt == i) Popup(AboveAnchor(0, 0), { editAt = -1 }, PopupProperties(focusable = true)) {
-                                ColorPickerCard(c,
-                                    onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
-                                    opacity = opacity, favorites = favorites, erasing = erasing,
-                                    onOpacity = onOpacity, onEyedrop = { editAt = -1; onEyedrop() })
-                            }
-                        }
+        Box(Modifier.width(260.dp).padding(16.dp)) {
+            FavoritesGrid(favorites) { i, c ->
+                val on = !erasing && c == color
+                val interaction = remember { MutableInteractionSource() }
+                Box {
+                    Box(
+                        Modifier.size(FavoriteSwatchSize).clip(CircleShape).indication(interaction, LocalIndication.current)
+                            .background(Color(c))
+                            .border(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
+                            .clickable(interactionSource = interaction, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") {
+                                if (on) editAt = i else onColor(c)
+                            },
+                    )
+                    if (editAt == i) Popup(AboveAnchor(0, 0), { editAt = -1 }, PopupProperties(focusable = true)) {
+                        ColorPickerCard(c,
+                            onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
+                            opacity = opacity, favorites = favorites, erasing = erasing,
+                            onOpacity = onOpacity, onEyedrop = { editAt = -1; onEyedrop() })
                     }
                 }
             }

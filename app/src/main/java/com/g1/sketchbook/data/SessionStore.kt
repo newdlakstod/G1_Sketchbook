@@ -115,12 +115,15 @@ class SessionStore(context: Context) {
         private const val KEY_ERASER_OPACITY = "eraser_opacity"
         private const val KEY_ERASER_BLUR = "eraser_blur"
         private const val KEY_SETTINGS_SYNCED_AT = "settings_synced_at"
-        const val FavoritesCount = 20
+        // 색상 피커 카드 폭(260dp, BrushControls.ColorPickerCard)에 24dp 스와치+8dp 간격이 한 줄에
+        // 7개 들어가서(FavoritesGrid) 7×3줄 = 21 — 그리드 칸 수가 바뀌면 이 값도 같이 맞춰야 한다.
+        const val FavoritesCount = 21
         val DefaultFavorites = listOf(
             0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L,
             0xFF000000L, 0xFFFFFFFFL, 0xFF808080L, 0xFF2B4C9BL, 0xFF4DABF7L,
             0xFF4ECDC4L, 0xFF9775FAL, 0xFFCE7A7AL, 0xFFFF8FA3L, 0xFFFFD93DL,
             0xFF6B4226L, 0xFF2F5233L, 0xFF4B0082L, 0xFFD3D3D3L, 0xFFFF7F50L,
+            0xFFB8860BL,
         )
     }
 }
