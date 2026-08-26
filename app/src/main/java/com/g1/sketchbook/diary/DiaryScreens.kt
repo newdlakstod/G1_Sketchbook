@@ -406,6 +406,7 @@ private val MonthNames = listOf("January", "February", "March", "April", "May", 
     "July", "August", "September", "October", "November", "December")
 private val TodayPink = Color(0xFFE3B7B7)
 private val DiaryDot = Color(0xFF8FA07E)
+private val DiaryDotToday = Color(0xFF4A6741) // 오늘 + 그림 있음 — 오늘 표시(분홍)를 대신하는 짙은 초록
 
 private fun ordinal(d: Int): String = when {
     d in 11..13 -> "th"
@@ -453,13 +454,20 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
                     Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                         if (day > 0) {
                             val date = "%04d-%02d-%02d".format(year, month + 1, day)
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(Dimens.Calendar.todayDisc), contentAlignment = Alignment.Center) {
-                                    if (date == today) Box(Modifier.size(Dimens.Calendar.todayDisc).shadow(4.dp, CircleShape).background(TodayPink))
-                                    Text("$day", fontFamily = Cavorting, fontSize = Dimens.Calendar.daySp, color = MaterialTheme.colorScheme.onSurface)
-                                }
-                                Box(Modifier.padding(top = 3.dp).size(6.dp).clip(CircleShape)
-                                    .background(if (date in marked) DiaryDot else Color.Transparent))
+                            val isToday = date == today
+                            val hasDiary = date in marked
+                            // 화면이 작으면 숫자 아래 따로 그리던 작은 초록 점이 잘려서 안 보이는
+                            // 문제가 있었다(2026-08-26) — 대신 "오늘" 표시와 같은 자리·같은 크기의
+                            // 원 하나로 통일: 그림 있음=초록, 오늘=분홍, 오늘+그림 있음=짙은 초록.
+                            val circleColor = when {
+                                isToday && hasDiary -> DiaryDotToday
+                                isToday -> TodayPink
+                                hasDiary -> DiaryDot
+                                else -> null
+                            }
+                            Box(Modifier.size(Dimens.Calendar.todayDisc), contentAlignment = Alignment.Center) {
+                                circleColor?.let { Box(Modifier.size(Dimens.Calendar.todayDisc).shadow(4.dp, CircleShape).background(it)) }
+                                Text("$day", fontFamily = Cavorting, fontSize = Dimens.Calendar.daySp, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
@@ -469,8 +477,10 @@ private fun AiryCalendar(year: Int, month: Int, marked: Set<String>, today: Stri
     }
 }
 
-/** Slides 3 & 4 — clean, bar-less full-screen: a bordered 6×7 month (day thumbnails); tapping a day
- *  swaps the grid for that day's sketch inside a hand-drawn frame. Kept UI-free so it can be captured. */
+/** Slides 3 & 4 — clean, bar-less full-screen: 좌측엔 썸네일 달력(6×7), 우측엔 지금 고른 날짜의
+ *  스케치를 항상 같이 보여준다(2026-08-26, 이전엔 달력만 보이다가 날짜를 탭해야 스케치로 전환되는
+ *  1단계 방식이었음). 들어오자마자는 오늘 날짜가 우측에 뜨고, 달력에서 다른 날을 탭하거나 우측
+ *  스케치를 좌우로 스와이프하면 우측이 그 날짜로 바뀐다(달력도 같이 그 달로 넘어감). */
 @Composable
 fun CleanCalendarScreen(
     year: Int,
@@ -482,39 +492,40 @@ fun CleanCalendarScreen(
 ) {
     val ctx = LocalContext.current
     val repo = if (previewMode) null else remember(ctx) { DiaryRepository(ctx) }
-    // 상세뷰에서 좌우 스와이프로 날짜를 넘기면 월 경계를 넘을 수 있어 연/월을 내부 상태로 들고 있는다
-    // (파라미터 year/month는 최초 진입 시점의 값일 뿐).
+    val today = remember(repo) { repo?.today() ?: "2026-08-17" }
+    // 우측 상세에서 좌우 스와이프로 날짜를 넘기면 월 경계를 넘을 수 있어 연/월을 내부 상태로 들고
+    // 있는다(파라미터 year/month는 최초 진입 시점의 값일 뿐).
     var curYear by remember { mutableIntStateOf(year) }
     var curMonth by remember { mutableIntStateOf(month) }
     var thumbs by remember { mutableStateOf<Map<String, ImageBitmap>>(emptyMap()) }
     LaunchedEffect(curYear, curMonth, repo) {
         if (repo != null) thumbs = withContext(Dispatchers.IO) { buildThumbs(repo, curYear, curMonth) }
     }
-    var detailDate by remember(previewDetailDate) { mutableStateOf(previewDetailDate) }
+    var detailDate by remember { mutableStateOf(previewDetailDate ?: today) }
+    fun navigate(newDate: String) {
+        detailDate = newDate
+        val parts = newDate.split("-")
+        curYear = parts[0].toInt()
+        curMonth = parts[1].toInt() - 1
+    }
 
-    BackHandler { if (detailDate != null) detailDate = null else onBack() }
+    BackHandler { onBack() }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (detailDate == null) {
-            Column(Modifier.fillMaxSize().systemBarsPadding()
+    Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Column(
+            Modifier.weight(0.42f).fillMaxHeight().systemBarsPadding()
                 .padding(start = Dimens.CleanCalendar.sidePadding, end = Dimens.CleanCalendar.sidePadding,
-                    top = Dimens.CleanCalendar.topPadding, bottom = Dimens.CleanCalendar.bottomPadding)) {
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$curYear", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(MonthNames[curMonth], fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.monthSp, maxLines = 1)
-                }
-                Spacer(Modifier.height(Dimens.CleanCalendar.titleGap))
-                CleanGrid(curYear, curMonth, thumbs, Modifier.weight(1f).fillMaxWidth()) { detailDate = it }
+                    top = Dimens.CleanCalendar.topPadding, bottom = Dimens.CleanCalendar.bottomPadding),
+        ) {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("$curYear", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.yearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(MonthNames[curMonth], fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.monthSp, maxLines = 1)
             }
-        } else {
-            // 일자 상세는 전체화면 — 그림이 화면을 꽉 채우고 날짜는 그 위 워터마크로만 표시(별도 헤더 없음).
-            CleanDetailBody(repo, detailDate!!, Modifier.fillMaxSize(), previewBitmap = previewBitmap) { newDate ->
-                detailDate = newDate
-                val parts = newDate.split("-")
-                curYear = parts[0].toInt()
-                curMonth = parts[1].toInt() - 1
-            }
+            Spacer(Modifier.height(Dimens.CleanCalendar.titleGap))
+            CleanGrid(curYear, curMonth, thumbs, Modifier.weight(1f).fillMaxWidth()) { navigate(it) }
         }
+        // 우측 상세는 남은 폭을 꽉 채운다 — 그림이 그 안을 채우고 날짜는 그 위 워터마크로만 표시.
+        CleanDetailBody(repo, detailDate, Modifier.weight(0.58f).fillMaxHeight(), previewBitmap = previewBitmap) { navigate(it) }
     }
 }
 
