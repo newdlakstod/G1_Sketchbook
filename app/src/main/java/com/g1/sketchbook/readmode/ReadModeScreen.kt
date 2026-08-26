@@ -1,6 +1,8 @@
 package com.g1.sketchbook.readmode
 
 import android.graphics.BitmapFactory
+import android.graphics.Rect
+import android.os.Build
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -16,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -26,7 +29,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.gdo.pagecurl.PageCurl
 import com.g1.sketchbook.sketchbook.Sketchbook
@@ -66,7 +72,21 @@ fun ReadModeScreen(
 
     BackHandler { onClose(currentPage) }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    // 페이지를 넘기려고 화면 가장자리 가까이서 드래그를 시작하면, 안드로이드 제스처 내비게이션이
+    // PageCurl보다 먼저 그 터치를 "뒤로가기 스와이프"로 채가서 읽기모드가 자꾸 닫혔다. 이 화면 전체를
+    // 시스템 제스처 제외 영역으로 등록해 가장자리 터치도 PageCurl이 온전히 받게 한다.
+    val view = LocalView.current
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+    DisposableEffect(view, boxSize) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && boxSize.width > 0 && boxSize.height > 0) {
+            view.systemGestureExclusionRects = listOf(Rect(0, 0, boxSize.width, boxSize.height))
+        }
+        onDispose {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) view.systemGestureExclusionRects = emptyList()
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged { boxSize = it }) {
         PageCurl(
             source = source,
             pageIndex = currentPage,
