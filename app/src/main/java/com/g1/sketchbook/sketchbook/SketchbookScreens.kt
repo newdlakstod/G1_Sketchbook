@@ -1025,6 +1025,10 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     // 라소 켜기 직전 상태를 기억해뒀다가, 캔버스 바깥을 탭해 라소를 나갈 때 그대로 복원한다.
     var preLassoErasing by remember { mutableStateOf(false) }
     var preLassoFillActive by remember { mutableStateOf(false) }
+    // S펜 버튼을 누르고 있는 동안만 지우개로 전환했다가, 떼면 누르기 직전 도구로 되돌린다.
+    var preStylusErasing by remember { mutableStateOf(false) }
+    var preStylusLasso by remember { mutableStateOf(false) }
+    var preStylusFill by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
     val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
     var eraserSize by remember { mutableFloatStateOf(session.eraserSize) }
@@ -1096,6 +1100,14 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
                     v.onThreeFingerSwipe = { dir -> goTo(page + dir) }
                     v.onLassoTapOutside = { lassoActive = false; erasing = preLassoErasing; fillActive = preLassoFillActive }
+                    v.onStylusButtonChanged = { pressed ->
+                        if (pressed) {
+                            preStylusErasing = erasing; preStylusLasso = lassoActive; preStylusFill = fillActive
+                            erasing = true; lassoActive = false; fillActive = false
+                        } else {
+                            erasing = preStylusErasing; lassoActive = preStylusLasso; fillActive = preStylusFill
+                        }
+                    }
                     v.onStrokeEnd = { val pg = page; v.exportContent()?.let { b -> savePageSynced(scope, repo, backup, myUid, book.id, pg, b) } }
                 },
             )

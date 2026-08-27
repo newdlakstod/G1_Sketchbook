@@ -80,6 +80,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var eyedropArmed = false
     private var eyedropDragging = false
 
+    /** S펜(스타일러스) 사이드 버튼을 누르고 있는 동안 true, 떼면 false — 지금 어떤 모드든(브러시/
+     *  올가미/채우기/스포이드) 상관없이 순수 버튼 상태 변화만 알려준다(2026-08-27). 호출부가 "누르는
+     *  동안만 지우개, 떼면 이전 도구로 복귀" 같은 걸 구현하는 용도. 펜 끝이 화면에 닿아 있을 때만
+     *  버튼 상태가 들어오는 게 안드로이드 스타일러스 입력의 일반적인 동작이다. */
+    var onStylusButtonChanged: ((Boolean) -> Unit)? = null
+    private var stylusButtonDown = false
+
     /** 올가미(라소) 선택 모드 — 켜져 있으면 손가락으로 자유형 영역을 그려 선택하고, 선택 영역
      *  안쪽을 다시 눌러 드래그하면 그 자리로 옮길 수 있다. 다른 브러시로 바꿔 꺼지면(false로
      *  세팅되면) 남아있던 선택은 자동으로 풀린다. */
@@ -405,6 +412,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     // ---- touch (one finger draws, two fingers pinch-zoom/pan) ----
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!drawEnabled) return false
+        // 지금 어떤 모드(브러시/올가미/채우기/스포이드)든 상관없이 버튼 눌림/뗌 변화만 먼저 감지 —
+        // 아래 모드별 분기와 완전히 독립적이라 어느 도구를 쓰던 중이었어도 정확히 반영된다.
+        val stylusButtonNow = e.isButtonPressed(MotionEvent.BUTTON_STYLUS_PRIMARY)
+        if (stylusButtonNow != stylusButtonDown) {
+            stylusButtonDown = stylusButtonNow
+            onStylusButtonChanged?.invoke(stylusButtonNow)
+        }
         val now = System.currentTimeMillis()
         // Eyedropper: while armed (toolbar button) or already dragging, every touch is a colour pick,
         // never a stroke — handled entirely separately from drawing/gestures below.

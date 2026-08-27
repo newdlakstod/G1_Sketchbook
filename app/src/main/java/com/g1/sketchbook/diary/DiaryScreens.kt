@@ -152,6 +152,10 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var lassoDeleteAt by remember { mutableStateOf<Offset?>(null) }
     var preLassoErasing by remember { mutableStateOf(false) }
     var preLassoFillActive by remember { mutableStateOf(false) }
+    // S펜 버튼을 누르고 있는 동안만 지우개로 전환했다가, 떼면 누르기 직전 도구로 되돌린다.
+    var preStylusErasing by remember { mutableStateOf(false) }
+    var preStylusLasso by remember { mutableStateOf(false) }
+    var preStylusFill by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
     var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
@@ -257,6 +261,14 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                             v.onEyedropCancel = { eyedropArmed = false; eyedropPreview = null }
                             v.onToggleToolbars = { toolbarCollapsed = !toolbarCollapsed }
                             v.onLassoTapOutside = { lassoActive = false; erasing = preLassoErasing; fillActive = preLassoFillActive }
+                            v.onStylusButtonChanged = { pressed ->
+                                if (pressed) {
+                                    preStylusErasing = erasing; preStylusLasso = lassoActive; preStylusFill = fillActive
+                                    erasing = true; lassoActive = false; fillActive = false
+                                } else {
+                                    erasing = preStylusErasing; lassoActive = preStylusLasso; fillActive = preStylusFill
+                                }
+                            }
                             v.onStrokeEnd = { saveCurrent(v) }
                         },
                     )

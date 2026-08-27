@@ -133,6 +133,10 @@ fun SharedBookScreen(
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
     var lassoDeleteAt by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+    // S펜 버튼을 누르고 있는 동안만 지우개로 전환했다가, 떼면 누르기 직전 도구로 되돌린다.
+    var preStylusErasing by remember { mutableStateOf(false) }
+    var preStylusLasso by remember { mutableStateOf(false) }
+    var preStylusFill by remember { mutableStateOf(false) }
     val sizeByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushSize(it) }.toTypedArray()) }
     val opacityByBrush = remember { mutableStateMapOf(*BrushType.entries.map { it to session.brushOpacity(it) }.toTypedArray()) }
     var eraserSize by remember { mutableFloatStateOf(session.eraserSize) }
@@ -192,6 +196,14 @@ fun SharedBookScreen(
         v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
         v.lassoMode = lassoActive; v.fillMode = fillActive
         v.onLassoSelectionChanged = { has, x, y -> lassoDeleteAt = if (has) androidx.compose.ui.geometry.Offset(x, y) else null }
+        v.onStylusButtonChanged = { pressed ->
+            if (pressed) {
+                preStylusErasing = erasing; preStylusLasso = lassoActive; preStylusFill = fillActive
+                erasing = true; lassoActive = false; fillActive = false
+            } else {
+                erasing = preStylusErasing; lassoActive = preStylusLasso; fillActive = preStylusFill
+            }
+        }
         v.twoFingerTapAction = session.twoFingerTapAction
         v.threeFingerTapAction = session.threeFingerTapAction
         v.longPressAction = session.longPressAction

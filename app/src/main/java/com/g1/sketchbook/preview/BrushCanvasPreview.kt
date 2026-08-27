@@ -81,6 +81,9 @@ private fun BrushCanvasPreview() {
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
     var lassoDeleteAt by remember { mutableStateOf<Offset?>(null) }
+    var preStylusErasing by remember { mutableStateOf(false) }
+    var preStylusLasso by remember { mutableStateOf(false) }
+    var preStylusFill by remember { mutableStateOf(false) }
     var eraserOpacity by remember { mutableFloatStateOf(100f) }
     var eraserBlur by remember { mutableFloatStateOf(0f) }
     val effectiveOpacity = if (erasing) eraserOpacity else opacity
@@ -120,6 +123,14 @@ private fun BrushCanvasPreview() {
                     v.lassoMode = lassoActive
                     v.fillMode = fillActive
                     v.onLassoSelectionChanged = { has, x, y -> lassoDeleteAt = if (has) Offset(x, y) else null }
+                    v.onStylusButtonChanged = { pressed ->
+                        if (pressed) {
+                            preStylusErasing = erasing; preStylusLasso = lassoActive; preStylusFill = fillActive
+                            erasing = true; lassoActive = false; fillActive = false
+                        } else {
+                            erasing = preStylusErasing; lassoActive = preStylusLasso; fillActive = preStylusFill
+                        }
+                    }
                     v.eyedropArmed = eyedropArmed
                     v.onEyedropPreview = { c, x, y -> eyedropPreview = Triple(c, x, y) }
                     v.onEyedrop = { c -> color = (c.toLong() and 0xFFFFFFFFL); erasing = false; eyedropArmed = false; eyedropPreview = null }
