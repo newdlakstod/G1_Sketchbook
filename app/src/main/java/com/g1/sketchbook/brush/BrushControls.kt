@@ -816,8 +816,15 @@ internal fun ColorPickerCard(
     var hue by remember { mutableFloatStateOf(init[0]) }
     var sat by remember { mutableFloatStateOf(init[1]) }
     var value by remember { mutableFloatStateOf(init[2]) }
-    val currentPacked = (AndroidColor.HSVToColor(floatArrayOf(hue, sat, value)).toLong() and 0xFFFFFFFF) or 0xFF000000L
-    fun emit() = onColor(currentPacked)
+    // 원형 휠/밝기 막대의 pointerInput(Unit)은 처음 구성될 때 딱 한 번만 코루틴을 띄우고 계속 재사용
+    // 하므로(키가 상수라 재구성돼도 새로 안 뜸), 그 안에서 emit()이 부르는 값은 "호출 시점에 다시
+    // 계산"해야 한다 — currentPacked를 val로 미리 굳혀두면 첫 구성 때의 색이 통째로 고정돼버려서
+    // 휠 손잡이는 움직여도 실제 색은 안 바뀌는 버그가 났다(2026-08-27, bounceClick과 같은 스테일
+    // 클로저 패턴). emit()은 함수 본문에서 매번 새로 읽어 계산하고, current는 렌더링 전용이라
+    // val로 둬도 안전하다(재구성될 때마다 다시 계산됨).
+    fun packedColor() = (AndroidColor.HSVToColor(floatArrayOf(hue, sat, value)).toLong() and 0xFFFFFFFF) or 0xFF000000L
+    fun emit() = onColor(packedColor())
+    val currentPacked = packedColor()
     val current = Color(currentPacked)
 
     var tab by remember { mutableStateOf(PickerTab.WHEEL) }

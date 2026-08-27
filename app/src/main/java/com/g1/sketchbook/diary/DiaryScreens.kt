@@ -167,9 +167,6 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     val size = remember { Catalog.size("a4") }
     val cw = size.pxW(); val ch = size.pxH()
-    val storesTransparentContent = remember(repo, date) {
-        repo != null && (!repo.hasEntry(date) || repo.hasContent(date))
-    }
     // 종이+필기를 합성한 exportBitmap()은 새 비트맵 할당 + 종이질감 합성 그리기라 붓질마다 부르면
     // (특히 해칭처럼 짧은 붓질을 연달아 그을 때) 메인 스레드 렉으로 체감된다. 되돌리기에 쓰이는
     // 필기 전용 content는 단순 복사라 가볍고 손실 위험도 없으니 매 붓질 그대로 저장하고, 무거운
@@ -202,10 +199,13 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     }
 
     fun saveCurrent(v: BrushView) {
-        if (storesTransparentContent) {
-            val content = v.exportContent()
-            if (content != null) scope.launch(Dispatchers.IO) { repo?.saveContent(date, content); content.recycle() }
-        }
+        // 예전엔 "이 항목이 hasEntry인데 hasContent가 아니면 투명 저장 기능 이전(구형) 일기"로 보고
+        // 여기서 껐었는데, 백업 동기화가 다른 기기에서 합성 이미지만 먼저 당겨와도(hasEntry=true,
+        // hasContent=false) 오늘 막 그린 일기가 구형으로 오판되는 버그가 있었다(2026-08-26). 지금
+        // 그리고 있다는 것 자체가 저장할 필기 데이터가 있다는 뜻이라 조건 없이 항상 저장한다 —
+        // 구형 일기도 한 번이라도 다시 손대면 그때부터 투명 저장이 지원된다.
+        val content = v.exportContent()
+        if (content != null) scope.launch(Dispatchers.IO) { repo?.saveContent(date, content); content.recycle() }
         scheduleCompositeSave(v)
     }
     // 스케치북/공유노트와 동일한 오버레이+dock+드래그+최소화+잠금+전체화면 구조로 통일(2026-08-20,
@@ -283,7 +283,7 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             onClear = {
                 view?.clearCanvas()
                 view?.let { v ->
-                    if (storesTransparentContent) v.exportContent()?.let { content ->
+                    v.exportContent()?.let { content ->
                         scope.launch(Dispatchers.IO) { repo?.saveContent(date, content); content.recycle() }
                     }
                     flushCompositeSave(v)
