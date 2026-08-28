@@ -646,12 +646,23 @@ fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Mo
 @Composable
 private fun ActiveToolSlidersBar(erasing: Boolean, brush: BrushType, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
     val sizeRange = if (erasing) EraserSizeRange else brushSizeRange(brush)
-    Column(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 6.dp)) {
+    Column(Modifier.width(248.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // 굵기 표시는 실제 dp가 아니라 이 슬라이더 안에서의 1~30 단계 번호(브러시 종류마다 범위가
         // 달라도 표시는 항상 1~30으로 통일 — sizeRange 기준으로 위치를 환산).
-        IconSliderRow(Icons.Filled.LineWeight, "굵기", "${sizeLevel(sizeDp, sizeRange)}", sizeDp, sizeRange, onSize)
-        Spacer(Modifier.height(5.dp))
-        IconSliderRow(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
+        SliderPill(Icons.Filled.LineWeight, "굵기", "${sizeLevel(sizeDp, sizeRange)}", sizeDp, sizeRange, onSize)
+        SliderPill(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
+    }
+}
+
+/** 슬라이더 한 줄을 그 자체로 얇고 불투명한 알약(pill) 캡슐로 감싼다 — 툴바 배경에 섞여 들어가지
+ *  않고 독립된 조절 칩처럼 보이도록(2026-08-28, 샘플 참고: 완전히 둥근 모서리 + 얇은 세로 폭). */
+@Composable
+private fun SliderPill(icon: ImageVector, contentDescription: String, valueText: String, value: Float,
+                        range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+    Surface(shape = RoundedCornerShape(percent = 50), color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 1.dp) {
+        Box(Modifier.padding(horizontal = 14.dp, vertical = 2.dp)) {
+            IconSliderRow(icon, contentDescription, valueText, value, range, onChange)
+        }
     }
 }
 
