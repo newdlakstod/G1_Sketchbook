@@ -40,7 +40,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -208,6 +207,16 @@ fun SharedBookScreen(
     fun goTo(p: Int) {
         if (p == page || p !in 0 until pageCount) return
         saveLocal(); page = p; view?.loadContent(sbRepo.loadPage(book.id, p)); pushMine()
+    }
+
+    // 선생님모드가 켜져 있는 동안엔 host가 페이지를 넘기면 참가자도 자동으로 같은 페이지를 따라간다 —
+    // 안 그러면 host가 이미 다른 페이지에서 그리고 있는 도중 참가자가 들어오거나(항상 0페이지부터
+    // 시작) 참가자가 다른 페이지를 보고 있던 채로 host가 페이지를 넘기면, 위 teacherOverlayBmp의
+    // "같은 페이지일 때만" 조건이 계속 false로 남아 오버레이가 아예 반영 안 되는 것처럼 보였다
+    // (2026-08-29).
+    LaunchedEffect(teacherMode, hostSlot?.currentPage) {
+        val hp = hostSlot?.currentPage
+        if (!isHost && teacherMode && hp != null) goTo(hp)
     }
 
     // Share my current page as soon as the canvas is ready.
@@ -494,7 +503,8 @@ private fun TeacherModeButton(active: Boolean, onToggle: () -> Unit) {
             Box(Modifier.padding(6.dp)) {
                 Box(Modifier.size(30.dp).bounceClick(onClick = onToggle), contentAlignment = Alignment.Center) {
                     Icon(
-                        Icons.Filled.School, "선생님모드 " + (if (active) "끄기" else "켜기"),
+                        if (active) com.g1.sketchbook.brush.IconScreenSharedLine else com.g1.sketchbook.brush.IconScreenUnsharedLine,
+                        "선생님모드 " + (if (active) "끄기" else "켜기"),
                         tint = if (active) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current,
                     )
                 }

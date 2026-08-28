@@ -241,9 +241,23 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                         modifier = Modifier.fillMaxSize(),
                         factory = { c ->
                             BrushView(c).also { v ->
-                                v.paper = BitmapFactory.decodeResource(c.resources, R.drawable.paper_watercolor)
+                                // "투명 저장" 이전(구형)에 쓰인 일기는 종이+붓질이 이미 한 장으로
+                                // 합쳐진 파일(repo.load)만 있고 붓질만 따로 담은 content 파일이
+                                // 없다 — 예전엔 이 합쳐진 파일을 그대로 content에 부어 넣어서, 그
+                                // 뒤로 아무리 다시 그려도 content 자체에 종이 질감이 눌러붙어 있는
+                                // 채였다(투명 배경으로 저장해도 종이가 같이 나오던 버그, 2026-08-29).
+                                // 옛 그림은 다시 붓질만 분리할 수 없으니, 대신 그 합쳐진 이미지를
+                                // paper 자리에 "고정 배경"으로 깔고 content는 진짜 빈 투명으로
+                                // 시작한다 — 화면에 보이는 그림은 그대로지만, 이제부터 새로 그리는
+                                // 것만 content에 쌓여서 투명 저장이 실제로 투명해진다.
+                                val content = repo?.loadContent(date)
+                                v.paper = if (content != null) {
+                                    BitmapFactory.decodeResource(c.resources, R.drawable.paper_watercolor)
+                                } else {
+                                    repo?.load(date) ?: BitmapFactory.decodeResource(c.resources, R.drawable.paper_watercolor)
+                                }
                                 v.initCanvas(cw, ch)
-                                v.loadContent(repo?.loadContent(date) ?: repo?.load(date))
+                                v.loadContent(content)
                                 view = v
                             }
                         },

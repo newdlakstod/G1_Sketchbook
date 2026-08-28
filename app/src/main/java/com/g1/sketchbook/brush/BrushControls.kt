@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -35,7 +36,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
@@ -43,17 +43,14 @@ import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
-import androidx.compose.material.icons.filled.Gesture
-import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LineWeight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Rotate90DegreesCw
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.UnfoldLess
-import androidx.compose.material.icons.filled.UnfoldMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -69,6 +66,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -150,6 +148,16 @@ private val HueWheel = listOf(
 // Arrangement.spacedBy로 버튼 간격을 더 좁히면(0 이하 포함) 이 탭 영역끼리 겹칠 수 있는데,
 // 겹쳐도 터치는 정상 동작하도록 의도된 것 — 실제 보이는 간격은 이 값과 spacedBy 둘이 함께 정한다.
 private val ButtonTapSize = 30.dp
+
+// 버튼바 서피스와 굵기/불투명도 그립 레인 사이 간격 — 둘이 맞닿는 쪽 여백만 이 값으로 좁힌다
+// (화면 가장자리 쪽 여백은 그대로 10dp, 2026-08-29).
+private val ToolbarGripGap = 2.dp
+
+// 버튼바가 TOP에 펼쳐진 채 도킹되면 항상 우측 상단 고정인 ScreenControls(페이지/회전/잠금/전체화면
+// 설정 버튼, 튠 아이콘)와 겹친다 — TOP일 때만 버튼바 오른쪽에 그 버튼이 들어갈 자리를 남겨 폭을
+// 줄인다(2026-08-29). ScreenControls 쪽 자체 여백(10dp) + 원형 버튼 지름(6dp 패딩×2 + 30dp
+// ButtonTapSize = 42dp) + 약간의 틈(8dp) = 60dp.
+private val ScreenControlsClearance = 60.dp
 
 // 즐겨찾기 그리드 — 카드 폭에 실제로 몇 칸이 들어가는지 계산해서 항상 3줄을 채운다("폭에 7개
 // 들어가면 21개, 8개 들어가면 24개" 식, 2026-08-26). 카드 폭이 바뀌면 총 개수도 이 값들 그대로
@@ -270,12 +278,26 @@ fun BrushControls(
     // Surface와 그립을 각자 align()으로 겹쳐 배치했는데, Box는 넓은 쪽(Surface) 크기로만 자기 높이를
     // 잡아서 그립이 그 안쪽 가장자리에 얹히며 Surface와 겹쳐 보이는 문제가 있었다(TOP 도킹에서 특히
     // 두드러짐). Column/Row로 순서대로 쌓으면 두 요소가 서로의 자리를 침범할 수 없다.
+    // 그립 레인과 맞닿는 쪽만 간격을 좁히고(ToolbarGripGap), 화면 가장자리 쪽은 기존 여백(10dp)을
+    // 그대로 둔다 — 예전엔 사방 10dp로 균일해서 그립 레인 쪽에도 불필요하게 넓은 틈이 생겼었다.
+    val toolbarPadding = when {
+        !vertical && dock == ToolbarDock.BOTTOM -> PaddingValues(start = 10.dp, end = 10.dp, top = ToolbarGripGap, bottom = 10.dp)
+        // TOP + 펼침 상태에서만 우측에 ScreenControls 자리를 남긴다 — 최소화 상태는 폭이 좁아
+        // 애초에 안 겹치므로 그대로 10dp.
+        !vertical && dock == ToolbarDock.TOP -> PaddingValues(
+            start = 10.dp, end = if (fillToolbarWidth) ScreenControlsClearance else 10.dp,
+            top = 10.dp, bottom = ToolbarGripGap,
+        )
+        vertical && dock == ToolbarDock.RIGHT -> PaddingValues(start = ToolbarGripGap, end = 10.dp, top = 10.dp, bottom = 10.dp)
+        vertical && dock == ToolbarDock.LEFT -> PaddingValues(start = 10.dp, end = ToolbarGripGap, top = 10.dp, bottom = 10.dp)
+        else -> PaddingValues(10.dp)
+    }
     val toolbarSurface: @Composable () -> Unit = {
         Surface(
             shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp, tonalElevation = 2.dp,
             modifier = (if (fillToolbarWidth) Modifier.fillMaxWidth() else Modifier)
-                .padding(horizontal = 10.dp, vertical = 10.dp)
+                .padding(toolbarPadding)
                 .onGloballyPositioned { toolbarSizePx = it.size },
         ) {
         if (collapsed) {
@@ -297,7 +319,7 @@ fun BrushControls(
                             onEraser = { onToggleErase(); miniBrushPickerOpen = false })
                     }
                     if (collapsedSizePanelOpen) Popup(sizePopupAnchor, { collapsedSizePanelOpen = false }, PopupProperties(focusable = true)) {
-                        BlurPanel(eraserBlur, onEraserBlur)
+                        BlurPanel(eraserBlur, onEraserBlur, onClear = { confirmClear = true })
                     }
                 }
                 // 현재 색상 — 탭하면 전체 툴바와 같은 색상휠이 뜬다.
@@ -315,7 +337,10 @@ fun BrushControls(
                             onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
                     }
                 }
-                onToggleCollapsed?.let { IconBtn(Icons.Filled.UnfoldMore, "버튼바 펼치기", onClick = it) }
+                // 세로로 접힌 두 줄 화살표(UnfoldMore/Less)는 가로로 늘어선 버튼들 사이에서 위아래
+                // 축소 모양처럼 보여 어색했다 — 흔히 쓰는 펼치기/접기 쉐브론(ExpandMore/Less, 아래쪽
+                // 화살표=더 보기, 위쪽 화살표=접기)으로 교체(2026-08-29).
+                onToggleCollapsed?.let { IconBtn(Icons.Filled.ExpandMore, "버튼바 펼치기", onClick = it) }
             }
             if (vertical) {
                 Column(
@@ -363,10 +388,11 @@ fun BrushControls(
                     EraserBtnWithBlurPanel(erasing, eraserBlur, onEraserBlur, sizePopupAnchor,
                         panelOpen = openEraserPanel,
                         setPanelOpen = { o -> openEraserPanel = o },
-                        onClick = { onToggleErase(); openEraserPanel = false }) { t ->
+                        onClick = { onToggleErase(); openEraserPanel = false },
+                        onClear = { confirmClear = true }) { t ->
                         Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    IconBtn(Icons.Filled.UnfoldLess, "붓 종류 접기", onClick = { brushCategoryExpanded = false })
+                    IconBtn(Icons.Filled.ExpandLess, "붓 종류 접기", onClick = { brushCategoryExpanded = false })
                 } else {
                     // 접힌 상태에서도 툴바 전체 최소화 모드와 같은 조작: 탭하면 붓 종류 미니 팝업,
                     // 길게 누르면 지금 붓의 굵기/투명도 패널(2026-08-26). 줄 자체를 다시 펼치려면
@@ -385,14 +411,14 @@ fun BrushControls(
                                 onEraser = { onToggleErase(); miniBrushPickerOpen = false })
                         }
                         if (collapsedSizePanelOpen) Popup(sizePopupAnchor, { collapsedSizePanelOpen = false }, PopupProperties(focusable = true)) {
-                            BlurPanel(eraserBlur, onEraserBlur)
+                            BlurPanel(eraserBlur, onEraserBlur, onClear = { confirmClear = true })
                         }
                     }
-                    IconBtn(Icons.Filled.UnfoldMore, "붓 종류 펼치기", onClick = { brushCategoryExpanded = true })
+                    IconBtn(Icons.Filled.ExpandMore, "붓 종류 펼치기", onClick = { brushCategoryExpanded = true })
                 }
                 // 올가미(선택)·페인트통(채우기) — 굵기/불투명도 패널이 필요 없는 단순 토글이라
                 // 다른 브러시 버튼과 달리 팝업 없이 바로 켜고 끈다(스포이드 버튼과 같은 패턴).
-                IconBtn(Icons.Filled.Gesture, "올가미 선택",
+                IconBtn(IconLassoLine, "올가미 선택",
                     tint = if (lassoActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                     onClick = onToggleLasso)
                 IconBtn(Icons.Filled.FormatColorFill, "페인트통",
@@ -465,9 +491,8 @@ fun BrushControls(
             add {
                 IconBtn(Icons.AutoMirrored.Filled.Undo, "되돌리기", onClick = onUndo)
                 IconBtn(Icons.AutoMirrored.Filled.Redo, "다시 실행", onClick = onRedo)
-                IconBtn(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555), onClick = { confirmClear = true })
             }
-            onToggleCollapsed?.let { toggle -> add { IconBtn(Icons.Filled.UnfoldLess, "버튼바 최소화", onClick = toggle) } }
+            onToggleCollapsed?.let { toggle -> add { IconBtn(Icons.Filled.ExpandLess, "버튼바 최소화", onClick = toggle) } }
         }
 
         if (vertical) {
@@ -508,7 +533,7 @@ fun BrushControls(
         ToolbarDock.LEFT -> TooltipSide.END
         ToolbarDock.RIGHT -> TooltipSide.START
     }
-    val laneCrossAxis = GripActiveThickness + 8.dp
+    val laneCrossAxis = GripIdleThickness + 8.dp
     val gripLane: @Composable () -> Unit = {
         if (toolbarSizePx.width > 0 && toolbarSizePx.height > 0) {
             if (!vertical) {
@@ -603,12 +628,12 @@ fun ScreenControls(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(15.dp),
                     ) {
-                        onOpenPages?.let { open -> IconBtn(Icons.Filled.Layers, "페이지") { open(); expanded = false } }
-                        onReadMode?.let { read -> IconBtn(Icons.Filled.AutoStories, "읽기모드") { read(); expanded = false } }
+                        onOpenPages?.let { open -> IconBtn(IconLayersLine, "페이지") { open(); expanded = false } }
+                        onReadMode?.let { read -> IconBtn(IconBookLine, "읽기모드") { read(); expanded = false } }
                         onRotate?.let { rotate ->
                             // Dimmed (not disabled) while locked — BrushView.rotate() itself no-ops, this just
                             // signals why tapping does nothing instead of silently failing.
-                            IconBtn(Icons.Filled.Rotate90DegreesCw, "90° 회전",
+                            IconBtn(IconRotateLine, "90° 회전",
                                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (locked) 0.35f else 1f)) { rotate(); expanded = false }
                         }
                         onToggleLock?.let { toggle ->
@@ -616,7 +641,7 @@ fun ScreenControls(
                                 tint = if (locked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) { toggle(); expanded = false }
                         }
                         onToggleFullscreen?.let { toggle ->
-                            IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen, if (fullscreen) "전체화면 종료" else "전체화면",
+                            IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else IconFullscreenLine, if (fullscreen) "전체화면 종료" else "전체화면",
                                 tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) { toggle(); expanded = false }
                         }
                     }
@@ -630,14 +655,21 @@ fun ScreenControls(
  *  자리 하나에만 반응한다. 짧게 눌러도 아무 동작 없음(탭 기능은 없고 드래그 전용). */
 @Composable
 private fun DragHandle(onDrag: (Offset) -> Unit, onDragEnd: () -> Unit) {
+    // pointerInput(Unit)은 이 손잡이가 조립되는 동안 딱 한 번만 시작되고 다시 안 켜진다 — 그 안에서
+    // 그냥 onDrag/onDragEnd를 직접 참조하면, 화면(예: BoxWithConstraints의 maxWidth/maxHeight, 도킹
+    // 판정에 쓰는 컨테이너 크기)이 그 첫 프레임 이후 바뀌어도 이 코루틴은 그 "처음 캡처된" 콜백을
+    // 계속 붙들고 있어 최신 값을 못 본다 — 버튼바 좌/우 도킹이 잘 안 붙는 것처럼 보이던 원인 중
+    // 하나(2026-08-29). rememberUpdatedState로 항상 최신 콜백을 참조하게 한다.
+    val currentOnDrag = rememberUpdatedState(onDrag)
+    val currentOnDragEnd = rememberUpdatedState(onDragEnd)
     Box(
         Modifier.size(32.dp, 48.dp)
             .pointerInput(Unit) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {},
-                    onDrag = { change, dragAmount -> change.consume(); onDrag(dragAmount) },
-                    onDragEnd = onDragEnd,
-                    onDragCancel = onDragEnd,
+                    onDrag = { change, dragAmount -> change.consume(); currentOnDrag.value(dragAmount) },
+                    onDragEnd = { currentOnDragEnd.value() },
+                    onDragCancel = { currentOnDragEnd.value() },
                 )
             },
         contentAlignment = Alignment.Center,
@@ -718,11 +750,10 @@ fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Mo
 }
 
 // 달력 오버레이 등 다른 화면의 그립/썸(RingSliderThumb 등)과는 독립된, 이 그립 전용 치수 —
-// 2026-08-28: "2배 키워달라"는 요청으로 기존 값(22/3/40/8)에서 두 배로.
+// 2026-08-29: 활성화(드래그) 시에도 크기는 그대로 두고 색상만 바뀌도록 바뀌어서, 이제 idle/active
+// 구분 없이 이 크기 하나만 쓴다.
 private val GripIdleLength = 44.dp
 private val GripIdleThickness = 6.dp
-private val GripActiveLength = 80.dp
-private val GripActiveThickness = 16.dp
 
 /** 값 툴팁이 그립 기준 어느 쪽으로 뜰지 — 버튼바가 도킹된 화면 가장자리 반대쪽(캔버스 쪽)으로
  *  띄워야 화면 밖으로 안 잘린다. */
@@ -742,26 +773,29 @@ private fun EdgeGripSlider(
 ) {
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(value) }
+    // pointerInput(range, laneLenPx, vertical) 코루틴은 그 세 키가 안 바뀌는 한 다시 시작되지 않는데,
+    // value/onChange는 그 키에 없어서 굵기·불투명도 값이 바뀔 때마다 새로 안 잡힌다 — 그래서 이미
+    // 한 번이라도 값이 바뀐 뒤에는 onDragStart의 "dragValue = value"가 옛날에 캡처된(stale) value로
+    // 초기화돼, 새로 그립을 잡을 때마다 그 옛 위치로 원점이 튀어 보였다(2026-08-29).
+    // rememberUpdatedState로 항상 최신 값/콜백을 참조하게 한다.
+    val currentValue = rememberUpdatedState(value)
+    val currentOnChange = rememberUpdatedState(onChange)
     val density = LocalDensity.current
     val span = range.endInclusive - range.start
     val accent = MaterialTheme.colorScheme.primary
-    val idle = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    val idle = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     val shownValue = if (dragging) dragValue else value
 
     BoxWithConstraints(modifier, contentAlignment = Alignment.TopStart) {
         val laneLenPx = with(density) { (if (vertical) maxHeight else maxWidth).roundToPx() }
-        // 위치 계산의 기준(센터)은 항상 "활성 크기"로 고정해서 idle↔dragging 전환 때 그립의
-        // 중심이 안 흔들리게 한다 — 예전엔 idle/active 크기를 그대로 (laneLen - gripLen) 계산에
-        // 썼는데, 드래그 시작하는 순간 gripLen이 커지면서 usable 구간이 줄어들어 fraction은 그대로인
-        // 채로 위치만 원점(0) 쪽으로 확 당겨지는 버그가 있었다("반영시점" 대신 매번 0부터 다시
-        // 계산되는 것처럼 보였음). 활성 크기 기준으로 센터를 고정하고, 실제 렌더링 크기(idle/active)
-        // 차이만큼만 대칭으로 빼주면 그립이 커져도 중심은 그대로 유지된다.
-        val activeLenPx = with(density) { GripActiveLength.roundToPx() }
-        val currentLenPx = with(density) { (if (dragging) GripActiveLength else GripIdleLength).roundToPx() }
-        val usableLenPx = max(0, laneLenPx - activeLenPx)
+        // 그립 크기는 idle/dragging 상관없이 항상 고정(GripIdleLength) — 활성화되면 색상만
+        // 강조색으로 바뀔 뿐 커지지 않는다(2026-08-29). 크기가 안 바뀌니 위치 계산도 fraction을
+        // usable 구간에 곱한 값 그대로다.
+        val gripLenPx = with(density) { GripIdleLength.roundToPx() }
+        val usableLenPx = max(0, laneLenPx - gripLenPx)
         val fraction = if (span == 0f) 0f else ((shownValue - range.start) / span).coerceIn(0f, 1f)
-        val centerPx = (fraction * usableLenPx).roundToInt().coerceIn(0, usableLenPx) + activeLenPx / 2
-        val posPx = centerPx - currentLenPx / 2
+        val posPx = (fraction * usableLenPx).roundToInt().coerceIn(0, usableLenPx)
+        val centerPx = posPx + gripLenPx / 2
         // 값 툴팁은 레인 중앙이 아니라 지금 그립이 있는 자리 위(또는 옆)로 — 레인이 넓으면
         // 레인 중앙 기준 정렬만으론 그립을 안 따라간다.
         val gripCenterDeltaPx = centerPx - laneLenPx / 2
@@ -779,9 +813,9 @@ private fun EdgeGripSlider(
 
         Box(
             (if (vertical) {
-                Modifier.height(if (dragging) GripActiveLength else GripIdleLength).width(if (dragging) GripActiveThickness else GripIdleThickness)
+                Modifier.height(GripIdleLength).width(GripIdleThickness)
             } else {
-                Modifier.width(if (dragging) GripActiveLength else GripIdleLength).height(if (dragging) GripActiveThickness else GripIdleThickness)
+                Modifier.width(GripIdleLength).height(GripIdleThickness)
             })
                 .offset { if (vertical) IntOffset(0, posPx) else IntOffset(posPx, 0) }
                 .clip(RoundedCornerShape(percent = 50))
@@ -789,24 +823,24 @@ private fun EdgeGripSlider(
                 .pointerInput(range, laneLenPx, vertical) {
                     if (vertical) {
                         detectVerticalDragGestures(
-                            onDragStart = { dragging = true; dragValue = value },
+                            onDragStart = { dragging = true; dragValue = currentValue.value },
                             onDragEnd = { dragging = false },
                             onDragCancel = { dragging = false },
                             onVerticalDrag = { change, dragAmount ->
                                 change.consume()
                                 dragValue = (dragValue + dragAmount * (span / laneLenPx)).coerceIn(range.start, range.endInclusive)
-                                onChange(dragValue)
+                                currentOnChange.value(dragValue)
                             },
                         )
                     } else {
                         detectHorizontalDragGestures(
-                            onDragStart = { dragging = true; dragValue = value },
+                            onDragStart = { dragging = true; dragValue = currentValue.value },
                             onDragEnd = { dragging = false },
                             onDragCancel = { dragging = false },
                             onHorizontalDrag = { change, dragAmount ->
                                 change.consume()
                                 dragValue = (dragValue + dragAmount * (span / laneLenPx)).coerceIn(range.start, range.endInclusive)
-                                onChange(dragValue)
+                                currentOnChange.value(dragValue)
                             },
                         )
                     }
@@ -829,12 +863,21 @@ private fun sizeLevel(sizeDp: Float, range: ClosedFloatingPointRange<Float>): In
 }
 
 /** 지우개 전용 "경계 블러" 패널 — 굵기/불투명도는 이제 상단 바에서 항상 조절하니, 지우개만 갖는
- *  블러는 그대로 기존처럼(선택된 지우개를 다시 탭 — 또는 최소화 모드에선 길게 눌러) 여는 팝업으로 남긴다. */
+ *  블러는 그대로 기존처럼(선택된 지우개를 다시 탭 — 또는 최소화 모드에선 길게 눌러) 여는 팝업으로
+ *  남긴다. 전체 지우기 버튼은 원래 버튼바 상단(되돌리기/다시실행 옆)에 따로 있었는데, 이 슬라이더
+ *  우측으로 옮겨왔다(2026-08-29, 기존 버튼은 삭제).*/
 @Composable
-private fun BlurPanel(blur: Float, onBlur: (Float) -> Unit) {
+private fun BlurPanel(blur: Float, onBlur: (Float) -> Unit, onClear: () -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
-        Box(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
-            IconSliderRow(Icons.Filled.BlurOn, "경계 블러", "${blur.toInt()}", blur, BlurRange, onBlur)
+        Row(
+            Modifier.width(288.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.weight(1f)) {
+                IconSliderRow(Icons.Filled.BlurOn, "경계 블러", "${blur.toInt()}", blur, BlurRange, onBlur)
+            }
+            Spacer(Modifier.width(8.dp))
+            IconBtn(Icons.Filled.Delete, "전체 지우기", tint = Color(0xFFE85555), onClick = onClear)
         }
     }
 }
@@ -1298,7 +1341,7 @@ private fun BrushBtn(selected: Boolean, onClick: () -> Unit, icon: @Composable (
 @Composable
 private fun EraserBtnWithBlurPanel(
     selected: Boolean, blur: Float, onBlur: (Float) -> Unit, anchor: PopupPositionProvider,
-    panelOpen: Boolean, setPanelOpen: (Boolean) -> Unit, onClick: () -> Unit,
+    panelOpen: Boolean, setPanelOpen: (Boolean) -> Unit, onClick: () -> Unit, onClear: () -> Unit,
     icon: @Composable (Color) -> Unit,
 ) {
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
@@ -1307,7 +1350,7 @@ private fun EraserBtnWithBlurPanel(
         Box(Modifier.size(ButtonTapSize).bounceClick { if (selected) setPanelOpen(!panelOpen) else onClick() },
             contentAlignment = Alignment.Center) { icon(tint) }
         if (panelOpen) Popup(anchor, { setPanelOpen(false) }, PopupProperties(focusable = true)) {
-            BlurPanel(blur, onBlur)
+            BlurPanel(blur, onBlur, onClear)
         }
     }
 }

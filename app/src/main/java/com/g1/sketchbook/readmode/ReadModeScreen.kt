@@ -55,6 +55,41 @@ fun ReadModeScreen(
     var currentPage by rememberSaveable(book.id) {
         mutableIntStateOf(normalizeReadPage(startPage, book.pageCount))
     }
+
+    BackHandler { onClose(currentPage) }
+
+    // 페이지를 넘기려고 화면 가장자리 가까이서 드래그를 시작하면, 안드로이드 제스처 내비게이션이
+    // PageCurl보다 먼저 그 터치를 "뒤로가기 스와이프"로 채가서 읽기모드가 자꾸 닫혔다. 이 화면 전체를
+    // 시스템 제스처 제외 영역으로 등록해 가장자리 터치도 PageCurl이 온전히 받게 한다(전체화면 모달
+    // 전용 문제라 아래 [ReadingPane]이 아니라 여기서만 처리).
+    val view = LocalView.current
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+    DisposableEffect(view, boxSize) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && boxSize.width > 0 && boxSize.height > 0) {
+            view.systemGestureExclusionRects = listOf(Rect(0, 0, boxSize.width, boxSize.height))
+        }
+        onDispose {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) view.systemGestureExclusionRects = emptyList()
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged { boxSize = it }) {
+        ReadingPane(repo, book, currentPage, onPageChanged = { currentPage = it }, modifier = Modifier.fillMaxSize())
+        CloseButton(onClick = { onClose(currentPage) })
+    }
+}
+
+/** 페이지 커얼 뷰어의 공통 핵심 — 전체화면 모달([ReadModeScreen])과 홈 화면 가로모드의 읽기 패널
+ *  (MainScreen.kt의 HomeReadingPane) 양쪽이 공유한다. 뒤로가기/닫기 버튼/제스처 제외 영역처럼
+ *  "전체화면 모달"에만 해당하는 것은 여기 없고 호출부가 각자 갖춘다. */
+@Composable
+fun ReadingPane(
+    repo: SketchbookRepository,
+    book: Sketchbook,
+    currentPage: Int,
+    onPageChanged: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var errorMessage by remember(book.id) { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val paper = remember(context, book.bgKey) {
@@ -69,30 +104,13 @@ fun ReadModeScreen(
             paper = paper,
         )
     }
-
-    BackHandler { onClose(currentPage) }
-
-    // 페이지를 넘기려고 화면 가장자리 가까이서 드래그를 시작하면, 안드로이드 제스처 내비게이션이
-    // PageCurl보다 먼저 그 터치를 "뒤로가기 스와이프"로 채가서 읽기모드가 자꾸 닫혔다. 이 화면 전체를
-    // 시스템 제스처 제외 영역으로 등록해 가장자리 터치도 PageCurl이 온전히 받게 한다.
-    val view = LocalView.current
-    var boxSize by remember { mutableStateOf(IntSize.Zero) }
-    DisposableEffect(view, boxSize) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && boxSize.width > 0 && boxSize.height > 0) {
-            view.systemGestureExclusionRects = listOf(Rect(0, 0, boxSize.width, boxSize.height))
-        }
-        onDispose {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) view.systemGestureExclusionRects = emptyList()
-        }
-    }
-
-    Box(Modifier.fillMaxSize().background(Color.Black).onSizeChanged { boxSize = it }) {
+    Box(modifier) {
         PageCurl(
             source = source,
-            pageIndex = currentPage,
+            pageIndex = normalizeReadPage(currentPage, book.pageCount),
             modifier = Modifier.fillMaxSize(),
             onPageChanged = {
-                currentPage = it
+                onPageChanged(it)
                 errorMessage = null
             },
             onError = { error ->
@@ -107,7 +125,6 @@ fun ReadModeScreen(
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
             )
         }
-        CloseButton(onClick = { onClose(currentPage) })
     }
 }
 

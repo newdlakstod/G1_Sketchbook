@@ -18,7 +18,15 @@ import androidx.compose.ui.input.pointer.pointerInput
  * Press feedback that springs the element's own shape (a gentle scale-down + bounce back) instead
  * of the default rectangular ripple — so a rounded button animates as a rounded button.
  */
-fun Modifier.bounceClick(enabled: Boolean = true, onLongClick: (() -> Unit)? = null, onClick: () -> Unit): Modifier = composed {
+fun Modifier.bounceClick(
+    enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
+    /** null이면(기본값) detectTapGestures에 onDoubleTap 자체를 안 넘겨서, 더블탭 판정을 위해 짧은
+     *  탭마다 시스템 더블탭 타임아웃만큼 기다리는 지연이 안 생긴다 — 더블탭이 실제로 필요한 곳에서만
+     *  값을 넘기고, 나머지는 기존처럼 탭이 바로 반응한다. */
+    onDoubleClick: (() -> Unit)? = null,
+    onClick: () -> Unit,
+): Modifier = composed {
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.92f else 1f,
@@ -33,14 +41,16 @@ fun Modifier.bounceClick(enabled: Boolean = true, onLongClick: (() -> Unit)? = n
     // callback current without needing pointerInput to restart.
     val currentOnClick = rememberUpdatedState(onClick)
     val currentOnLongClick = rememberUpdatedState(onLongClick)
+    val currentOnDoubleClick = rememberUpdatedState(onDoubleClick)
     this
         .graphicsLayer { scaleX = scale; scaleY = scale }
-        .pointerInput(enabled) {
+        .pointerInput(enabled, onDoubleClick != null) {
             if (!enabled) return@pointerInput
             detectTapGestures(
                 onPress = { pressed = true; tryAwaitRelease(); pressed = false },
                 onTap = { currentOnClick.value() },
                 onLongPress = { currentOnLongClick.value?.invoke() },
+                onDoubleTap = if (onDoubleClick != null) { { currentOnDoubleClick.value?.invoke() } } else null,
             )
         }
 }

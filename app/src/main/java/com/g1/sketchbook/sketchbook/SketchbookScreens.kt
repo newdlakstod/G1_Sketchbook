@@ -528,9 +528,10 @@ private fun SketchbookListScreen(
                 ) {
                     gridItems(shown, key = { it.id }) { b ->
                         // 가로모드: 탭 = 3열에 미리보기 선택, 길게 누르면 바로 열림(표지 수정은 3열
-                        // 패널의 연필 아이콘으로 이동). 세로모드는 기존 그대로(탭=열기, 길게=수정).
+                        // 패널의 연필 아이콘, 또는 더블탭으로도 바로 진입), 세로모드는 기존 그대로
+                        // (탭=열기, 길게=수정).
                         if (landscape) {
-                            CoverCard(b, repo, onOpen = { selectedId = b.id }, onEdit = { onOpen(b) })
+                            CoverCard(b, repo, onOpen = { selectedId = b.id }, onEdit = { onOpen(b) }, onDoubleTap = { editing = b })
                         } else {
                             CoverCard(b, repo, onOpen = { onOpen(b) }, onEdit = { editing = b })
                         }
@@ -625,7 +626,12 @@ private fun PageThumbnailCell(repo: SketchbookRepository?, bookId: String, index
 }
 
 @Composable
-private fun CoverCard(book: Sketchbook, repo: SketchbookRepository?, onOpen: () -> Unit, onEdit: () -> Unit) {
+private fun CoverCard(
+    book: Sketchbook, repo: SketchbookRepository?, onOpen: () -> Unit, onEdit: () -> Unit,
+    /** 가로모드 2열 전용 — 더블탭하면 바로 표지 수정 화면으로 들어간다(2026-08-29). 세로모드는
+     *  안 넘겨서(null) 짧은 탭마다 더블탭 판정 대기 시간이 안 생긴다. */
+    onDoubleTap: (() -> Unit)? = null,
+) {
     // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 (커스텀 지정 시) coverColor, 그것도 없으면
     // 기본색을 보여준다. coverVersion을 키에 넣어야 같은 id라도 표지 사진이 바뀌면 다시 읽어온다.
     var cover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
@@ -637,7 +643,7 @@ private fun CoverCard(book: Sketchbook, repo: SketchbookRepository?, onOpen: () 
         SketchbookCover(
             modifier = Modifier.fillMaxSize()
                 .shadow(12.dp, SketchbookCoverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
-                .bounceClick(onClick = onOpen, onLongClick = onEdit),
+                .bounceClick(onClick = onOpen, onLongClick = onEdit, onDoubleClick = onDoubleTap),
             coverColor = book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor,
             coverImage = cover?.let { BitmapPainter(it.asImageBitmap()) },
         ) {

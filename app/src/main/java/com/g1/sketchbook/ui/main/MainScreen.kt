@@ -1,5 +1,6 @@
 package com.g1.sketchbook.ui.main
 
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,10 +14,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
@@ -63,6 +67,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +79,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -89,6 +95,7 @@ import com.g1.sketchbook.sketchbook.SketchbookCover
 import com.g1.sketchbook.sketchbook.SketchbookCoverShape
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.decodeCoverBitmap
+import com.g1.sketchbook.readmode.ReadingPane
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Dimens
 import com.g1.sketchbook.ui.theme.ThemeMode
@@ -168,6 +175,12 @@ private fun HomeTab(
     // 표지 길게 눌러 수정 — 목록탭(SketchbookListScreen)의 CoverCard와 같은 다이얼로그를 재사용.
     var editing by remember { mutableStateOf<Sketchbook?>(null) }
     var pendingDelete by remember { mutableStateOf<Sketchbook?>(null) }
+    // 가로모드 전용: 2열은 읽기모드(선택한 표지를 그 자리에서 페이지 넘겨 봄), 3열은 표지리스트
+    // (탭해서 2열의 읽기 대상을 바꿈) — 세로모드(휴대폰)는 기존 캐러셀 그대로 유지한다(2026-08-29).
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    var selectedBookId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedBook = books.firstOrNull { it.id == selectedBookId } ?: books.firstOrNull()
+    var selectedReadPage by remember(selectedBook?.id) { mutableStateOf(0) }
     MainTabPage(
         title = "Draw your time",
         contentSidePadding = 0.dp,
@@ -181,8 +194,15 @@ private fun HomeTab(
                     tint = if (showShared) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
+        sidePanel = {
+            CoverListPanel(
+                books, selectedBook?.id, repo,
+                onSelect = { selectedBookId = it.id },
+                onLongPress = { editing = it },
+            )
+        },
     ) {
-        // 홈 캐러셀은 공통 헤더 여백과 달리 화면 양쪽 끝까지 사용한다.
+        // 홈 캐러셀/읽기 패널은 공통 헤더 여백과 달리 화면 양쪽 끝까지 사용한다.
         Box(Modifier.fillMaxSize()) {
             if (books.isEmpty()) {
                 Column(Modifier.align(Alignment.Center).padding(horizontal = Dimens.Screen.sideMargin),
@@ -193,6 +213,37 @@ private fun HomeTab(
                     )
                     Text("List 탭에서 첫 스케치북을 만들어보세요.", fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                }
+            } else if (landscape) {
+                val book = selectedBook
+                if (book != null && repo != null) {
+                    // 페이지 커얼 서피스는 자기 크기를 꽉 채워 그려서, 패널 비율과 책 비율이 다르면
+                    // 남는 여백에 서피스 자체의 배경(검정)이 그대로 보였다 — 책 비율에 맞게 딱 맞는
+                    // 크기로만 감싸서, 남는 자리는 홈 화면의 원래 배경이 그대로 비치게 한다(2026-08-29).
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        val ratio = book.size.ratio
+                        val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
+                        val h = w / ratio
+                        // 페이지 커얼은 OpenGL 서피스로 그려지는데, GLSurfaceView 자체를 clip()해도
+                        // 표면 안쪽 렌더링까지는 안 잘릴 수 있어(2026-08-29 확인 필요) — 우선 표준
+                        // clip으로 시도.
+                        ReadingPane(
+                            repo, book, selectedReadPage, onPageChanged = { selectedReadPage = it },
+                            modifier = Modifier.width(w).height(h).clip(RoundedCornerShape(16.dp)),
+                        )
+                    }
+                    // 3열 표지리스트를 탭하면 여기서 읽을 뿐 — 그리기는 이 별도 버튼으로만 들어간다
+                    // (탭=읽기, 그리기 진입은 명시적 버튼으로 분리하기로 결정, 2026-08-29). 텍스트 없이
+                    // 아이콘만(2026-08-29, 재요청).
+                    Box(
+                        Modifier.align(Alignment.BottomEnd).padding(16.dp).size(48.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                            .bounceClick { onOpenBook(book.id) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.Edit, "그리기", tint = MaterialTheme.colorScheme.onPrimary)
+                    }
                 }
             } else {
                 HomeCarousel(books, repo, onOpenBook, onLongPress = { editing = it })
@@ -234,6 +285,52 @@ private fun HomeTab(
             onToggleFav = { repo?.let { r -> com.g1.sketchbook.sketchbook.toggleFavSynced(scope, r, backup, myUid, current.id) }; refresh++ },
             onDelete = { editing = null; pendingDelete = current },
         )
+    }
+}
+
+/** 가로모드 홈 화면 3열(서브패널) 전용 표지리스트 — 표지를 크게 세로로 나열해 아래로 스크롤하는
+ *  방식(2026-08-29, 처음엔 작은 썸네일+옆에 제목이었는데 "표지는 크게, 제목/주석은 표지 아래로"
+ *  요청으로 다시 그림). 탭하면 2열의 읽기 대상을 바꾸고(선택 표시는 굵은 테두리), 길게 누르면 표지
+ *  수정 다이얼로그가 뜬다(캐러셀의 long-press와 동일 동작). 세로모드는 여전히 [HomeCarousel]을 쓴다. */
+@Composable
+private fun CoverListPanel(
+    books: List<Sketchbook>, selectedId: String?, repo: SketchbookRepository?,
+    onSelect: (Sketchbook) -> Unit, onLongPress: (Sketchbook) -> Unit,
+) {
+    if (books.isEmpty()) return
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(22.dp)) {
+        itemsIndexed(books, key = { _, b -> b.id }) { _, book ->
+            val selected = book.id == selectedId
+            var cover by remember(book.id, book.coverVersion) { mutableStateOf<Bitmap?>(null) }
+            LaunchedEffect(book.id, book.coverVersion, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
+            val stackColor = if (cover != null) Color.Black else (book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor)
+            Column(Modifier.fillMaxWidth().bounceClick(onLongClick = { onLongPress(book) }) { onSelect(book) }) {
+                Box(
+                    Modifier.fillMaxWidth().aspectRatio(Dimens.Home.coverRatio)
+                        .clip(SketchbookCoverShape)
+                        .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, SketchbookCoverShape),
+                ) {
+                    SketchbookCover(
+                        modifier = Modifier.fillMaxSize(),
+                        coverColor = stackColor,
+                        coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
+                    ) {}
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    book.name, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(2.dp))
+                val bgLabel = Catalog.backgrounds.firstOrNull { it.key == book.bgKey }?.label ?: book.bgKey
+                Text(
+                    "${book.dateLabel} · ${book.size.label} · $bgLabel",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
@@ -319,8 +416,11 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                         // Box 자신의 레이아웃 크기로 딱 잘려서 그려진다 — 안쪽 SketchbookCover의 그림자가
                         // w/h 밖으로 번져도 이 바깥 상자 크기(shadowSlack 없이는 겨우 +4dp) 밖으로는 못
                         // 나가 잘렸다. shadowSlack만큼 여유를 주고, 원래 스택 겹침 비주얼은 안쪽 상자에
-                        // 그대로 둔 채 가운데 정렬해 넣는다(2026-08-20).
-                        val shadowSlack = 16.dp
+                        // 그대로 둔 채 가운데 정렬해 넣는다(2026-08-20). 16dp로는 여전히 12dp elevation
+                        // 그림자가 살짝 잘려 보인다는 피드백(2026-08-29)으로 28dp까지 올림 — peek이
+                        // coerceAtLeast(20dp)라 (4dp+슬랙)/2가 그 밑으로 남게 값을 골랐다(28dp → 한쪽당
+                        // 16dp, 20dp 여유 안에 들어옴).
+                        val shadowSlack = 28.dp
                         Box(
                             Modifier.width(w + 4.dp + shadowSlack).height(h + 4.dp + shadowSlack)
                                 .scale(scale).alpha(fade)
