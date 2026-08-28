@@ -201,7 +201,7 @@ fun BrushControls(
     onDragBarEnd: (() -> Unit)? = null,
     /** 버튼바가 지금 어느 가장자리에 붙어있는지 — 좌/우면 세로로 눕고(내부 배치·스크롤 방향 전환),
      *  팝업(브러시 패널·색상휠·즐겨찾기 편집)도 화면 밖으로 안 나가는 쪽으로 열린다. */
-    dock: ToolbarDock = ToolbarDock.BOTTOM,
+    dock: ToolbarDock = ToolbarDock.TOP,
     modifier: Modifier = Modifier.fillMaxWidth(),
 ) {
     var colorWheelOpen by remember { mutableStateOf(false) }

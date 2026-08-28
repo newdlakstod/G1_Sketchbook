@@ -218,7 +218,7 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     val fullscreen = true
     var locked by remember { mutableStateOf(false) }
     var toolbarCollapsed by remember { mutableStateOf(false) }
-    var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
+    var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.TOP) }
     var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
     // 나가기 전엔 디바운스 중이던 합성 저장을 기다리지 않고 바로 한 번 반영 — 마지막 몇 붓질이

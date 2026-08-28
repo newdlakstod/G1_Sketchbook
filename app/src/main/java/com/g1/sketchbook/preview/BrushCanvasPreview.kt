@@ -92,7 +92,7 @@ private fun BrushCanvasPreview() {
     var locked by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     var collapsed by remember { mutableStateOf(false) }
-    var dock by remember { mutableStateOf(ToolbarDock.BOTTOM) }
+    var dock by remember { mutableStateOf(ToolbarDock.TOP) }
     var dragPx by remember { mutableStateOf(Offset.Zero) }
     var pagesOpen by remember { mutableStateOf(false) }
     var currentPage by remember { mutableIntStateOf(0) }

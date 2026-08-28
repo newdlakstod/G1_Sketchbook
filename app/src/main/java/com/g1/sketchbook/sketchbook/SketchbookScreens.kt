@@ -1054,7 +1054,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var fullscreen by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(false) }
     var toolbarCollapsed by remember { mutableStateOf(false) }
-    var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
+    var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.TOP) }
     var toolbarDragPx by remember { mutableStateOf(Offset.Zero) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 

@@ -154,7 +154,7 @@ fun SharedBookScreen(
     val fullscreen = true
     var locked by remember { mutableStateOf(false) }
     var toolbarCollapsed by remember { mutableStateOf(false) }
-    var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.BOTTOM) }
+    var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.TOP) }
     var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 

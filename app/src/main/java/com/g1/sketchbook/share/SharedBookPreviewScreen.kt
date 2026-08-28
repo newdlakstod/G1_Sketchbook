@@ -65,7 +65,7 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
     var locked by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) }
     var collapsed by remember { mutableStateOf(false) }
-    var dock by remember { mutableStateOf(ToolbarDock.BOTTOM) }
+    var dock by remember { mutableStateOf(ToolbarDock.TOP) }
     var dragPx by remember { mutableStateOf(Offset.Zero) }
 
     Column(
