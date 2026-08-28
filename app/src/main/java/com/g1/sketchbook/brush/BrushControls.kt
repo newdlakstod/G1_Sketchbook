@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.verticalScroll
@@ -253,15 +254,12 @@ fun BrushControls(
     }
 
     // 버튼바가 fillMaxWidth를 받는 조건(가로 도킹 + 펼침 상태)을 호출부의 barModifier와 동일하게
-    // 복제 — modifier(정렬·드래그 오프셋 포함)는 이제 아래 Column 전체에 한 번만 걸리므로, 버튼바
+    // 복제 — modifier(정렬·드래그 오프셋 포함)는 이제 아래 Box 전체에 한 번만 걸리므로, 버튼바
     // Surface 자신의 너비 결정은 이 로컬 플래그로 따로 재현해야 예전과 같은 폭 동작이 유지된다.
     val fillToolbarWidth = !collapsed && !vertical
+    val sizeRangeForGrip = if (erasing) EraserSizeRange else brushSizeRange(brush)
 
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // 굵기/불투명도 상단 바 — 버튼바 Surface와는 별개의 독립된 요소로 그 위에 떠 있다(2026-08-28,
-        // 처음엔 버튼바 Surface 안에 같이 넣었더니 "버튼바를 위로 늘린 것"처럼 보인다는 피드백을 받아
-        // 완전히 분리함). 최소화 여부와 무관하게 항상 보인다.
-        ActiveToolSlidersBar(erasing, brush, sizeDp, opacity, onSize, onOpacity)
+    Box(modifier) {
         Surface(
             shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp, tonalElevation = 2.dp,
@@ -492,6 +490,20 @@ fun BrushControls(
         }
         }
         }
+        // 굵기/불투명도 그립 — 평소엔 버튼바 위쪽 테두리에 걸친 얇은 알약 선일 뿐이다가, 누르고
+        // 좌우로 드래그하면 그립이 커지고 진하게 활성화되면서 값 툴팁이 뜬다(2026-08-28, 샘플
+        // 스크린샷 참고 — 항상 떠 있는 라벨+슬라이더 형태 시도 두 번은 다 요청과 달랐다). 버튼바
+        // Surface 자체 패딩(10dp)에 맞춰 코너를 피해 안쪽으로 들여서 배치.
+        EdgeGripSlider(
+            value = sizeDp, range = sizeRangeForGrip, onChange = onSize, label = "굵기",
+            valueText = { "${sizeLevel(it, sizeRangeForGrip)}" },
+            modifier = Modifier.align(Alignment.TopStart).padding(start = 34.dp, top = 4.dp),
+        )
+        EdgeGripSlider(
+            value = opacity, range = 0f..100f, onChange = onOpacity, label = "불투명도",
+            valueText = { "${it.toInt()}" },
+            modifier = Modifier.align(Alignment.TopEnd).padding(end = 34.dp, top = 4.dp),
+        )
     }
 }
 
@@ -658,67 +670,63 @@ fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Mo
     }
 }
 
-/** 굵기·불투명도 상단 바(2026-08-28, 2026-08-28 재수정) — 팝업이 아니라 툴바 위에 항상 떠 있는
- *  줄. 아이콘·숫자 라벨 없이 그립(손잡이)만 있는 얇은 pill 트랙 두 개를 한 줄에 나란히 배치해서
- *  차지하는 공간을 최소화한다(샘플 이미지 참고) — 왼쪽이 굵기, 오른쪽이 불투명도. 브러시별
- *  "마지막 값" 기억은 이 컴포저블이 아니라 호출부(sizeByBrush/opacityByBrush)의 몫 — 여기 온
- *  sizeDp/opacity는 이미 그 값이고, onSize/onOpacity가 그 맵에 다시 써넣는다. */
-@Composable
-private fun ActiveToolSlidersBar(erasing: Boolean, brush: BrushType, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
-    val sizeRange = if (erasing) EraserSizeRange else brushSizeRange(brush)
-    Row(Modifier.width(220.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        MinimalSliderPill(sizeDp, sizeRange, onSize, Modifier.weight(1f))
-        MinimalSliderPill(opacity, 0f..100f, onOpacity, Modifier.weight(1f))
-    }
-}
+private val GripIdleLength = 22.dp
+private val GripIdleThickness = 3.dp
+private val GripActiveLength = 40.dp
+private val GripActiveThickness = 8.dp
 
-private val MinimalPillHeight = 26.dp
-private val MinimalThumbSize = 14.dp
-private val MinimalTrackHeight = 4.dp
-
-/** 아이콘·숫자 라벨 없이 그립(원형 손잡이)만 있는 얇은 pill 트랙 — 값만큼 진하게 채워지는 캡슐형
- *  게이지. IconSliderRow가 쓰는 SliderThumbTouchSize(40dp) 등 공용 상수는 다른 화면(즐겨찾기,
- *  색상 슬라이더, 블러 패널 등)에서도 써서 여기서 못 줄이므로, 이 바 전용으로 작게 새로 정의. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** 굵기/불투명도 조절 그립(2026-08-28, 세 번째 시도 — 샘플 스크린샷 두 장을 보고서야 정확한
+ *  동작을 확인함). 평소엔 버튼바 테두리에 걸친 얇고 흐린 알약 선일 뿐이고, 누른 채 좌우로
+ *  드래그하면: (1) 그립 자체가 커지고 강조색으로 진해지고, (2) 그립 위로 "굵기: 12" 같은 값
+ *  툴팁이 뜬다. 뗄 때까지는 드래그 델타 누적으로 값이 바뀐다(트랙 위 절대 위치가 아니라 상대
+ *  드래그 — Procreate 사이드바의 사이즈 슬라이더와 같은 조작감). 손을 떼면 다시 얇은 선으로. */
 @Composable
-private fun MinimalSliderPill(value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, modifier: Modifier = Modifier) {
-    Surface(shape = RoundedCornerShape(percent = 50), color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 1.dp, modifier = modifier) {
-        Slider(
-            value = value, onValueChange = onChange, valueRange = range, steps = SliderStepCount,
-            track = { state -> MinimalPillTrack(state) },
-            thumb = { MinimalGripThumb() },
-            modifier = Modifier.height(MinimalPillHeight).padding(horizontal = 6.dp),
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MinimalPillTrack(state: SliderState) {
-    val span = state.valueRange.endInclusive - state.valueRange.start
-    val fraction = if (span == 0f) 0f else ((state.value - state.valueRange.start) / span).coerceIn(0f, 1f)
-    val inactiveColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
-    val activeColor = MaterialTheme.colorScheme.onSurfaceVariant
-    Canvas(Modifier.fillMaxWidth().height(MinimalPillHeight)) {
-        val strokeWidthPx = MinimalTrackHeight.toPx()
-        val y = size.height / 2f
-        val thumbX = size.width * fraction
-        drawLine(color = inactiveColor, start = Offset(thumbX, y), end = Offset(size.width, y), strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
-        if (thumbX > 0f) drawLine(color = activeColor, start = Offset(0f, y), end = Offset(thumbX, y), strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
-    }
-}
-
-@Composable
-private fun MinimalGripThumb() {
-    Box(Modifier.size(MinimalPillHeight), contentAlignment = Alignment.Center) {
+private fun EdgeGripSlider(
+    value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit,
+    label: String, valueText: (Float) -> String, modifier: Modifier = Modifier,
+) {
+    var dragging by remember { mutableStateOf(false) }
+    var dragValue by remember { mutableFloatStateOf(value) }
+    val density = LocalDensity.current
+    val span = range.endInclusive - range.start
+    val accent = MaterialTheme.colorScheme.primary
+    val idle = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    Box(modifier.height(GripActiveThickness + 8.dp), contentAlignment = Alignment.TopCenter) {
         Box(
-            Modifier.size(MinimalThumbSize)
-                .shadow(1.dp, CircleShape, clip = false)
-                .clip(CircleShape)
-                .background(Color.White)
-                .border(1.dp, Color(0x1F000000), CircleShape),
+            Modifier
+                .width(if (dragging) GripActiveLength else GripIdleLength)
+                .height(if (dragging) GripActiveThickness else GripIdleThickness)
+                .clip(RoundedCornerShape(percent = 50))
+                .background(if (dragging) accent else idle)
+                .pointerInput(range) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { dragging = true; dragValue = value },
+                        onDragEnd = { dragging = false },
+                        onDragCancel = { dragging = false },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            // 160dp 드래그로 전체 범위를 다 훑도록 — 굵기·불투명도 둘 다 이 감도 하나로.
+                            val pxPerFullSpan = with(density) { 160.dp.toPx() }
+                            dragValue = (dragValue + dragAmount * (span / pxPerFullSpan)).coerceIn(range.start, range.endInclusive)
+                            onChange(dragValue)
+                        },
+                    )
+                },
         )
+        if (dragging) {
+            Popup(alignment = Alignment.TopCenter, offset = IntOffset(0, with(density) { (-34).dp.roundToPx() })) {
+                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp, tonalElevation = 3.dp) {
+                    Text("$label: ${valueText(dragValue)}", fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                }
+            }
+        }
     }
+}
+
+/** 실제 dp 값과 무관하게, 슬라이더 내 위치를 1~30 단계 번호로 환산 (표시는 모든 브러시 공통, 범위는 브러시별). */
+private fun sizeLevel(sizeDp: Float, range: ClosedFloatingPointRange<Float>): Int {
+    val fraction = ((sizeDp - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
+    return (fraction * (SliderStepCount + 1)).roundToInt() + 1
 }
 
 /** 지우개 전용 "경계 블러" 패널 — 굵기/불투명도는 이제 상단 바에서 항상 조절하니, 지우개만 갖는

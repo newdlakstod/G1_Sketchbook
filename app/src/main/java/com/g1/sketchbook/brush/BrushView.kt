@@ -10,6 +10,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
+import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -442,7 +443,11 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             stylusButtonDown = stylusButtonNow
             onStylusButtonChanged?.invoke(stylusButtonNow)
         }
-        val now = System.currentTimeMillis()
+        // SystemClock.uptimeMillis()를 쓴다 — MotionEvent.getEventTime()/getHistoricalEventTime()이
+        // 이 시계 기준이라, 아래(스무딩 브러시) historical point 처리에서 실제 이벤트 시각과 맞아떨어지게
+        // 하려면 여기 lt/now도 반드시 같은 시계여야 한다(System.currentTimeMillis()와 섞으면 dt가
+        // 완전히 틀어짐).
+        val now = SystemClock.uptimeMillis()
         // Eyedropper: while armed (toolbar button) or already dragging, every touch is a colour pick,
         // never a stroke — handled entirely separately from drawing/gestures below.
         if (eyedropArmed || eyedropDragging) {
@@ -610,20 +615,17 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     }
                     prevDist = d; prevMidX = mx; prevMidY = my
                 } else if (strokeStarted && !pinching) {
-                    val p = mapPoint(e.x, e.y); val rawX = p[0]; val rawY = p[1]
-                    val dd = hypot(rawX - lx, rawY - ly); val vRaw = dd / max(1L, now - lt)
-                    // 지수이동평균(EMA) — 0.35는 반응성:부드러움 비율. 올리면 순간속도에 더 민감하게
-                    // (더 소세지스럽게), 내리면 더 뭉근하게(더 느리게 두께가 따라옴) 반응한다.
-                    smoothedSpeed += (vRaw - smoothedSpeed) * 0.05f
-                    // SMOOTH_TEST만 위치 자체도 스무딩 — 원본 좌표 대신 뒤에서 완만히 따라오는
-                    // smoothX/Y로 찍는다(다른 브러시는 원본 좌표 그대로, 지금까지와 동일).
-                    val x: Float; val y: Float
-                    if (brush == BrushType.SMOOTH_TEST) {
-                        smoothX += (rawX - smoothX) * smoothAlpha
-                        smoothY += (rawY - smoothY) * smoothAlpha
-                        x = smoothX; y = smoothY
-                    } else { x = rawX; y = rawY }
-                    strokeMove(lx, ly, x, y, smoothedSpeed); lx = x; ly = y; lt = now; invalidate()
+                    // 화면 터치 샘플링 주파수(보통 120Hz+)가 프레임 콜백 주기(보통 60Hz)보다 높으면
+                    // 한 ACTION_MOVE에 여러 실제 터치 샘플이 배치로 묶여 도착한다 — e.x/e.y만 읽으면
+                    // 중간 샘플들이 통째로 버려져서, 한 스텝에 더 큰 거리를 "뭉텅이"로 이동한 것처럼
+                    // 보인다. SMOOTH_TEST처럼 프레임 간 거리에 민감한 필터(EMA)를 걸 때 이게 스무딩
+                    // 효과를 깎아먹으면서 지연만 남기는 원인이 될 수 있어, historical point를 먼저
+                    // 다 처리하고 마지막에 최신 좌표를 처리한다(2026-08-28).
+                    for (i in 0 until e.historySize) {
+                        processMovePoint(e.getHistoricalX(i), e.getHistoricalY(i), e.getHistoricalEventTime(i))
+                    }
+                    processMovePoint(e.x, e.y, now)
+                    invalidate()
                     if (longPressPending && hypot(e.x - downX, e.y - downY) > tapSlopPx) {
                         longPressPending = false; removeCallbacks(longPressRunnable)
                     }
@@ -856,6 +858,25 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     // 지우개도 브러시들처럼 strokeSize에 배율을 곱한다 — 지우개는 BrushType이 아니라 별도 플래그라
     // scaleFor()의 when절에 못 넣고 여기 따로 둔다.
     private fun eraserDiameter() = strokeSize * EraserScale
+
+    /** ACTION_MOVE 한 번에 실린 실제 터치 샘플 하나(historical 포함)를 처리 — 화면 좌표를 캔버스
+     *  좌표로 바꾸고, 속도 EMA·(SMOOTH_TEST면) 위치 EMA를 갱신한 뒤 strokeMove로 찍는다. */
+    private fun processMovePoint(screenX: Float, screenY: Float, eventTimeMs: Long) {
+        val p = mapPoint(screenX, screenY); val rawX = p[0]; val rawY = p[1]
+        val dd = hypot(rawX - lx, rawY - ly); val vRaw = dd / max(1L, eventTimeMs - lt)
+        // 지수이동평균(EMA) — 0.35는 반응성:부드러움 비율. 올리면 순간속도에 더 민감하게
+        // (더 소세지스럽게), 내리면 더 뭉근하게(더 느리게 두께가 따라옴) 반응한다.
+        smoothedSpeed += (vRaw - smoothedSpeed) * 0.05f
+        // SMOOTH_TEST만 위치 자체도 스무딩 — 원본 좌표 대신 뒤에서 완만히 따라오는
+        // smoothX/Y로 찍는다(다른 브러시는 원본 좌표 그대로, 지금까지와 동일).
+        val x: Float; val y: Float
+        if (brush == BrushType.SMOOTH_TEST) {
+            smoothX += (rawX - smoothX) * smoothAlpha
+            smoothY += (rawY - smoothY) * smoothAlpha
+            x = smoothX; y = smoothY
+        } else { x = rawX; y = rawY }
+        strokeMove(lx, ly, x, y, smoothedSpeed); lx = x; ly = y; lt = eventTimeMs
+    }
 
     private fun strokeStart(x: Float, y: Float) {
         when {
