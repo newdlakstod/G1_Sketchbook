@@ -331,6 +331,13 @@ fun BrushControls(
                     BrushBtn(!erasing && brush == BrushType.PEN, onClick = { onBrush(BrushType.PEN); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
+                    // 실험용 임시 브러시(test/smooth-brush 브랜치) — PEN과 렌더링은 같고 입력 좌표
+                    // 스무딩만 다르다. 다른 브러시와 헷갈리지 않도록 항상 파란 톤으로 구분(선택 여부와
+                    // 무관한 고정 색조). 실험이 끝나면 이 버튼째로 걷어낸다.
+                    BrushBtn(!erasing && brush == BrushType.SMOOTH_TEST, onClick = { onBrush(BrushType.SMOOTH_TEST); openEraserPanel = false }) {
+                        val testTint = if (!erasing && brush == BrushType.SMOOTH_TEST) Color(0xFF4DABF7) else Color(0xFF4DABF7).copy(alpha = 0.45f)
+                        Image(painterResource(R.drawable.brush_pen), "스무딩 테스트(임시 브러시)", colorFilter = ColorFilter.tint(testTint), modifier = Modifier.size(25.dp))
+                    }
                     BrushBtn(!erasing && brush == BrushType.PENCIL, onClick = { onBrush(BrushType.PENCIL); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
@@ -572,7 +579,7 @@ private fun DragHandle(onDrag: (Offset) -> Unit, onDragEnd: () -> Unit) {
 
 private fun currentToolIcon(brush: BrushType, erasing: Boolean): Int = when {
     erasing -> R.drawable.brush_eraser
-    brush == BrushType.PEN -> R.drawable.brush_pen
+    brush == BrushType.PEN || brush == BrushType.SMOOTH_TEST -> R.drawable.brush_pen
     brush == BrushType.PENCIL -> R.drawable.brush_pencil
     brush == BrushType.CRAYON -> R.drawable.brush_crayon
     else -> R.drawable.brush_water
@@ -712,6 +719,7 @@ internal fun brushSizeRange(brush: BrushType): ClosedFloatingPointRange<Float> =
     BrushType.PENCIL -> Dimens.Brush.pencilMinWidth..Dimens.Brush.pencilMaxWidth
     BrushType.CRAYON -> Dimens.Brush.crayonMinWidth..Dimens.Brush.crayonMaxWidth
     BrushType.WATER -> Dimens.Brush.waterMinWidth..Dimens.Brush.waterMaxWidth
+    BrushType.SMOOTH_TEST -> Dimens.Brush.penMinWidth..Dimens.Brush.penMaxWidth // PEN과 동일(테스트 브러시)
 }
 internal val EraserSizeRange = Dimens.Brush.eraserMinWidth..Dimens.Brush.eraserMaxWidth
 
