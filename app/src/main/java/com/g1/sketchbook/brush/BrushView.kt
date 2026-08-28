@@ -19,6 +19,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -54,12 +55,16 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
      *  caller, so it can't be bypassed by any entry point (button, gesture, future ones). */
     var locked = false
     var paper: Bitmap? = null
-    /** "선생님모드" 가이드 — 공유그리기 host의 최신 스냅샷을 50% 투명도로 내 캔버스 위에 겹쳐
-     *  보여준다(공유그리기 전용, 그 외엔 항상 null). content 위에 그려야 하므로 paper처럼 배경이
-     *  아니라 onDraw에서 contentBmp 다음에 합성한다. 외부에서 매번 다시 대입하므로 setter에서 직접
-     *  invalidate() — 다른 프레임 트리거(스트로크 등)에 얹혀가지 않는 유일한 값이라 필요하다. */
+    /** "선생님모드" 가이드 — 공유그리기 host의 최신 스냅샷을 [teacherOverlayOpacity] 투명도로 내
+     *  캔버스 위에 겹쳐 보여준다(공유그리기 전용, 그 외엔 항상 null). content 위에 그려야 하므로
+     *  paper처럼 배경이 아니라 onDraw에서 contentBmp 다음에 합성한다. 외부에서 매번 다시 대입하므로
+     *  setter에서 직접 invalidate() — 다른 프레임 트리거(스트로크 등)에 얹혀가지 않는 유일한 값이라
+     *  필요하다. */
     var teacherOverlay: Bitmap? = null
         set(value) { field = value; invalidate() }
+    /** 0f~1f, 공유받는 쪽(뷰어)이 직접 조절 — host가 아니라 보는 사람 화면마다 다를 수 있다. */
+    var teacherOverlayOpacity = 0.5f
+        set(value) { field = value; teacherOverlayPaint.alpha = (value * 255f).roundToInt().coerceIn(0, 255); invalidate() }
     var onStrokeEnd: (() -> Unit)? = null
 
     // Gesture shortcuts (configured in Settings; NONE = off, so behaviour is unchanged until opted in).

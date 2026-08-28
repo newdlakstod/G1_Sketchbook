@@ -38,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.DropdownMenu
@@ -81,6 +82,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Popup
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
@@ -163,6 +165,9 @@ fun SharedBookScreen(
     var others by remember { mutableStateOf<List<ShareRepository.Slot>>(emptyList()) }
     var host by remember { mutableStateOf<String?>(null) }
     var teacherMode by remember { mutableStateOf(false) }
+    // 선생님모드 투명도는 공유받는 쪽(뷰어)이 자기 화면에서 직접 조절 — host나 서버로 동기화되지
+    // 않는 순전히 로컬 취향값이라 SessionStore에 저장하지 않고 화면 안에서만 기억한다.
+    var teacherOverlayOpacity by remember { mutableFloatStateOf(50f) }
     val isHost = myUid == host
     var mode by remember { mutableStateOf(ViewMode.GRID) }
     // MAXIMIZE mode: null = "나", else a participant's uid. popupUid is just a preference — the
@@ -180,12 +185,15 @@ fun SharedBookScreen(
     }
 
     // 선생님모드: host가 아닌 참가자가, host와 같은 페이지를 보고 있을 때만 host의 최신 스냅샷을
-    // 50% 투명도 가이드로 내 캔버스 위에 겹쳐 보여준다. host 본인 화면엔 표시하지 않는다.
+    // 뷰어가 고른 투명도로 내 캔버스 위에 겹쳐 보여준다. host 본인 화면엔 표시하지 않는다.
     val hostSlot = others.firstOrNull { it.uid == host }
     val teacherOverlayBmp = if (!isHost && teacherMode && hostSlot != null && hostSlot.currentPage == page) {
         participantBitmap(hostSlot, page)
     } else null
-    LaunchedEffect(view, teacherOverlayBmp) { view?.teacherOverlay = teacherOverlayBmp }
+    LaunchedEffect(view, teacherOverlayBmp, teacherOverlayOpacity) {
+        view?.teacherOverlay = teacherOverlayBmp
+        view?.teacherOverlayOpacity = teacherOverlayOpacity / 100f
+    }
 
     fun pushMine() {
         val b = view?.exportBitmap() ?: return
@@ -417,6 +425,8 @@ fun SharedBookScreen(
             Row(Modifier.align(Alignment.TopEnd), verticalAlignment = Alignment.CenterVertically) {
                 if (isHost) {
                     TeacherModeButton(teacherMode) { share.setTeacherMode(code, !teacherMode) }
+                } else if (teacherMode) {
+                    TeacherOpacityButton(teacherOverlayOpacity) { teacherOverlayOpacity = it }
                 }
                 ModeToggleButton(mode == ViewMode.GRID) { mode = if (mode == ViewMode.GRID) ViewMode.MAXIMIZE else ViewMode.GRID }
                 com.g1.sketchbook.brush.ScreenControls(
@@ -471,8 +481,8 @@ internal fun ModeToggleButton(gridMode: Boolean, onToggle: () -> Unit) {
 }
 
 /** "선생님모드" 토글 — host에게만 보인다. 켜면 다른 참가자들 캔버스에 내(host) 현재 페이지가
- *  50% 투명도 가이드로 겹쳐 뜬다. ModeToggleButton과 같은 반투명 원형 버튼 스타일, 켜져 있을 때는
- *  강조색으로 활성 상태를 알려준다. */
+ *  가이드로 겹쳐 뜬다(투명도는 각자 TeacherOpacityButton으로 직접 조절). ModeToggleButton과 같은
+ *  반투명 원형 버튼 스타일, 켜져 있을 때는 강조색으로 활성 상태를 알려준다. */
 @Composable
 private fun TeacherModeButton(active: Boolean, onToggle: () -> Unit) {
     Box(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
@@ -487,6 +497,39 @@ private fun TeacherModeButton(active: Boolean, onToggle: () -> Unit) {
                         Icons.Filled.School, "선생님모드 " + (if (active) "끄기" else "켜기"),
                         tint = if (active) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current,
                     )
+                }
+            }
+        }
+    }
+}
+
+/** 공유받는 쪽(뷰어)이 선생님모드 오버레이 투명도를 직접 조절 — host가 아닌 참가자에게만, teacherMode가
+ *  켜져 있을 때만 보인다. TeacherModeButton과 같은 반투명 원형 버튼 스타일, 탭하면 슬라이더 팝업이 뜬다. */
+@Composable
+private fun TeacherOpacityButton(opacity: Float, onOpacity: (Float) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val density3 = LocalDensity.current
+    Box(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
+        Surface(
+            shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+            tonalElevation = 2.dp,
+        ) {
+            Box(Modifier.padding(6.dp)) {
+                Box(Modifier.size(30.dp).bounceClick(onClick = { open = !open }), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Opacity, "선생님모드 투명도 조절")
+                }
+            }
+        }
+        if (open) {
+            Popup(
+                alignment = Alignment.TopEnd,
+                offset = IntOffset(0, with(density3) { 48.dp.roundToPx() }),
+                onDismissRequest = { open = false },
+            ) {
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
+                    Box(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        com.g1.sketchbook.brush.IconSliderRow(Icons.Filled.Opacity, "투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
+                    }
                 }
             }
         }
