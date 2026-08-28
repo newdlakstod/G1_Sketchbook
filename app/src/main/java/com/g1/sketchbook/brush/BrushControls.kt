@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -79,6 +82,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -96,6 +100,7 @@ import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -116,9 +121,14 @@ fun ToolbarDock.alignment(): Alignment = when (this) {
  *  도킹된 가장자리의 축으로만 밀리는 특수 케이스였는데 통일함). [dragPx]는 [current] 기준 드래그
  *  누적량, [containerWidthPx]/[containerHeightPx]는 바가 떠 있는 영역(px) 크기. */
 fun nearestDock(current: ToolbarDock, dragPx: Offset, containerWidthPx: Float, containerHeightPx: Float): ToolbarDock {
-    val baseX = when (current) { ToolbarDock.LEFT -> 0f; ToolbarDock.RIGHT -> containerWidthPx; else -> containerWidthPx / 2f }
-    val baseY = when (current) { ToolbarDock.TOP -> 0f; ToolbarDock.BOTTOM -> containerHeightPx; else -> containerHeightPx / 2f }
-    val x = baseX + dragPx.x; val y = baseY + dragPx.y
+    // 항상 컨테이너 정중앙을 기준점으로 삼아 드래그량만 더한다 — 예전엔 "지금 도킹된 가장자리"를
+    // 기준점으로 삼아서(예: TOP면 y=0에서 시작) 그 축 거리가 항상 0에 가깝게 고정돼 있었다. 그래서
+    // 가로모드(TOP)에서 좌우로만 드래그해도 세로(TOP/BOTTOM) 거리가 계속 0으로 이겨버려 LEFT/RIGHT로
+    // 못 넘어가는 버그가 있었다(화면 폭의 절반 이상을 끌어야만 겨우 넘어감) — RIGHT로 한 번 옮겨서
+    // 세로 도킹이 된 뒤에는 반대로 LEFT까지는 쉽게 넘어갔던 것도 같은 비대칭 때문. 중앙을 기준으로
+    // 통일하면 어느 축으로 드래그하든 공평하게 반응한다.
+    val x = containerWidthPx / 2f + dragPx.x
+    val y = containerHeightPx / 2f + dragPx.y
     val distances = mapOf(
         ToolbarDock.LEFT to x, ToolbarDock.RIGHT to (containerWidthPx - x),
         ToolbarDock.TOP to y, ToolbarDock.BOTTOM to (containerHeightPx - y),
@@ -246,19 +256,27 @@ fun BrushControls(
     }
 
     // 버튼바가 fillMaxWidth를 받는 조건(가로 도킹 + 펼침 상태)을 호출부의 barModifier와 동일하게
-    // 복제 — modifier(정렬·드래그 오프셋 포함)는 이제 아래 Column 전체에 한 번만 걸리므로, 버튼바
+    // 복제 — modifier(정렬·드래그 오프셋 포함)는 이제 아래 Box 전체에 한 번만 걸리므로, 버튼바
     // Surface 자신의 너비 결정은 이 로컬 플래그로 따로 재현해야 예전과 같은 폭 동작이 유지된다.
     val fillToolbarWidth = !collapsed && !vertical
+    val sizeRangeForGrip = if (erasing) EraserSizeRange else brushSizeRange(brush)
+    val density = LocalDensity.current
+    // 그립 레인(굵기/불투명도 각각 절반씩)을 버튼바 Surface의 실제 렌더링 크기에 맞추기 위해
+    // onGloballyPositioned로 실측 — 최소화·세로 도킹처럼 Surface가 내용물 크기로 줄어드는
+    // 경우엔 이 실측값 없이는 레인 폭을 알 수 없다(고정폭 fillMaxWidth를 못 쓰는 경우).
+    var toolbarSizePx by remember { mutableStateOf(IntSize.Zero) }
 
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // 굵기/불투명도 상단 바 — 버튼바 Surface와는 별개의 독립된 요소로 그 위에 떠 있다(2026-08-28,
-        // 처음엔 버튼바 Surface 안에 같이 넣었더니 "버튼바를 위로 늘린 것"처럼 보인다는 피드백을 받아
-        // 완전히 분리함). 최소화 여부와 무관하게 항상 보인다.
-        ActiveToolSlidersBar(erasing, brush, sizeDp, opacity, onSize, onOpacity)
+    // 버튼바 Surface와 그립 레인을 순서가 있는 Column/Row(아래)의 형제로 둔다 — 예전엔 Box 안에서
+    // Surface와 그립을 각자 align()으로 겹쳐 배치했는데, Box는 넓은 쪽(Surface) 크기로만 자기 높이를
+    // 잡아서 그립이 그 안쪽 가장자리에 얹히며 Surface와 겹쳐 보이는 문제가 있었다(TOP 도킹에서 특히
+    // 두드러짐). Column/Row로 순서대로 쌓으면 두 요소가 서로의 자리를 침범할 수 없다.
+    val toolbarSurface: @Composable () -> Unit = {
         Surface(
             shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp, tonalElevation = 2.dp,
-            modifier = (if (fillToolbarWidth) Modifier.fillMaxWidth() else Modifier).padding(horizontal = 10.dp, vertical = 10.dp),
+            modifier = (if (fillToolbarWidth) Modifier.fillMaxWidth() else Modifier)
+                .padding(horizontal = 10.dp, vertical = 10.dp)
+                .onGloballyPositioned { toolbarSizePx = it.size },
         ) {
         if (collapsed) {
             val collapsedContent: @Composable () -> Unit = {
@@ -270,7 +288,7 @@ fun BrushControls(
                         Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 지우개 선택 시 길게 눌러 경계 블러 조절",
+                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 지우개 선택 시 길게 눌러 경계 블러(스무딩 테스트는 강도) 조절",
                             colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
@@ -358,7 +376,7 @@ fun BrushControls(
                             Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 지우개 선택 시 길게 눌러 경계 블러 조절",
+                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 지우개 선택 시 길게 눌러 경계 블러(스무딩 테스트는 강도) 조절",
                                 colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                         }
                         if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
@@ -476,6 +494,62 @@ fun BrushControls(
             }
         }
         }
+        }
+    }
+
+    // 굵기/불투명도 그립 — 평소엔 버튼바 테두리에 걸친 얇은 알약 선일 뿐이다가, 누르고 드래그
+    // 하면 그립이 커지고 진하게 활성화되면서 값 툴팁이 뜬다(2026-08-28, 샘플 스크린샷 참고).
+    // 버튼(브러시 아이콘 등)과는 완전히 분리된 레인 — 버튼바 실제 폭(세로 도킹이면 높이)을
+    // 절반씩 나눠 굵기(앞쪽 절반)/불투명도(뒤쪽 절반) 전용 이동 구간으로 쓴다. 그립은 그 구간
+    // 안에서 "지금 값" 위치로 옮겨가 있다가, 드래그하면 그 자리에서부터 실시간으로 이동한다.
+    val tooltipSide = when (dock) {
+        ToolbarDock.TOP -> TooltipSide.BELOW
+        ToolbarDock.BOTTOM -> TooltipSide.ABOVE
+        ToolbarDock.LEFT -> TooltipSide.END
+        ToolbarDock.RIGHT -> TooltipSide.START
+    }
+    val laneCrossAxis = GripActiveThickness + 8.dp
+    val gripLane: @Composable () -> Unit = {
+        if (toolbarSizePx.width > 0 && toolbarSizePx.height > 0) {
+            if (!vertical) {
+                Row(
+                    Modifier.width(with(density) { toolbarSizePx.width.toDp() })
+                        .height(laneCrossAxis)
+                        .padding(horizontal = 10.dp),
+                ) {
+                    EdgeGripSlider(sizeDp, sizeRangeForGrip, onSize, "굵기", { sizeLevel(it, sizeRangeForGrip).toString() },
+                        tooltipSide, vertical = false, modifier = Modifier.weight(1f).fillMaxHeight())
+                    EdgeGripSlider(opacity, 0f..100f, onOpacity, "불투명도", { it.toInt().toString() },
+                        tooltipSide, vertical = false, modifier = Modifier.weight(1f).fillMaxHeight())
+                }
+            } else {
+                Column(
+                    Modifier.height(with(density) { toolbarSizePx.height.toDp() })
+                        .width(laneCrossAxis)
+                        .padding(vertical = 10.dp),
+                ) {
+                    EdgeGripSlider(sizeDp, sizeRangeForGrip, onSize, "굵기", { sizeLevel(it, sizeRangeForGrip).toString() },
+                        tooltipSide, vertical = true, modifier = Modifier.weight(1f).fillMaxWidth())
+                    EdgeGripSlider(opacity, 0f..100f, onOpacity, "불투명도", { it.toInt().toString() },
+                        tooltipSide, vertical = true, modifier = Modifier.weight(1f).fillMaxWidth())
+                }
+            }
+        }
+    }
+
+    // 도킹 방향에 따라 그립 레인이 버튼바의 "캔버스 쪽(반대쪽)" 변에 오도록 순서를 정한다 —
+    // Column/Row는 나열 순서 그대로 쌓이므로 겹칠 일이 없다.
+    if (!vertical) {
+        Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+            if (dock == ToolbarDock.BOTTOM) gripLane()
+            toolbarSurface()
+            if (dock == ToolbarDock.TOP) gripLane()
+        }
+    } else {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            if (dock == ToolbarDock.RIGHT) gripLane()
+            toolbarSurface()
+            if (dock == ToolbarDock.LEFT) gripLane()
         }
     }
 }
@@ -643,31 +717,115 @@ fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Mo
     }
 }
 
-/** 굵기·불투명도 상단 바(2026-08-28) — 팝업이 아니라 툴바 안에 항상 떠 있는 불투명한 줄. 지금
- *  선택된 브러시(또는 지우개)의 굵기/불투명도를 보여주고 바로 조절한다. 브러시별 "마지막 값"
- *  기억은 이 컴포저블이 아니라 호출부(sizeByBrush/opacityByBrush)의 몫 — 여기 온 sizeDp/opacity는
- *  이미 그 값이고, onSize/onOpacity가 그 맵에 다시 써넣는다. */
+// 달력 오버레이 등 다른 화면의 그립/썸(RingSliderThumb 등)과는 독립된, 이 그립 전용 치수 —
+// 2026-08-28: "2배 키워달라"는 요청으로 기존 값(22/3/40/8)에서 두 배로.
+private val GripIdleLength = 44.dp
+private val GripIdleThickness = 6.dp
+private val GripActiveLength = 80.dp
+private val GripActiveThickness = 16.dp
+
+/** 값 툴팁이 그립 기준 어느 쪽으로 뜰지 — 버튼바가 도킹된 화면 가장자리 반대쪽(캔버스 쪽)으로
+ *  띄워야 화면 밖으로 안 잘린다. */
+private enum class TooltipSide { ABOVE, BELOW, START, END }
+
+/** 굵기/불투명도 조절 그립(2026-08-28, 네 번째 시도). 평소엔 자기 레인(굵기/불투명도용으로 버튼바
+ *  실측 폭·높이를 절반씩 나눈 구간) 안에서 "지금 값"에 해당하는 위치에 가 있는 얇고 흐린 알약
+ *  선이다 — 버튼(브러시 아이콘 등)과는 자리 자체가 분리돼 있어 겹치지 않는다. 누른 채 드래그하면
+ *  그 자리에서부터 (1) 그립이 커지고(길이+두께 모두) 강조색으로 진해지고, (2) 옆으로 "굵기: 12"
+ *  같은 값 툴팁이 뜨고, (3) 레인 폭 전체가 드래그 감도(레인 끝까지 밀면 전체 범위)가 되어 손을
+ *  따라 실시간으로 이동한다. 손을 떼면 다시 그 값 위치에서 얇은 선으로. [vertical]이면 세로
+ *  도킹(레인이 위아래, 드래그도 위아래)용으로 축이 통째로 90도 돌아간다. */
 @Composable
-private fun ActiveToolSlidersBar(erasing: Boolean, brush: BrushType, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
-    val sizeRange = if (erasing) EraserSizeRange else brushSizeRange(brush)
-    Column(Modifier.width(248.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        // 굵기 표시는 실제 dp가 아니라 이 슬라이더 안에서의 1~30 단계 번호(브러시 종류마다 범위가
-        // 달라도 표시는 항상 1~30으로 통일 — sizeRange 기준으로 위치를 환산).
-        SliderPill(Icons.Filled.LineWeight, "굵기", "${sizeLevel(sizeDp, sizeRange)}", sizeDp, sizeRange, onSize)
-        SliderPill(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
+private fun EdgeGripSlider(
+    value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit,
+    label: String, valueText: (Float) -> String, tooltipSide: TooltipSide, vertical: Boolean, modifier: Modifier = Modifier,
+) {
+    var dragging by remember { mutableStateOf(false) }
+    var dragValue by remember { mutableFloatStateOf(value) }
+    val density = LocalDensity.current
+    val span = range.endInclusive - range.start
+    val accent = MaterialTheme.colorScheme.primary
+    val idle = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    val shownValue = if (dragging) dragValue else value
+
+    BoxWithConstraints(modifier, contentAlignment = Alignment.TopStart) {
+        val laneLenPx = with(density) { (if (vertical) maxHeight else maxWidth).roundToPx() }
+        // 위치 계산의 기준(센터)은 항상 "활성 크기"로 고정해서 idle↔dragging 전환 때 그립의
+        // 중심이 안 흔들리게 한다 — 예전엔 idle/active 크기를 그대로 (laneLen - gripLen) 계산에
+        // 썼는데, 드래그 시작하는 순간 gripLen이 커지면서 usable 구간이 줄어들어 fraction은 그대로인
+        // 채로 위치만 원점(0) 쪽으로 확 당겨지는 버그가 있었다("반영시점" 대신 매번 0부터 다시
+        // 계산되는 것처럼 보였음). 활성 크기 기준으로 센터를 고정하고, 실제 렌더링 크기(idle/active)
+        // 차이만큼만 대칭으로 빼주면 그립이 커져도 중심은 그대로 유지된다.
+        val activeLenPx = with(density) { GripActiveLength.roundToPx() }
+        val currentLenPx = with(density) { (if (dragging) GripActiveLength else GripIdleLength).roundToPx() }
+        val usableLenPx = max(0, laneLenPx - activeLenPx)
+        val fraction = if (span == 0f) 0f else ((shownValue - range.start) / span).coerceIn(0f, 1f)
+        val centerPx = (fraction * usableLenPx).roundToInt().coerceIn(0, usableLenPx) + activeLenPx / 2
+        val posPx = centerPx - currentLenPx / 2
+        // 값 툴팁은 레인 중앙이 아니라 지금 그립이 있는 자리 위(또는 옆)로 — 레인이 넓으면
+        // 레인 중앙 기준 정렬만으론 그립을 안 따라간다.
+        val gripCenterDeltaPx = centerPx - laneLenPx / 2
+        val (popupAlignment, popupOffsetBase) = when (tooltipSide) {
+            TooltipSide.ABOVE -> Alignment.TopCenter to IntOffset(0, with(density) { (-40).dp.roundToPx() })
+            TooltipSide.BELOW -> Alignment.BottomCenter to IntOffset(0, with(density) { 40.dp.roundToPx() })
+            TooltipSide.START -> Alignment.CenterStart to IntOffset(with(density) { (-72).dp.roundToPx() }, 0)
+            TooltipSide.END -> Alignment.CenterEnd to IntOffset(with(density) { 72.dp.roundToPx() }, 0)
+        }
+        val popupOffset = if (tooltipSide == TooltipSide.ABOVE || tooltipSide == TooltipSide.BELOW) {
+            IntOffset(popupOffsetBase.x + gripCenterDeltaPx, popupOffsetBase.y)
+        } else {
+            IntOffset(popupOffsetBase.x, popupOffsetBase.y + gripCenterDeltaPx)
+        }
+
+        Box(
+            (if (vertical) {
+                Modifier.height(if (dragging) GripActiveLength else GripIdleLength).width(if (dragging) GripActiveThickness else GripIdleThickness)
+            } else {
+                Modifier.width(if (dragging) GripActiveLength else GripIdleLength).height(if (dragging) GripActiveThickness else GripIdleThickness)
+            })
+                .offset { if (vertical) IntOffset(0, posPx) else IntOffset(posPx, 0) }
+                .clip(RoundedCornerShape(percent = 50))
+                .background(if (dragging) accent else idle)
+                .pointerInput(range, laneLenPx, vertical) {
+                    if (vertical) {
+                        detectVerticalDragGestures(
+                            onDragStart = { dragging = true; dragValue = value },
+                            onDragEnd = { dragging = false },
+                            onDragCancel = { dragging = false },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                dragValue = (dragValue + dragAmount * (span / laneLenPx)).coerceIn(range.start, range.endInclusive)
+                                onChange(dragValue)
+                            },
+                        )
+                    } else {
+                        detectHorizontalDragGestures(
+                            onDragStart = { dragging = true; dragValue = value },
+                            onDragEnd = { dragging = false },
+                            onDragCancel = { dragging = false },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                dragValue = (dragValue + dragAmount * (span / laneLenPx)).coerceIn(range.start, range.endInclusive)
+                                onChange(dragValue)
+                            },
+                        )
+                    }
+                },
+        )
+        if (dragging) {
+            Popup(alignment = popupAlignment, offset = popupOffset) {
+                Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp, tonalElevation = 3.dp) {
+                    Text("$label: ${valueText(dragValue)}", fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                }
+            }
+        }
     }
 }
 
-/** 슬라이더 한 줄을 그 자체로 얇고 불투명한 알약(pill) 캡슐로 감싼다 — 툴바 배경에 섞여 들어가지
- *  않고 독립된 조절 칩처럼 보이도록(2026-08-28, 샘플 참고: 완전히 둥근 모서리 + 얇은 세로 폭). */
-@Composable
-private fun SliderPill(icon: ImageVector, contentDescription: String, valueText: String, value: Float,
-                        range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
-    Surface(shape = RoundedCornerShape(percent = 50), color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 1.dp) {
-        Box(Modifier.padding(horizontal = 14.dp, vertical = 2.dp)) {
-            IconSliderRow(icon, contentDescription, valueText, value, range, onChange)
-        }
-    }
+/** 실제 dp 값과 무관하게, 슬라이더 내 위치를 1~30 단계 번호로 환산 (표시는 모든 브러시 공통, 범위는 브러시별). */
+private fun sizeLevel(sizeDp: Float, range: ClosedFloatingPointRange<Float>): Int {
+    val fraction = ((sizeDp - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
+    return (fraction * (SliderStepCount + 1)).roundToInt() + 1
 }
 
 /** 지우개 전용 "경계 블러" 패널 — 굵기/불투명도는 이제 상단 바에서 항상 조절하니, 지우개만 갖는
@@ -689,7 +847,6 @@ internal const val SliderStepCount = 28
 // 최소/최대 굵기 — 굵기 슬라이더가 오갈 수 있는 양 끝값. 둘 다 여기서 직접 숫자를 바꾸면 된다.
 internal const val MinBrushSize = 4f
 internal const val MaxBrushSize = 96f
-private val SizeRange = MinBrushSize..MaxBrushSize
 private val BlurRange = 0f..32f
 private val SliderAccentColor = Color(0xFFE85555)
 // RGB/HSL 슬라이더 전용 — 이 슬라이더가 조절하는 값 자체가 색상이라, 트랙까지 색이 있으면 어떤 색을
@@ -698,12 +855,6 @@ private val NeutralSliderAccentColor = Color(0xFF8A8A8A)
 internal val SliderThumbSize = 30.dp
 internal val SliderThumbTouchSize = 40.dp
 internal val SliderTrackHeight = 6.dp
-
-/** 실제 dp 값과 무관하게, 슬라이더 내 위치를 1~30 단계 번호로 환산 (표시는 모든 브러시 공통, 범위는 브러시별). */
-private fun sizeLevel(sizeDp: Float, range: ClosedFloatingPointRange<Float> = SizeRange): Int {
-    val fraction = ((sizeDp - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
-    return (fraction * (SliderStepCount + 1)).roundToInt() + 1
-}
 
 /** 브러시별 굵기 슬라이더 최소/최대값(Dimens.Brush 기준) — 펜처럼 가는 도구와 수채화처럼 굵은 도구가
  *  같은 범위를 쓰면 세밀한 조절이 어려워서 브러시 기본값 스케일에 맞춰 나눠뒀다. */
