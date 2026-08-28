@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -515,6 +516,10 @@ private fun SketchbookListScreen(
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(columns),
                     modifier = Modifier.fillMaxSize(),
+                    // 그리드에 여백이 없으면 가장자리 칸의 표지 그림자(shadow(12.dp, clip=false))가
+                    // 스크롤 뷰포트 경계에서 그대로 잘렸다 — 그림자가 번질 여유를 사방에 준다(2026-08-27,
+                    // 홈 캐러셀의 shadowSlack과 같은 문제·같은 해결).
+                    contentPadding = PaddingValues(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
