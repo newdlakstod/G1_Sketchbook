@@ -60,7 +60,7 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
                 NicknameDialog(onCancel = vm::signOut, onConfirm = vm::saveNickname)
             }
             state.openBookId != null -> com.g1.sketchbook.sketchbook.SketchbookCanvasScreen(
-                bookId = state.openBookId!!, myUid = state.uid ?: "", myName = state.nickname ?: "나",
+                bookId = state.openBookId!!, startPage = state.openBookPage, myUid = state.uid ?: "", myName = state.nickname ?: "나",
                 onBack = vm::closeBook,
             )
             state.openDiaryDate != null -> com.g1.sketchbook.diary.DiaryEditorScreen(
@@ -82,6 +82,7 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
                 onRename = vm::saveNickname,
                 onSetAvatarImage = vm::setAvatarImage,
                 onOpenBook = vm::openBook,
+                onOpenBookAtPage = vm::openBookAtPage,
                 onOpenDiary = vm::openDiary,
                 onOpenCalendar = vm::openCleanCalendar,
             )

@@ -30,6 +30,9 @@ data class RootState(
     val avatarVersion: Int = 0,
     val tab: Int = 0, // Home is the first tab
     val openBookId: String? = null, // when set, a sketchbook canvas is shown full-screen
+    /** [openBookId]가 열릴 때 처음 보여줄 페이지 — 목록 탭 3열 페이지 썸네일을 더블탭해서 특정
+     *  페이지로 바로 들어갈 때만 0이 아닌 값을 쓴다(2026-08-29). */
+    val openBookPage: Int = 0,
     val openDiaryDate: String? = null, // when set, the diary editor for this date is full-screen
     val cleanCalendar: Pair<Int, Int>? = null, // (year, month) → full-screen clean calendar (slides 3/4)
     val uid: String? = null,        // Firebase uid, needed for shared sketchbooks
@@ -124,8 +127,10 @@ class RootViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectTab(i: Int) { _state.value = _state.value.copy(tab = i) }
-    fun openBook(id: String) { _state.value = _state.value.copy(openBookId = id) }
-    fun closeBook() { _state.value = _state.value.copy(openBookId = null) }
+    fun openBook(id: String) { _state.value = _state.value.copy(openBookId = id, openBookPage = 0) }
+    /** 목록 탭 3열 페이지 썸네일 더블탭 전용 — 그 페이지를 바로 펼친 채로 스케치 모드에 들어간다. */
+    fun openBookAtPage(id: String, page: Int) { _state.value = _state.value.copy(openBookId = id, openBookPage = page) }
+    fun closeBook() { _state.value = _state.value.copy(openBookId = null, openBookPage = 0) }
     fun openDiary(date: String) { _state.value = _state.value.copy(openDiaryDate = date) }
     fun closeDiary() { _state.value = _state.value.copy(openDiaryDate = null) }
     fun openCleanCalendar(year: Int, month: Int) { _state.value = _state.value.copy(cleanCalendar = year to month) }

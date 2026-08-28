@@ -214,6 +214,7 @@ fun SketchbookTab(
     myUid: String,
     syncGeneration: Int = 0,
     onOpenBook: (String) -> Unit,
+    onOpenBookAtPage: (String, Int) -> Unit = { id, _ -> onOpenBook(id) },
     initialShowShared: Boolean = false,
     openWizardAs: WType? = null,
     onWizardOpened: () -> Unit = {},
@@ -249,6 +250,7 @@ fun SketchbookTab(
         onNewShared = { wizardType = WType.SHARED_NEW; creating = true },
         onJoinShared = { wizardType = WType.SHARED_JOIN; creating = true },
         onOpen = { onOpenBook(it.id) },
+        onOpenAtPage = { b, p -> onOpenBookAtPage(b.id, p) },
         onDelete = { repo?.let { r -> deleteSynced(scope, r, backup, myUid, it.id) }; refresh++ },
         onToggleFav = { repo?.let { r -> toggleFavSynced(scope, r, backup, myUid, it.id) }; refresh++ },
         onEditBook = { book, name, newCover, removeCover, newColor ->
@@ -462,6 +464,8 @@ private fun SketchbookListScreen(
     onNewShared: () -> Unit = {},
     onJoinShared: () -> Unit = {},
     onOpen: (Sketchbook) -> Unit,
+    /** 3열 페이지 썸네일 더블탭 전용 — 넘겨준 페이지를 펼친 채로 바로 스케치 모드에 들어간다. */
+    onOpenAtPage: (Sketchbook, Int) -> Unit = { b, _ -> onOpen(b) },
     onDelete: (Sketchbook) -> Unit,
     onToggleFav: (Sketchbook) -> Unit,
     onEditBook: (Sketchbook, String, Bitmap?, Boolean, Long?) -> Unit,
@@ -485,6 +489,7 @@ private fun SketchbookListScreen(
             PageThumbnailPanel(
                 repo = repo, book = selectedBook,
                 onOpen = { selectedBook?.let(onOpen) },
+                onOpenPage = { p -> selectedBook?.let { onOpenAtPage(it, p) } },
                 onEdit = { selectedBook?.let { editing = it } },
             )
         },
@@ -527,11 +532,11 @@ private fun SketchbookListScreen(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     gridItems(shown, key = { it.id }) { b ->
-                        // 가로모드: 탭 = 3열에 미리보기 선택, 길게 누르면 바로 열림(표지 수정은 3열
-                        // 패널의 연필 아이콘, 또는 더블탭으로도 바로 진입), 세로모드는 기존 그대로
-                        // (탭=열기, 길게=수정).
+                        // 가로모드: 탭 = 3열에 미리보기 선택, 길게 누르면 표지 수정, 더블탭하면 바로
+                        // 스케치 모드로 열림(2026-08-29, 길게누름/더블탭 동작을 서로 맞바꿈).
+                        // 세로모드는 기존 그대로(탭=열기, 길게=수정).
                         if (landscape) {
-                            CoverCard(b, repo, onOpen = { selectedId = b.id }, onEdit = { onOpen(b) }, onDoubleTap = { editing = b })
+                            CoverCard(b, repo, onOpen = { selectedId = b.id }, onEdit = { editing = b }, onDoubleTap = { onOpen(b) })
                         } else {
                             CoverCard(b, repo, onOpen = { onOpen(b) }, onEdit = { editing = b })
                         }
@@ -573,7 +578,11 @@ private fun SketchbookListScreen(
  *  스크롤해서 훑어본다. 아무 것도 선택 안 됐으면 안내 문구만, 선택되면 제목+수정/열기 아이콘과
  *  [MAX_PAGES]장의 썸네일 목록. */
 @Composable
-private fun PageThumbnailPanel(repo: SketchbookRepository?, book: Sketchbook?, onOpen: () -> Unit, onEdit: () -> Unit) {
+private fun PageThumbnailPanel(
+    repo: SketchbookRepository?, book: Sketchbook?, onOpen: () -> Unit,
+    /** 특정 페이지 썸네일을 더블탭했을 때 — 그 페이지 인덱스로 바로 스케치 모드에 들어간다. */
+    onOpenPage: (Int) -> Unit, onEdit: () -> Unit,
+) {
     if (book == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
@@ -596,13 +605,13 @@ private fun PageThumbnailPanel(repo: SketchbookRepository?, book: Sketchbook?, o
             }
         }
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(book.pageCount) { index -> PageThumbnailCell(repo, book.id, index) }
+            items(book.pageCount) { index -> PageThumbnailCell(repo, book.id, index, onDoubleTap = { onOpenPage(index) }) }
         }
     }
 }
 
 @Composable
-private fun PageThumbnailCell(repo: SketchbookRepository?, bookId: String, index: Int) {
+private fun PageThumbnailCell(repo: SketchbookRepository?, bookId: String, index: Int, onDoubleTap: () -> Unit) {
     var thumb by remember(bookId, index) { mutableStateOf<Bitmap?>(null) }
     // 3열 패널의 썸네일은 PagePanel 그리드 셀(기본 160px)보다 훨씬 넓게 그려져서, 기본값 그대로면
     // 확대돼 흐릿하게 보였다 — 이 자리 전용으로 더 높은 해상도를 요청한다.
@@ -610,7 +619,8 @@ private fun PageThumbnailCell(repo: SketchbookRepository?, bookId: String, index
     Box(
         Modifier.fillMaxWidth().aspectRatio(Dimens.Home.coverRatio).clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)),
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
+            .bounceClick(onDoubleClick = onDoubleTap) {},
         contentAlignment = Alignment.BottomStart,
     ) {
         thumb?.let {
@@ -1013,13 +1023,18 @@ internal fun decodeCoverBitmap(context: Context, uri: Uri, maxDim: Int): Bitmap?
 }
 
 @Composable
-fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack: () -> Unit) {
+fun SketchbookCanvasScreen(
+    bookId: String, myUid: String, myName: String,
+    /** 목록 탭 3열 페이지 썸네일 더블탭 전용 — 이 페이지를 펼친 채로 시작한다(기본 0). */
+    startPage: Int = 0,
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
     val repo = remember { SketchbookRepository(context) }
     val book = remember(bookId) { repo.get(bookId) }
     if (book == null) { LaunchedEffect(Unit) { onBack() }; return }
     if (book.shared && book.code != null) {
-        com.g1.sketchbook.share.SharedBookScreen(bookId, book.code, myUid, myName, onBack)
+        com.g1.sketchbook.share.SharedBookScreen(bookId, book.code, myUid, myName, startPage, onBack)
         return
     }
     val scope = rememberCoroutineScope()
@@ -1053,7 +1068,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
     var favorites by remember { mutableStateOf(session.favoriteColors) }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
-    var page by remember { mutableIntStateOf(0) }
+    var page by remember { mutableIntStateOf(startPage.coerceIn(0, book.pageCount - 1)) }
     val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
     var pagesOpen by remember { mutableStateOf(false) }
     var readModeOpen by remember { mutableStateOf(false) }
@@ -1092,7 +1107,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                     BrushView(ctx).also { v ->
                         v.paper = BitmapFactory.decodeResource(ctx.resources, bgDrawable(book.bgKey))
                         v.initCanvas(cw, ch)
-                        v.loadContent(repo.loadPage(book.id, 0))
+                        v.loadContent(repo.loadPage(book.id, page))
                         view = v
                     }
                 },

@@ -119,6 +119,9 @@ fun MainScreen(
     onRename: (String) -> Unit,
     onSetAvatarImage: (Bitmap) -> Unit,
     onOpenBook: (String) -> Unit,
+    /** 목록/공유 탭 3열 페이지 썸네일 더블탭 전용 — 그 페이지를 펼친 채로 바로 스케치 모드에 들어간다.
+     *  안 넘기면(프리뷰 등) 그냥 onOpenBook으로 대체(페이지 지정 없이 열림). */
+    onOpenBookAtPage: (String, Int) -> Unit = { id, _ -> onOpenBook(id) },
     onOpenDiary: (String) -> Unit,
     onOpenCalendar: (Int, Int) -> Unit,
     previewBooks: List<Sketchbook>? = null,
@@ -133,12 +136,12 @@ fun MainScreen(
                 previewBooks = previewBooks,
             )
             1 -> com.g1.sketchbook.sketchbook.SketchbookTab(
-                nickname = nickname, myUid = myUid, onOpenBook = onOpenBook,
+                nickname = nickname, myUid = myUid, onOpenBook = onOpenBook, onOpenBookAtPage = onOpenBookAtPage,
                 syncGeneration = syncGeneration,
                 previewBooks = previewBooks,
             )
             2 -> com.g1.sketchbook.sketchbook.SketchbookTab(
-                nickname = nickname, myUid = myUid, onOpenBook = onOpenBook,
+                nickname = nickname, myUid = myUid, onOpenBook = onOpenBook, onOpenBookAtPage = onOpenBookAtPage,
                 initialShowShared = true, syncGeneration = syncGeneration,
                 previewBooks = previewBooks,
             )
@@ -217,21 +220,12 @@ private fun HomeTab(
             } else if (landscape) {
                 val book = selectedBook
                 if (book != null && repo != null) {
-                    // 페이지 커얼 서피스는 자기 크기를 꽉 채워 그려서, 패널 비율과 책 비율이 다르면
-                    // 남는 여백에 서피스 자체의 배경(검정)이 그대로 보였다 — 책 비율에 맞게 딱 맞는
-                    // 크기로만 감싸서, 남는 자리는 홈 화면의 원래 배경이 그대로 비치게 한다(2026-08-29).
-                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        val ratio = book.size.ratio
-                        val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
-                        val h = w / ratio
-                        // 페이지 커얼은 OpenGL 서피스로 그려지는데, GLSurfaceView 자체를 clip()해도
-                        // 표면 안쪽 렌더링까지는 안 잘릴 수 있어(2026-08-29 확인 필요) — 우선 표준
-                        // clip으로 시도.
-                        ReadingPane(
-                            repo, book, selectedReadPage, onPageChanged = { selectedReadPage = it },
-                            modifier = Modifier.width(w).height(h).clip(RoundedCornerShape(16.dp)),
-                        )
-                    }
+                    // 책 비율에 맞춰 레터박스를 두면 그 여백에 홈 화면 배경(베이지)이 그대로 비쳐서
+                    // 오히려 어색했다 — 다시 좌우 꽉 채우는 방식으로(2026-08-29, 재요청).
+                    ReadingPane(
+                        repo, book, selectedReadPage, onPageChanged = { selectedReadPage = it },
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
+                    )
                     // 3열 표지리스트를 탭하면 여기서 읽을 뿐 — 그리기는 이 별도 버튼으로만 들어간다
                     // (탭=읽기, 그리기 진입은 명시적 버튼으로 분리하기로 결정, 2026-08-29). 텍스트 없이
                     // 아이콘만(2026-08-29, 재요청).

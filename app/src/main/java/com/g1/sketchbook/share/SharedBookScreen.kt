@@ -117,6 +117,8 @@ fun SharedBookScreen(
     code: String,
     myUid: String,
     myName: String,
+    /** 목록/공유 탭 3열 페이지 썸네일 더블탭 전용 — 이 페이지를 펼친 채로 시작한다(기본 0). */
+    startPage: Int = 0,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -150,7 +152,7 @@ fun SharedBookScreen(
     var favorites by remember { mutableStateOf(session.favoriteColors) }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
-    var page by remember { mutableIntStateOf(0) }
+    var page by remember { mutableIntStateOf(startPage.coerceIn(0, book.pageCount - 1)) }
     val pageCount = book.pageCount   // fixed at MAX_PAGES from creation — no add/remove anymore
     var pagesOpen by remember { mutableStateOf(false) }
     // 공유모드는 항상 전체화면 — 여러 명이 같이 보는 캔버스라 상태/내비게이션 바 자리까지 그림 영역으로 쓴다.
@@ -280,7 +282,7 @@ fun SharedBookScreen(
                                 BrushView(ctx).also { v ->
                                     v.paper = BitmapFactory.decodeResource(ctx.resources, bgDrawable(book.bgKey))
                                     v.initCanvas(cw, ch)
-                                    v.loadContent(sbRepo.loadPage(book.id, 0))
+                                    v.loadContent(sbRepo.loadPage(book.id, page))
                                     view = v
                                 }
                             },
@@ -502,8 +504,11 @@ private fun TeacherModeButton(active: Boolean, onToggle: () -> Unit) {
         ) {
             Box(Modifier.padding(6.dp)) {
                 Box(Modifier.size(30.dp).bounceClick(onClick = onToggle), contentAlignment = Alignment.Center) {
+                    // 아이콘은 "지금 상태"가 아니라 "눌렀을 때 벌어질 동작"을 보여준다 — 공유 중(on)일
+                    // 땐 "끄기" 동작을 뜻하는 unshared 아이콘, 꺼져 있을 땐 "켜기" 동작을 뜻하는 shared
+                    // 아이콘(2026-08-29, 상태 표시에서 동작 표시로 변경).
                     Icon(
-                        if (active) com.g1.sketchbook.brush.IconScreenSharedLine else com.g1.sketchbook.brush.IconScreenUnsharedLine,
+                        if (active) com.g1.sketchbook.brush.IconScreenUnsharedLine else com.g1.sketchbook.brush.IconScreenSharedLine,
                         "선생님모드 " + (if (active) "끄기" else "켜기"),
                         tint = if (active) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current,
                     )
