@@ -284,8 +284,8 @@ fun BrushControls(
                             .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
                     }
                     if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
-                        ColorPickerCard(color, onColor = onColor, opacity = opacity,
-                            onOpacity = onOpacity, onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
+                        ColorPickerCard(color, onColor = onColor,
+                            onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
                     }
                 }
                 onToggleCollapsed?.let { IconBtn(Icons.Filled.UnfoldMore, "버튼바 펼치기", onClick = it) }
@@ -417,8 +417,7 @@ fun BrushControls(
                         if (editFavAt == i) Popup(popupAnchor, { editFavAt = -1 }, PopupProperties(focusable = true)) {
                             ColorPickerCard(c,
                                 onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
-                                opacity = opacity,
-                                onOpacity = onOpacity, onEyedrop = { editFavAt = -1; onToggleEyedrop() })
+                                onEyedrop = { editFavAt = -1; onToggleEyedrop() })
                         }
                     }
                 }
@@ -437,8 +436,8 @@ fun BrushControls(
                             .border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
                     }
                     if (colorWheelOpen) Popup(popupAnchor, { colorWheelOpen = false }, PopupProperties(focusable = true)) {
-                        ColorPickerCard(color, onColor = onColor, opacity = opacity,
-                            onOpacity = onOpacity, onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
+                        ColorPickerCard(color, onColor = onColor,
+                            onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
                     }
                 }
                 // 즐겨찾기 전체(20개) 그리드 — 툴바 인라인 자리는 5개뿐이라 나머지는 여기서 고르거나 등록.
@@ -447,7 +446,7 @@ fun BrushControls(
                         tint = if (favoritesGridOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = { favoritesGridOpen = !favoritesGridOpen })
                     if (favoritesGridOpen) Popup(popupAnchor, { favoritesGridOpen = false }, PopupProperties(focusable = true)) {
-                        FavoritesGridPopup(favorites, color, opacity, erasing, onColor, onOpacity, onEditFavorite,
+                        FavoritesGridPopup(favorites, color, erasing, onColor, onEditFavorite,
                             onEyedrop = { favoritesGridOpen = false; onToggleEyedrop() })
                     }
                 }
@@ -802,15 +801,14 @@ internal fun RingSliderThumb(valueText: String, accentColor: Color = SliderAccen
 }
 
 /** macOS "색상휠" 탭과 같은 구성: 원형 색상+채도 휠, 그 아래 밝기 바, RGB/HSL 탭, 그리고
- *  (브러시 툴바에서 열 때만) 불투명도·스포이드(2026-08-26, 이전엔 SV사각형+Hue바였고 즐겨찾기
- *  미리보기도 있었으나 툴바/즐겨찾기 전체 그리드와 중복이라 뺐음). 표지색·달력 오버레이 색상
- *  등 브러시가 아닌 곳에서도 재사용하므로 [opacity]/[onOpacity]/[onEyedrop]는 전부 선택 —
- *  null이면(기본값) 해당 구역을 아예 그리지 않는다. */
+ *  (브러시 툴바에서 열 때만) 스포이드(2026-08-27, 불투명도 슬라이더는 브러시 자체 설정과
+ *  중복이라 뺐음 — 즐겨찾기 미리보기도 같은 이유로 이미 뺀 상태). 표지색·달력 오버레이 색상
+ *  등 브러시가 아닌 곳에서도 재사용하므로 [onEyedrop]은 선택 — null이면(기본값) 해당 구역을
+ *  아예 그리지 않는다. */
 @Composable
 internal fun ColorPickerCard(
     color: Long, onColor: (Long) -> Unit,
-    opacity: Float? = null,
-    onOpacity: ((Float) -> Unit)? = null, onEyedrop: (() -> Unit)? = null,
+    onEyedrop: (() -> Unit)? = null,
 ) {
     val init = remember { FloatArray(3).also { AndroidColor.colorToHSV((color and 0xFFFFFFFF).toInt(), it) } }
     var hue by remember { mutableFloatStateOf(init[0]) }
@@ -913,10 +911,6 @@ internal fun ColorPickerCard(
                 }
                 PickerTab.RGB -> RgbSliders(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
                 PickerTab.HSL -> HslSliders(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
-            }
-            if (opacity != null && onOpacity != null) {
-                Spacer(Modifier.height(12.dp))
-                IconSliderRow(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
             }
             if (onEyedrop != null) {
                 Spacer(Modifier.height(14.dp))
@@ -1073,8 +1067,8 @@ private fun hslToRgb(h: Float, s: Float, l: Float): Triple<Int, Int, Int> {
  *  바꾸는 색상휠이 뜬다(인라인 스와치와 동일). */
 @Composable
 private fun FavoritesGridPopup(
-    favorites: List<Long>, color: Long, opacity: Float, erasing: Boolean,
-    onColor: (Long) -> Unit, onOpacity: (Float) -> Unit, onEditFavorite: (Int, Long) -> Unit, onEyedrop: () -> Unit,
+    favorites: List<Long>, color: Long, erasing: Boolean,
+    onColor: (Long) -> Unit, onEditFavorite: (Int, Long) -> Unit, onEyedrop: () -> Unit,
 ) {
     var editAt by remember { mutableIntStateOf(-1) }
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
@@ -1094,8 +1088,7 @@ private fun FavoritesGridPopup(
                     if (editAt == i) Popup(AboveAnchor(0, 0), { editAt = -1 }, PopupProperties(focusable = true)) {
                         ColorPickerCard(c,
                             onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
-                            opacity = opacity,
-                            onOpacity = onOpacity, onEyedrop = { editAt = -1; onEyedrop() })
+                            onEyedrop = { editAt = -1; onEyedrop() })
                     }
                 }
             }
