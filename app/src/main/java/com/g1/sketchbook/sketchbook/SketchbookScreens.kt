@@ -1095,7 +1095,7 @@ fun SketchbookCanvasScreen(bookId: String, myUid: String, myName: String, onBack
                 update = { v ->
                     v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
                     v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
-                    v.smoothAlpha = (1f - smoothStrength / 100f).coerceIn(0.03f, 1f)
+                    v.smoothTimeConstantMs = smoothStrength / 100f * 450f
                     v.lassoMode = lassoActive; v.fillMode = fillActive
                     v.onLassoSelectionChanged = { has, x, y -> lassoDeleteAt = if (has) Offset(x, y) else null }
                     v.twoFingerTapAction = session.twoFingerTapAction

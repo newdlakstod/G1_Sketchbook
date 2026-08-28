@@ -17,6 +17,7 @@ import android.view.View
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -231,12 +232,19 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     // 일어나게 한다.
     private var smoothedSpeed = 0f
     // SMOOTH_TEST 전용 위치 스무딩(EMA) — 원본 터치 좌표(lx,ly가 매 프레임 갱신되는 값)를 그대로
-    // 찍지 않고, 뒤에서 완만하게 따라오는 별도 좌표를 유지해서 그 좌표로 찍는다. alpha가 작을수록
-    // 더 뭉근하게(더 늦게) 따라오고 떨림이 더 줄어든다 — 첫 시도값이라 필요하면 조절.
+    // 찍지 않고, 뒤에서 완만하게 따라오는 별도 좌표를 유지해서 그 좌표로 찍는다.
     private var smoothX = 0f; private var smoothY = 0f
-    /** 0f~1f, 낮을수록 더 뭉근하게(더 느리게) 따라와서 떨림이 더 줄어듦 — 툴바의 스무딩 강도
-     *  슬라이더가 (1 - 강도%) 로 변환해서 넣어준다. SMOOTH_TEST 브러시에만 쓰인다. */
-    var smoothAlpha = 0.2f
+    /** 밀리초 단위 시간 상수(RC 로우패스 필터와 같은 개념) — 0이면 원본 그대로, 클수록 더 뭉근하게
+     *  (더 오래) 따라와서 지그재그가 더 납작해진다. 툴바의 스무딩 강도(0~100) 슬라이더가 이 값으로
+     *  변환해서 넣어준다. SMOOTH_TEST 브러시에만 쓰인다.
+     *
+     *  ms 단위로 둔 이유: 처음엔 "매 샘플마다 (raw-smooth)*alpha만큼 이동"하는 고정 alpha였는데,
+     *  historical point 처리를 추가해서 한 프레임에 여러 샘플이 들어오게 되자 같은 alpha라도 실제
+     *  걸린 시간당 훨씬 더 빨리 원본을 따라잡아버려 스무딩 효과가 거의 사라졌다(샘플 개수가
+     *  많아질수록 필터가 시간 기준이 아니라 "샘플 개수" 기준으로 동작했기 때문). dt 기반 지수감쇠
+     *  alpha = 1 - e^(-dt/시간상수) 를 쓰면 샘플이 몇 개로 쪼개지든 일정 시간당 스무딩 정도가
+     *  똑같이 유지된다. */
+    var smoothTimeConstantMs = 60f
 
     /** Creates the canvas bitmaps at [w]x[h] px (capped for memory). Call once when opening a page-set. */
     fun initCanvas(w: Int, h: Int) {
@@ -870,9 +878,13 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         // SMOOTH_TEST만 위치 자체도 스무딩 — 원본 좌표 대신 뒤에서 완만히 따라오는
         // smoothX/Y로 찍는다(다른 브러시는 원본 좌표 그대로, 지금까지와 동일).
         val x: Float; val y: Float
-        if (brush == BrushType.SMOOTH_TEST) {
-            smoothX += (rawX - smoothX) * smoothAlpha
-            smoothY += (rawY - smoothY) * smoothAlpha
+        if (brush == BrushType.SMOOTH_TEST && smoothTimeConstantMs > 0f) {
+            // dt 기반 지수감쇠 — 한 프레임에 historical point가 몇 개로 쪼개져 들어오든(샘플 개수와
+            // 무관하게) 실제 걸린 시간(dtMs)당 스무딩 정도가 항상 같게 유지된다.
+            val dtMs = max(1L, eventTimeMs - lt).toFloat()
+            val alpha = (1f - exp(-dtMs / smoothTimeConstantMs)).coerceIn(0.02f, 1f)
+            smoothX += (rawX - smoothX) * alpha
+            smoothY += (rawY - smoothY) * alpha
             x = smoothX; y = smoothY
         } else { x = rawX; y = rawY }
         strokeMove(lx, ly, x, y, smoothedSpeed); lx = x; ly = y; lt = eventTimeMs

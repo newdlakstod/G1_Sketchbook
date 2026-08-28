@@ -221,7 +221,7 @@ fun SharedBookScreen(
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
         v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
-        v.smoothAlpha = (1f - smoothStrength / 100f).coerceIn(0.03f, 1f)
+        v.smoothTimeConstantMs = smoothStrength / 100f * 450f
         v.lassoMode = lassoActive; v.fillMode = fillActive
         v.onLassoSelectionChanged = { has, x, y -> lassoDeleteAt = if (has) androidx.compose.ui.geometry.Offset(x, y) else null }
         v.onStylusButtonChanged = { pressed ->
