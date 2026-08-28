@@ -146,8 +146,6 @@ fun SharedBookScreen(
     var eraserSize by remember { mutableFloatStateOf(session.eraserSize) }
     var eraserOpacity by remember { mutableFloatStateOf(session.eraserOpacity) }
     var eraserBlur by remember { mutableFloatStateOf(session.eraserBlur) }
-    // SMOOTH_TEST 실험 브러시 전용(test/smooth-brush 브랜치) — 세션 저장 없이 화면 안에서만 기억.
-    var smoothStrength by remember { mutableFloatStateOf(30f) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) eraserOpacity else opacityByBrush[brush] ?: 100f
     var favorites by remember { mutableStateOf(session.favoriteColors) }
@@ -217,11 +215,10 @@ fun SharedBookScreen(
     // Apply brush settings via an effect rather than AndroidView.update: the pane is wrapped in
     // movableContent, and after it's moved (rotation / view-mode change) update() stops re-observing
     // state — so selections would silently stop applying. This effect always re-syncs.
-    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, lassoActive, fillActive, eyedropArmed, locked, page, smoothStrength) {
+    LaunchedEffect(view, brush, color, sizeDp, opacity, erasing, lassoActive, fillActive, eyedropArmed, locked, page) {
         val v = view ?: return@LaunchedEffect
         v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
         v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
-        v.smoothTimeConstantMs = smoothStrength / 100f * 450f
         v.lassoMode = lassoActive; v.fillMode = fillActive
         v.onLassoSelectionChanged = { has, x, y -> lassoDeleteAt = if (has) androidx.compose.ui.geometry.Offset(x, y) else null }
         v.onStylusButtonChanged = { pressed ->
@@ -403,7 +400,6 @@ fun SharedBookScreen(
                 onOpacity = { if (erasing) { eraserOpacity = it; session.eraserOpacity = it } else { opacityByBrush[brush] = it; session.setBrushOpacity(brush, it) } },
                 onToggleErase = { erasing = !erasing; if (erasing) { lassoActive = false; fillActive = false } },
                 eraserBlur = eraserBlur, onEraserBlur = { eraserBlur = it; session.eraserBlur = it },
-                smoothStrength = smoothStrength, onSmoothStrength = { smoothStrength = it },
                 onUndo = { view?.undo() }, onRedo = { view?.redo() },
                 onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
                 favorites = favorites,

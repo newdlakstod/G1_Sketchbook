@@ -161,8 +161,6 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
     var eraserOpacity by remember { mutableFloatStateOf(100f) }
     var eraserBlur by remember { mutableFloatStateOf(0f) }
-    // SMOOTH_TEST 실험 브러시 전용(test/smooth-brush 브랜치) — 세션 저장 없이 화면 안에서만 기억.
-    var smoothStrength by remember { mutableFloatStateOf(30f) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) eraserOpacity else opacityByBrush[brush] ?: 100f
     val session = if (previewMode) null else remember(ctx) { com.g1.sketchbook.data.SessionStore(ctx) }
@@ -252,7 +250,6 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                         update = { v ->
                             v.brush = brush; v.color = color.toInt(); v.strokeSize = sizeDp; v.opacity = opacity / 100f
                             v.erasing = erasing; v.locked = locked; v.eraserBlur = eraserBlur
-                            v.smoothTimeConstantMs = smoothStrength / 100f * 450f
                             v.lassoMode = lassoActive; v.fillMode = fillActive
                             v.onLassoSelectionChanged = { has, x, y -> lassoDeleteAt = if (has) Offset(x, y) else null }
                             v.twoFingerTapAction = session?.twoFingerTapAction ?: com.g1.sketchbook.brush.GestureAction.NONE
@@ -294,7 +291,6 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             onOpacity = { if (erasing) eraserOpacity = it else opacityByBrush[brush] = it },
             onToggleErase = { erasing = !erasing; if (erasing) { lassoActive = false; fillActive = false } },
             eraserBlur = eraserBlur, onEraserBlur = { eraserBlur = it },
-            smoothStrength = smoothStrength, onSmoothStrength = { smoothStrength = it },
             onUndo = { view?.undo() }, onRedo = { view?.redo() },
             onClear = {
                 view?.clearCanvas()

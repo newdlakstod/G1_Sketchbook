@@ -121,9 +121,14 @@ fun ToolbarDock.alignment(): Alignment = when (this) {
  *  도킹된 가장자리의 축으로만 밀리는 특수 케이스였는데 통일함). [dragPx]는 [current] 기준 드래그
  *  누적량, [containerWidthPx]/[containerHeightPx]는 바가 떠 있는 영역(px) 크기. */
 fun nearestDock(current: ToolbarDock, dragPx: Offset, containerWidthPx: Float, containerHeightPx: Float): ToolbarDock {
-    val baseX = when (current) { ToolbarDock.LEFT -> 0f; ToolbarDock.RIGHT -> containerWidthPx; else -> containerWidthPx / 2f }
-    val baseY = when (current) { ToolbarDock.TOP -> 0f; ToolbarDock.BOTTOM -> containerHeightPx; else -> containerHeightPx / 2f }
-    val x = baseX + dragPx.x; val y = baseY + dragPx.y
+    // 항상 컨테이너 정중앙을 기준점으로 삼아 드래그량만 더한다 — 예전엔 "지금 도킹된 가장자리"를
+    // 기준점으로 삼아서(예: TOP면 y=0에서 시작) 그 축 거리가 항상 0에 가깝게 고정돼 있었다. 그래서
+    // 가로모드(TOP)에서 좌우로만 드래그해도 세로(TOP/BOTTOM) 거리가 계속 0으로 이겨버려 LEFT/RIGHT로
+    // 못 넘어가는 버그가 있었다(화면 폭의 절반 이상을 끌어야만 겨우 넘어감) — RIGHT로 한 번 옮겨서
+    // 세로 도킹이 된 뒤에는 반대로 LEFT까지는 쉽게 넘어갔던 것도 같은 비대칭 때문. 중앙을 기준으로
+    // 통일하면 어느 축으로 드래그하든 공평하게 반응한다.
+    val x = containerWidthPx / 2f + dragPx.x
+    val y = containerHeightPx / 2f + dragPx.y
     val distances = mapOf(
         ToolbarDock.LEFT to x, ToolbarDock.RIGHT to (containerWidthPx - x),
         ToolbarDock.TOP to y, ToolbarDock.BOTTOM to (containerHeightPx - y),
@@ -184,11 +189,6 @@ fun BrushControls(
     /** 지우개 전용 경계 블러(부드러움) 정도 — 브러시에는 없는 지우개만의 슬라이더. 0이면 또렷한 경계. */
     eraserBlur: Float = 0f,
     onEraserBlur: (Float) -> Unit = {},
-    /** SMOOTH_TEST 실험 브러시 전용 — 스무딩 강도(0~100, 높을수록 더 뭉근하고 손떨림이 덜 남).
-     *  기본값은 낮게(30) 잡아서 처음 켰을 때 손가락과 너무 벌어지지 않게 — 80은 "렉 심하다"는
-     *  피드백을 받은 값(2026-08-28). test/smooth-brush 브랜치의 임시 파라미터, 실험이 끝나면 걷어낸다. */
-    smoothStrength: Float = 30f,
-    onSmoothStrength: (Float) -> Unit = {},
     favorites: List<Long> = BrushPalette.take(5),
     onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
     eyedropArmed: Boolean = false,
@@ -221,8 +221,6 @@ fun BrushControls(
     // 지우개 전용 "경계 블러" 팝업 열림 상태 — 굵기/불투명도는 이제 항상 보이는 상단 바로 옮겨가서
     // 브러시별 팝업이 필요 없어졌고, 블러(지우개 전용)만 예전처럼 탭-토글 팝업으로 남았다.
     var openEraserPanel by remember { mutableStateOf(false) }
-    // SMOOTH_TEST 실험 브러시 전용 "스무딩 강도" 팝업 열림 상태 — 지우개 블러와 같은 패턴.
-    var openSmoothPanel by remember { mutableStateOf(false) }
     var miniBrushPickerOpen by remember { mutableStateOf(false) }
     var collapsedSizePanelOpen by remember { mutableStateOf(false) } // 최소화 모드: 브러시 아이콘 길게 누르면 굵기/투명도 패널
     var brushCategoryExpanded by remember { mutableStateOf(true) } // 붓 종류(펜/연필/크레파스/수채화/지우개) 묶음 접기
@@ -268,7 +266,11 @@ fun BrushControls(
     // 경우엔 이 실측값 없이는 레인 폭을 알 수 없다(고정폭 fillMaxWidth를 못 쓰는 경우).
     var toolbarSizePx by remember { mutableStateOf(IntSize.Zero) }
 
-    Box(modifier) {
+    // 버튼바 Surface와 그립 레인을 순서가 있는 Column/Row(아래)의 형제로 둔다 — 예전엔 Box 안에서
+    // Surface와 그립을 각자 align()으로 겹쳐 배치했는데, Box는 넓은 쪽(Surface) 크기로만 자기 높이를
+    // 잡아서 그립이 그 안쪽 가장자리에 얹히며 Surface와 겹쳐 보이는 문제가 있었다(TOP 도킹에서 특히
+    // 두드러짐). Column/Row로 순서대로 쌓으면 두 요소가 서로의 자리를 침범할 수 없다.
+    val toolbarSurface: @Composable () -> Unit = {
         Surface(
             shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp, tonalElevation = 2.dp,
@@ -283,7 +285,7 @@ fun BrushControls(
                 // 길게 눌러 경계 블러 패널(굵기/불투명도는 항상 보이는 상단 바에서 이미 조절 가능).
                 Box {
                     Box(
-                        Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing || brush == BrushType.SMOOTH_TEST) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
+                        Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                         contentAlignment = Alignment.Center,
                     ) {
                         Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 지우개 선택 시 길게 눌러 경계 블러(스무딩 테스트는 강도) 조절",
@@ -295,7 +297,7 @@ fun BrushControls(
                             onEraser = { onToggleErase(); miniBrushPickerOpen = false })
                     }
                     if (collapsedSizePanelOpen) Popup(sizePopupAnchor, { collapsedSizePanelOpen = false }, PopupProperties(focusable = true)) {
-                        if (erasing) BlurPanel(eraserBlur, onEraserBlur) else SmoothPanel(smoothStrength, onSmoothStrength)
+                        BlurPanel(eraserBlur, onEraserBlur)
                     }
                 }
                 // 현재 색상 — 탭하면 전체 툴바와 같은 색상휠이 뜬다.
@@ -344,32 +346,24 @@ fun BrushControls(
                 if (brushCategoryExpanded) {
                     // Brush icons: tap to switch. 굵기/불투명도는 이제 브러시별 팝업이 아니라 항상
                     // 보이는 상단 바(ActiveToolSlidersBar)에서 조절하므로 여기선 그냥 단순 토글.
-                    BrushBtn(!erasing && brush == BrushType.PEN, onClick = { onBrush(BrushType.PEN); openEraserPanel = false; openSmoothPanel = false }) { t ->
+                    BrushBtn(!erasing && brush == BrushType.PEN, onClick = { onBrush(BrushType.PEN); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    // 실험용 임시 브러시(test/smooth-brush 브랜치) — PEN과 렌더링은 같고 입력 좌표
-                    // 스무딩만 다르다. 다른 브러시와 헷갈리지 않도록 항상 파란 톤으로 구분(선택 여부와
-                    // 무관한 고정 색조). 이미 선택된 상태에서 다시 탭하면 스무딩 강도 패널이 뜬다
-                    // (지우개 블러와 같은 패턴). 실험이 끝나면 이 버튼째로 걷어낸다.
-                    SmoothTestBtnWithPanel(!erasing && brush == BrushType.SMOOTH_TEST, smoothStrength, onSmoothStrength, sizePopupAnchor,
-                        panelOpen = openSmoothPanel,
-                        setPanelOpen = { o -> openSmoothPanel = o; if (o) openEraserPanel = false },
-                        onClick = { onBrush(BrushType.SMOOTH_TEST); openEraserPanel = false; openSmoothPanel = false })
-                    BrushBtn(!erasing && brush == BrushType.PENCIL, onClick = { onBrush(BrushType.PENCIL); openEraserPanel = false; openSmoothPanel = false }) { t ->
+                    BrushBtn(!erasing && brush == BrushType.PENCIL, onClick = { onBrush(BrushType.PENCIL); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    BrushBtn(!erasing && brush == BrushType.CRAYON, onClick = { onBrush(BrushType.CRAYON); openEraserPanel = false; openSmoothPanel = false }) { t ->
+                    BrushBtn(!erasing && brush == BrushType.CRAYON, onClick = { onBrush(BrushType.CRAYON); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    BrushBtn(!erasing && brush == BrushType.WATER, onClick = { onBrush(BrushType.WATER); openEraserPanel = false; openSmoothPanel = false }) { t ->
+                    BrushBtn(!erasing && brush == BrushType.WATER, onClick = { onBrush(BrushType.WATER); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     // 지우개만 자기 자신의 "경계 블러" 팝업을 가진다(굵기/불투명도는 다른 브러시와
                     // 동일하게 상단 바에서) — 이미 선택된 지우개를 다시 탭하면 블러 패널이 뜬다.
                     EraserBtnWithBlurPanel(erasing, eraserBlur, onEraserBlur, sizePopupAnchor,
                         panelOpen = openEraserPanel,
-                        setPanelOpen = { o -> openEraserPanel = o; if (o) openSmoothPanel = false },
-                        onClick = { onToggleErase(); openEraserPanel = false; openSmoothPanel = false }) { t ->
+                        setPanelOpen = { o -> openEraserPanel = o },
+                        onClick = { onToggleErase(); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     IconBtn(Icons.Filled.UnfoldLess, "붓 종류 접기", onClick = { brushCategoryExpanded = false })
@@ -379,7 +373,7 @@ fun BrushControls(
                     // 옆의 화살표 버튼.
                     Box {
                         Box(
-                            Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing || brush == BrushType.SMOOTH_TEST) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
+                            Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                             contentAlignment = Alignment.Center,
                         ) {
                             Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 지우개 선택 시 길게 눌러 경계 블러(스무딩 테스트는 강도) 조절",
@@ -501,30 +495,25 @@ fun BrushControls(
         }
         }
         }
-        // 굵기/불투명도 그립 — 평소엔 버튼바 테두리에 걸친 얇은 알약 선일 뿐이다가, 누르고 드래그
-        // 하면 그립이 커지고 진하게 활성화되면서 값 툴팁이 뜬다(2026-08-28, 샘플 스크린샷 참고).
-        // 버튼(브러시 아이콘 등)과는 완전히 분리된 레인 — 버튼바 실제 폭(세로 도킹이면 높이)을
-        // 절반씩 나눠 굵기(앞쪽 절반)/불투명도(뒤쪽 절반) 전용 이동 구간으로 쓴다. 그립은 그 구간
-        // 안에서 "지금 값" 위치로 옮겨가 있다가, 드래그하면 그 자리에서부터 실시간으로 이동한다.
-        // 항상 버튼바가 도킹된 화면 가장자리의 반대쪽(캔버스를 향한 안쪽) 변에 붙인다.
+    }
+
+    // 굵기/불투명도 그립 — 평소엔 버튼바 테두리에 걸친 얇은 알약 선일 뿐이다가, 누르고 드래그
+    // 하면 그립이 커지고 진하게 활성화되면서 값 툴팁이 뜬다(2026-08-28, 샘플 스크린샷 참고).
+    // 버튼(브러시 아이콘 등)과는 완전히 분리된 레인 — 버튼바 실제 폭(세로 도킹이면 높이)을
+    // 절반씩 나눠 굵기(앞쪽 절반)/불투명도(뒤쪽 절반) 전용 이동 구간으로 쓴다. 그립은 그 구간
+    // 안에서 "지금 값" 위치로 옮겨가 있다가, 드래그하면 그 자리에서부터 실시간으로 이동한다.
+    val tooltipSide = when (dock) {
+        ToolbarDock.TOP -> TooltipSide.BELOW
+        ToolbarDock.BOTTOM -> TooltipSide.ABOVE
+        ToolbarDock.LEFT -> TooltipSide.END
+        ToolbarDock.RIGHT -> TooltipSide.START
+    }
+    val laneCrossAxis = GripActiveThickness + 8.dp
+    val gripLane: @Composable () -> Unit = {
         if (toolbarSizePx.width > 0 && toolbarSizePx.height > 0) {
-            val laneEdgeAlignment = when (dock) {
-                ToolbarDock.TOP -> Alignment.BottomCenter
-                ToolbarDock.BOTTOM -> Alignment.TopCenter
-                ToolbarDock.LEFT -> Alignment.CenterEnd
-                ToolbarDock.RIGHT -> Alignment.CenterStart
-            }
-            val tooltipSide = when (dock) {
-                ToolbarDock.TOP -> TooltipSide.BELOW
-                ToolbarDock.BOTTOM -> TooltipSide.ABOVE
-                ToolbarDock.LEFT -> TooltipSide.END
-                ToolbarDock.RIGHT -> TooltipSide.START
-            }
-            val laneCrossAxis = GripActiveThickness + 8.dp
             if (!vertical) {
                 Row(
-                    Modifier.align(laneEdgeAlignment)
-                        .width(with(density) { toolbarSizePx.width.toDp() })
+                    Modifier.width(with(density) { toolbarSizePx.width.toDp() })
                         .height(laneCrossAxis)
                         .padding(horizontal = 10.dp),
                 ) {
@@ -535,8 +524,7 @@ fun BrushControls(
                 }
             } else {
                 Column(
-                    Modifier.align(laneEdgeAlignment)
-                        .height(with(density) { toolbarSizePx.height.toDp() })
+                    Modifier.height(with(density) { toolbarSizePx.height.toDp() })
                         .width(laneCrossAxis)
                         .padding(vertical = 10.dp),
                 ) {
@@ -546,6 +534,22 @@ fun BrushControls(
                         tooltipSide, vertical = true, modifier = Modifier.weight(1f).fillMaxWidth())
                 }
             }
+        }
+    }
+
+    // 도킹 방향에 따라 그립 레인이 버튼바의 "캔버스 쪽(반대쪽)" 변에 오도록 순서를 정한다 —
+    // Column/Row는 나열 순서 그대로 쌓이므로 겹칠 일이 없다.
+    if (!vertical) {
+        Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+            if (dock == ToolbarDock.BOTTOM) gripLane()
+            toolbarSurface()
+            if (dock == ToolbarDock.TOP) gripLane()
+        }
+    } else {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            if (dock == ToolbarDock.RIGHT) gripLane()
+            toolbarSurface()
+            if (dock == ToolbarDock.LEFT) gripLane()
         }
     }
 }
@@ -642,7 +646,7 @@ private fun DragHandle(onDrag: (Offset) -> Unit, onDragEnd: () -> Unit) {
 
 private fun currentToolIcon(brush: BrushType, erasing: Boolean): Int = when {
     erasing -> R.drawable.brush_eraser
-    brush == BrushType.PEN || brush == BrushType.SMOOTH_TEST -> R.drawable.brush_pen
+    brush == BrushType.PEN -> R.drawable.brush_pen
     brush == BrushType.PENCIL -> R.drawable.brush_pencil
     brush == BrushType.CRAYON -> R.drawable.brush_crayon
     else -> R.drawable.brush_water
@@ -746,12 +750,21 @@ private fun EdgeGripSlider(
 
     BoxWithConstraints(modifier, contentAlignment = Alignment.TopStart) {
         val laneLenPx = with(density) { (if (vertical) maxHeight else maxWidth).roundToPx() }
-        val gripLenPx = with(density) { (if (dragging) GripActiveLength else GripIdleLength).roundToPx() }
+        // 위치 계산의 기준(센터)은 항상 "활성 크기"로 고정해서 idle↔dragging 전환 때 그립의
+        // 중심이 안 흔들리게 한다 — 예전엔 idle/active 크기를 그대로 (laneLen - gripLen) 계산에
+        // 썼는데, 드래그 시작하는 순간 gripLen이 커지면서 usable 구간이 줄어들어 fraction은 그대로인
+        // 채로 위치만 원점(0) 쪽으로 확 당겨지는 버그가 있었다("반영시점" 대신 매번 0부터 다시
+        // 계산되는 것처럼 보였음). 활성 크기 기준으로 센터를 고정하고, 실제 렌더링 크기(idle/active)
+        // 차이만큼만 대칭으로 빼주면 그립이 커져도 중심은 그대로 유지된다.
+        val activeLenPx = with(density) { GripActiveLength.roundToPx() }
+        val currentLenPx = with(density) { (if (dragging) GripActiveLength else GripIdleLength).roundToPx() }
+        val usableLenPx = max(0, laneLenPx - activeLenPx)
         val fraction = if (span == 0f) 0f else ((shownValue - range.start) / span).coerceIn(0f, 1f)
-        val posPx = (fraction * (laneLenPx - gripLenPx)).roundToInt().coerceIn(0, max(0, laneLenPx - gripLenPx))
+        val centerPx = (fraction * usableLenPx).roundToInt().coerceIn(0, usableLenPx) + activeLenPx / 2
+        val posPx = centerPx - currentLenPx / 2
         // 값 툴팁은 레인 중앙이 아니라 지금 그립이 있는 자리 위(또는 옆)로 — 레인이 넓으면
         // 레인 중앙 기준 정렬만으론 그립을 안 따라간다.
-        val gripCenterDeltaPx = posPx + gripLenPx / 2 - laneLenPx / 2
+        val gripCenterDeltaPx = centerPx - laneLenPx / 2
         val (popupAlignment, popupOffsetBase) = when (tooltipSide) {
             TooltipSide.ABOVE -> Alignment.TopCenter to IntOffset(0, with(density) { (-40).dp.roundToPx() })
             TooltipSide.BELOW -> Alignment.BottomCenter to IntOffset(0, with(density) { 40.dp.roundToPx() })
@@ -826,17 +839,6 @@ private fun BlurPanel(blur: Float, onBlur: (Float) -> Unit) {
     }
 }
 
-/** SMOOTH_TEST 실험 브러시 전용 "스무딩 강도" 패널(test/smooth-brush 브랜치) — 0~100, 높을수록
- *  선이 더 뭉근하게(손가락보다 살짝 늦게) 따라오며 손떨림이 줄어든다. BlurPanel과 같은 패턴. */
-@Composable
-private fun SmoothPanel(strength: Float, onStrength: (Float) -> Unit) {
-    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
-        Box(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
-            IconSliderRow(Icons.Filled.BlurOn, "스무딩 강도", "${strength.toInt()}", strength, 0f..100f, onStrength)
-        }
-    }
-}
-
 // 슬라이드 단계 수(30단계) = steps(양 끝 제외 중간값 개수) + 2
 internal const val SliderStepCount = 28
 // 캔버스 px 기준 굵기 범위 — strokeSize가 화면 밀도/fitScale 나누기 없이 캔버스에 그대로 찍히는
@@ -861,7 +863,6 @@ internal fun brushSizeRange(brush: BrushType): ClosedFloatingPointRange<Float> =
     BrushType.PENCIL -> Dimens.Brush.pencilMinWidth..Dimens.Brush.pencilMaxWidth
     BrushType.CRAYON -> Dimens.Brush.crayonMinWidth..Dimens.Brush.crayonMaxWidth
     BrushType.WATER -> Dimens.Brush.waterMinWidth..Dimens.Brush.waterMaxWidth
-    BrushType.SMOOTH_TEST -> Dimens.Brush.penMinWidth..Dimens.Brush.penMaxWidth // PEN과 동일(테스트 브러시)
 }
 internal val EraserSizeRange = Dimens.Brush.eraserMinWidth..Dimens.Brush.eraserMaxWidth
 
@@ -1307,27 +1308,6 @@ private fun EraserBtnWithBlurPanel(
             contentAlignment = Alignment.Center) { icon(tint) }
         if (panelOpen) Popup(anchor, { setPanelOpen(false) }, PopupProperties(focusable = true)) {
             BlurPanel(blur, onBlur)
-        }
-    }
-}
-
-/** SMOOTH_TEST 실험 브러시 버튼(test/smooth-brush 브랜치) — 탭해서 선택, 이미 선택된 상태에서
- *  다시 탭하면 "스무딩 강도" 팝업이 뜬다. 아이콘은 항상 고정 파란 톤(다른 브러시와 구분용)이라
- *  EraserBtnWithBlurPanel처럼 selected 기반 회색조 tint를 받지 않고 직접 계산한다. */
-@Composable
-private fun SmoothTestBtnWithPanel(
-    selected: Boolean, strength: Float, onStrength: (Float) -> Unit, anchor: PopupPositionProvider,
-    panelOpen: Boolean, setPanelOpen: (Boolean) -> Unit, onClick: () -> Unit,
-) {
-    val tint = if (selected) Color(0xFF4DABF7) else Color(0xFF4DABF7).copy(alpha = 0.45f)
-    Box {
-        Box(Modifier.size(ButtonTapSize).bounceClick { if (selected) setPanelOpen(!panelOpen) else onClick() },
-            contentAlignment = Alignment.Center) {
-            Image(painterResource(R.drawable.brush_pen), "스무딩 테스트(임시 브러시) — 탭해서 선택, 다시 탭하면 강도 조절",
-                colorFilter = ColorFilter.tint(tint), modifier = Modifier.size(25.dp))
-        }
-        if (panelOpen) Popup(anchor, { setPanelOpen(false) }, PopupProperties(focusable = true)) {
-            SmoothPanel(strength, onStrength)
         }
     }
 }

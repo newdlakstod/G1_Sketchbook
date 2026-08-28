@@ -100,7 +100,6 @@ class SessionStore(context: Context) {
         BrushType.PENCIL -> Dimens.Brush.pencilWidth
         BrushType.CRAYON -> Dimens.Brush.crayonWidth
         BrushType.WATER -> Dimens.Brush.waterWidth
-        BrushType.SMOOTH_TEST -> Dimens.Brush.penWidth // PEN과 동일(테스트 브러시)
     }
 
     companion object {

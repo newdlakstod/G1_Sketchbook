@@ -17,7 +17,6 @@ import android.view.View
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -25,10 +24,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
-// SMOOTH_TEST: 실험용 임시 브러시(test/smooth-brush 브랜치) — PEN과 렌더링은 동일(penDot/penSeg)하고
-// 입력 좌표에만 EMA 스무딩을 얹어서 PEN과 나란히 비교해보기 위한 것. 결과가 좋으면 정식 기능으로
-// 정리하고, 아니면 이 브랜치째 버린다.
-enum class BrushType { PEN, PENCIL, CRAYON, WATER, SMOOTH_TEST }
+enum class BrushType { PEN, PENCIL, CRAYON, WATER }
 
 /** Action a gesture can trigger — mapped per-gesture in Settings, off (NONE) by default. */
 enum class GestureAction { NONE, UNDO, REDO, EYEDROP, TOGGLE_TOOLBARS }
@@ -231,20 +227,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     // 부드럽게 안 이어짐). 지수이동평균으로 완만하게 눌러서 굵기 변화가 스트로크를 따라 서서히
     // 일어나게 한다.
     private var smoothedSpeed = 0f
-    // SMOOTH_TEST 전용 위치 스무딩(EMA) — 원본 터치 좌표(lx,ly가 매 프레임 갱신되는 값)를 그대로
-    // 찍지 않고, 뒤에서 완만하게 따라오는 별도 좌표를 유지해서 그 좌표로 찍는다.
-    private var smoothX = 0f; private var smoothY = 0f
-    /** 밀리초 단위 시간 상수(RC 로우패스 필터와 같은 개념) — 0이면 원본 그대로, 클수록 더 뭉근하게
-     *  (더 오래) 따라와서 지그재그가 더 납작해진다. 툴바의 스무딩 강도(0~100) 슬라이더가 이 값으로
-     *  변환해서 넣어준다. SMOOTH_TEST 브러시에만 쓰인다.
-     *
-     *  ms 단위로 둔 이유: 처음엔 "매 샘플마다 (raw-smooth)*alpha만큼 이동"하는 고정 alpha였는데,
-     *  historical point 처리를 추가해서 한 프레임에 여러 샘플이 들어오게 되자 같은 alpha라도 실제
-     *  걸린 시간당 훨씬 더 빨리 원본을 따라잡아버려 스무딩 효과가 거의 사라졌다(샘플 개수가
-     *  많아질수록 필터가 시간 기준이 아니라 "샘플 개수" 기준으로 동작했기 때문). dt 기반 지수감쇠
-     *  alpha = 1 - e^(-dt/시간상수) 를 쓰면 샘플이 몇 개로 쪼개지든 일정 시간당 스무딩 정도가
-     *  똑같이 유지된다. */
-    var smoothTimeConstantMs = 60f
 
     /** Creates the canvas bitmaps at [w]x[h] px (capped for memory). Call once when opening a page-set. */
     fun initCanvas(w: Int, h: Int) {
@@ -559,7 +541,6 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             MotionEvent.ACTION_DOWN -> {
                 pinching = false
                 val p = mapPoint(e.x, e.y); acc = 0f; lx = p[0]; ly = p[1]; lt = now; smoothedSpeed = 0f
-                smoothX = lx; smoothY = ly
                 downX = e.x; downY = e.y
                 beginStroke(lx, ly)
                 if (longPressAction != GestureAction.NONE) {
@@ -626,9 +607,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     // 화면 터치 샘플링 주파수(보통 120Hz+)가 프레임 콜백 주기(보통 60Hz)보다 높으면
                     // 한 ACTION_MOVE에 여러 실제 터치 샘플이 배치로 묶여 도착한다 — e.x/e.y만 읽으면
                     // 중간 샘플들이 통째로 버려져서, 한 스텝에 더 큰 거리를 "뭉텅이"로 이동한 것처럼
-                    // 보인다. SMOOTH_TEST처럼 프레임 간 거리에 민감한 필터(EMA)를 걸 때 이게 스무딩
-                    // 효과를 깎아먹으면서 지연만 남기는 원인이 될 수 있어, historical point를 먼저
-                    // 다 처리하고 마지막에 최신 좌표를 처리한다(2026-08-28).
+                    // 찍힌다. historical point를 먼저 다 처리하고 마지막에 최신 좌표를 처리하면 실제
+                    // 손가락 궤적에 더 가깝게 찍힌다(2026-08-28).
                     for (i in 0 until e.historySize) {
                         processMovePoint(e.getHistoricalX(i), e.getHistoricalY(i), e.getHistoricalEventTime(i))
                     }
@@ -868,33 +848,20 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun eraserDiameter() = strokeSize * EraserScale
 
     /** ACTION_MOVE 한 번에 실린 실제 터치 샘플 하나(historical 포함)를 처리 — 화면 좌표를 캔버스
-     *  좌표로 바꾸고, 속도 EMA·(SMOOTH_TEST면) 위치 EMA를 갱신한 뒤 strokeMove로 찍는다. */
+     *  좌표로 바꾸고, 속도 EMA를 갱신한 뒤 strokeMove로 찍는다. */
     private fun processMovePoint(screenX: Float, screenY: Float, eventTimeMs: Long) {
         val p = mapPoint(screenX, screenY); val rawX = p[0]; val rawY = p[1]
         val dd = hypot(rawX - lx, rawY - ly); val vRaw = dd / max(1L, eventTimeMs - lt)
         // 지수이동평균(EMA) — 0.35는 반응성:부드러움 비율. 올리면 순간속도에 더 민감하게
         // (더 소세지스럽게), 내리면 더 뭉근하게(더 느리게 두께가 따라옴) 반응한다.
         smoothedSpeed += (vRaw - smoothedSpeed) * 0.05f
-        // SMOOTH_TEST만 위치 자체도 스무딩 — 원본 좌표 대신 뒤에서 완만히 따라오는
-        // smoothX/Y로 찍는다(다른 브러시는 원본 좌표 그대로, 지금까지와 동일).
-        val x: Float; val y: Float
-        if (brush == BrushType.SMOOTH_TEST && smoothTimeConstantMs > 0f) {
-            // dt 기반 지수감쇠 — 한 프레임에 historical point가 몇 개로 쪼개져 들어오든(샘플 개수와
-            // 무관하게) 실제 걸린 시간(dtMs)당 스무딩 정도가 항상 같게 유지된다.
-            val dtMs = max(1L, eventTimeMs - lt).toFloat()
-            val alpha = (1f - exp(-dtMs / smoothTimeConstantMs)).coerceIn(0.02f, 1f)
-            smoothX += (rawX - smoothX) * alpha
-            smoothY += (rawY - smoothY) * alpha
-            x = smoothX; y = smoothY
-        } else { x = rawX; y = rawY }
-        strokeMove(lx, ly, x, y, smoothedSpeed); lx = x; ly = y; lt = eventTimeMs
+        strokeMove(lx, ly, rawX, rawY, smoothedSpeed); lx = rawX; ly = rawY; lt = eventTimeMs
     }
 
     private fun strokeStart(x: Float, y: Float) {
         when {
             erasing -> { applyEraseStyle(eraseFill); content?.drawCircle(x, y, max(1f, eraserDiameter() / 2f), eraseFill) }
-            // SMOOTH_TEST는 PEN과 렌더링이 완전히 동일 — 입력 좌표 스무딩만 다르다(위 onTouchEvent).
-            brush == BrushType.PEN || brush == BrushType.SMOOTH_TEST -> { penDot(x, y); composite() }
+            brush == BrushType.PEN -> { penDot(x, y); composite() }
             brush == BrushType.WATER -> { stampWater(x, y, r0() * scaleFor()); composite() }
             else -> stampDispatch(x, y, r0() * scaleFor())
         }
@@ -907,7 +874,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 applyEraseStyle(eraseStroke)
                 content?.drawLine(x0, y0, x1, y1, eraseStroke)
             }
-            brush == BrushType.PEN || brush == BrushType.SMOOTH_TEST -> { penSeg(x0, y0, x1, y1, speed); composite() }
+            brush == BrushType.PEN -> { penSeg(x0, y0, x1, y1, speed); composite() }
             brush == BrushType.WATER -> { seg(x0, y0, x1, y1, speed); composite() }
             else -> seg(x0, y0, x1, y1, speed)
         }
@@ -920,7 +887,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         pen.color = color or (0xFF shl 24); pen.strokeWidth = r * 2; strokeLayer?.drawLine(x0, y0, x1, y1, pen)
     }
 
-    private fun scaleFor(): Float = when (brush) { BrushType.PEN -> 1f; BrushType.PENCIL -> 1f; BrushType.CRAYON -> 2f; BrushType.WATER -> 6f; BrushType.SMOOTH_TEST -> 1f }
+    private fun scaleFor(): Float = when (brush) { BrushType.PEN -> 1f; BrushType.PENCIL -> 1f; BrushType.CRAYON -> 2f; BrushType.WATER -> 6f }
     private val EraserScale = 2f
 
     private fun seg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
