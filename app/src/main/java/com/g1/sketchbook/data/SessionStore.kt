@@ -57,10 +57,12 @@ class SessionStore(context: Context) {
     private fun readGesture(key: String): GestureAction =
         runCatching { GestureAction.valueOf(prefs.getString(key, null) ?: "NONE") }.getOrDefault(GestureAction.NONE)
 
-    /** Sketchbook list grid column count (3/4/5), user-adjustable via the list's hamburger menu. */
-    var gridColumns: Int
-        get() = prefs.getInt(KEY_GRID_COLUMNS, 3).coerceIn(3, 5)
-        set(value) = prefs.edit().putInt(KEY_GRID_COLUMNS, value.coerceIn(3, 5)).apply()
+    /** 스케치북 목록 표지 크기 — 크게/작게 중 사용자가 고르면, 실제 한 줄에 몇 개가 들어가는지는 화면
+     *  폭에 맞춰 자동으로 계산된다(GridCells.Adaptive, 2026-08-27). 예전엔 3/4/5열을 직접 골랐었다 —
+     *  기존 사용자의 그 값은 Int로 저장돼 있어 같은 키를 Boolean으로 읽으면 크래시 나므로 새 키를 쓴다. */
+    var largeCovers: Boolean
+        get() = prefs.getBoolean(KEY_COVER_SIZE_LARGE, true)
+        set(value) = prefs.edit().putBoolean(KEY_COVER_SIZE_LARGE, value).apply()
 
     /** 스케치북 화면에서 마지막으로 쓰던 브러시 색상/굵기/투명도 — 앱을 다시 켜도 이어서 쓸 수 있게
      *  저장한다(브러시 종류 자체나 지우개 선택 여부는 저장하지 않고 매번 펜으로 시작). */
@@ -107,7 +109,8 @@ class SessionStore(context: Context) {
         private const val KEY_GESTURE_2TAP = "gesture_2tap"
         private const val KEY_GESTURE_3TAP = "gesture_3tap"
         private const val KEY_GESTURE_LONGPRESS = "gesture_longpress"
-        private const val KEY_GRID_COLUMNS = "grid_columns"
+        private const val KEY_GRID_COLUMNS = "grid_columns" // 더 안 씀(옛 3/4/5열 값, Int) — largeCovers가 새 키를 씀
+        private const val KEY_COVER_SIZE_LARGE = "cover_size_large"
         private const val KEY_BRUSH_COLOR = "brush_color"
         private const val KEY_BRUSH_SIZE_PREFIX = "brush_size_"
         private const val KEY_BRUSH_OPACITY_PREFIX = "brush_opacity_"

@@ -104,7 +104,7 @@ class BackupRepository {
             "themeMode" to record.themeMode,
             "favoriteColors" to record.favoriteColors, "gesture2Tap" to record.gesture2Tap,
             "gesture3Tap" to record.gesture3Tap, "gestureLongPress" to record.gestureLongPress,
-            "gridColumns" to record.gridColumns, "brushColor" to record.brushColor,
+            "largeCovers" to record.largeCovers, "brushColor" to record.brushColor,
             "brushSizes" to record.brushSizes, "brushOpacities" to record.brushOpacities,
             "eraserSize" to record.eraserSize, "eraserOpacity" to record.eraserOpacity,
             "eraserBlur" to record.eraserBlur, "updatedAt" to record.updatedAt,
@@ -161,7 +161,7 @@ class BackupRepository {
             gesture2Tap = s.child("gesture2Tap").getValue(String::class.java) ?: "NONE",
             gesture3Tap = s.child("gesture3Tap").getValue(String::class.java) ?: "NONE",
             gestureLongPress = s.child("gestureLongPress").getValue(String::class.java) ?: "NONE",
-            gridColumns = s.child("gridColumns").getValue(Int::class.java) ?: 3,
+            largeCovers = s.child("largeCovers").getValue(Boolean::class.java) ?: true,
             brushColor = s.child("brushColor").getValue(Long::class.java) ?: 0xFF1E2D4CL,
             brushSizes = s.child("brushSizes").children.associate {
                 (it.key ?: "") to (it.getValue(Double::class.java)?.toFloat() ?: 0f)

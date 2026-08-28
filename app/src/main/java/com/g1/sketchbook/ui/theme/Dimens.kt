@@ -61,6 +61,11 @@ object Dimens {
         val carouselTitleSp = 18.sp
         val carouselSubtitleSp = 12.sp
         val editCoverCardWidth = 350.dp  // 표지 수정 시트 최대 폭(Wizard.cardWidth와 별개 — 내용이 더 많음)
+        // 목록 탭 그리드 — 예전엔 3/4/5열을 직접 골랐는데, 화면 폭/비율마다 안 맞아서 "크게/작게" 두
+        // 크기 중 고르면 GridCells.Adaptive가 화면 폭에 맞춰 실제 열 개수를 자동으로 계산하도록 바꿨다
+        // (2026-08-27). 값은 한 칸의 최소 폭 — 실제로는 이보다 살짝 크게 균등 배분된다.
+        val listCoverMinWidthLarge = 140.dp
+        val listCoverMinWidthSmall = 90.dp
     }
 
     /** 새 스케치북 만들기 화면 (팝업 카드 — 이름/사이즈/배경을 한 화면에서 선택) */

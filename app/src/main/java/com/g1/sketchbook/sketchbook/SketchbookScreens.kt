@@ -471,7 +471,7 @@ private fun SketchbookListScreen(
     var pendingDelete by remember { mutableStateOf<Sketchbook?>(null) }
     var editing by remember { mutableStateOf<Sketchbook?>(null) }
     val showShared = initialShowShared
-    var columns by remember { mutableIntStateOf(session.gridColumns) }
+    var largeCovers by remember { mutableStateOf(session.largeCovers) }
     var columnMenuOpen by remember { mutableStateOf(false) }
     // 가로모드 3열(서브패널) 전용 — 2열 그리드에서 탭한 책의 페이지 썸네일을 보여준다. 세로모드에선
     // 안 쓰임(MainTabPage가 landscape가 아니면 sidePanel 자체를 그리지 않음).
@@ -495,16 +495,19 @@ private fun SketchbookListScreen(
             } else {
                 IconButton(onClick = onNewPersonal) { Icon(Icons.Filled.Add, "스케치북 추가") }
             }
-            // 그리드 열 수(3/4/5) 설정 — 선택하면 즉시 반영 + 저장.
+            // 표지 크기(크게/작게) 설정 — 실제 한 줄에 몇 개가 들어가는지는 화면 폭에 맞춰 자동
+            // 계산된다(GridCells.Adaptive, 2026-08-27). 선택하면 즉시 반영 + 저장.
             Box {
                 IconButton(onClick = { columnMenuOpen = true }) { Icon(Icons.Filled.Menu, "목록 배열") }
                 DropdownMenu(expanded = columnMenuOpen, onDismissRequest = { columnMenuOpen = false }) {
-                    (3..5).forEach { n ->
-                        DropdownMenuItem(
-                            text = { Text("${n}열", fontWeight = if (n == columns) FontWeight.Bold else FontWeight.Normal) },
-                            onClick = { columns = n; session.gridColumns = n; columnMenuOpen = false },
-                        )
-                    }
+                    DropdownMenuItem(
+                        text = { Text("크게", fontWeight = if (largeCovers) FontWeight.Bold else FontWeight.Normal) },
+                        onClick = { largeCovers = true; session.largeCovers = true; columnMenuOpen = false },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("작게", fontWeight = if (!largeCovers) FontWeight.Bold else FontWeight.Normal) },
+                        onClick = { largeCovers = false; session.largeCovers = false; columnMenuOpen = false },
+                    )
                 }
             }
         },
@@ -514,7 +517,7 @@ private fun SketchbookListScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(columns),
+                    columns = GridCells.Adaptive(if (largeCovers) Dimens.Home.listCoverMinWidthLarge else Dimens.Home.listCoverMinWidthSmall),
                     modifier = Modifier.fillMaxSize(),
                     // 그리드에 여백이 없으면 가장자리 칸의 표지 그림자(shadow(12.dp, clip=false))가
                     // 스크롤 뷰포트 경계에서 그대로 잘렸다 — 그림자가 번질 여유를 사방에 준다(2026-08-27,

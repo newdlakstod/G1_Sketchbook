@@ -30,7 +30,7 @@ data class RemoteSnapshot(
 data class RemoteSettings(
     val nickname: String?, val themeMode: String, val favoriteColors: List<Long>,
     val gesture2Tap: String, val gesture3Tap: String, val gestureLongPress: String,
-    val gridColumns: Int, val brushColor: Long,
+    val largeCovers: Boolean, val brushColor: Long,
     val brushSizes: Map<String, Float>, val brushOpacities: Map<String, Float>,
     val eraserSize: Float, val eraserOpacity: Float, val eraserBlur: Float,
     val avatarBase64: String?, val updatedAt: Long,

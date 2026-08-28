@@ -135,7 +135,7 @@ fun syncSettingsUp(session: SessionStore, backup: BackupRepository, uid: String)
     val record = RemoteSettings(
         nickname = session.nickname, themeMode = session.themeMode, favoriteColors = session.favoriteColors,
         gesture2Tap = session.twoFingerTapAction.name, gesture3Tap = session.threeFingerTapAction.name,
-        gestureLongPress = session.longPressAction.name, gridColumns = session.gridColumns,
+        gestureLongPress = session.longPressAction.name, largeCovers = session.largeCovers,
         brushColor = session.brushColor,
         brushSizes = BrushType.entries.associate { it.name to session.brushSize(it) },
         brushOpacities = BrushType.entries.associate { it.name to session.brushOpacity(it) },
@@ -153,7 +153,7 @@ private fun applyRemoteSettings(session: SessionStore, backup: BackupRepository,
     session.twoFingerTapAction = runCatching { GestureAction.valueOf(r.gesture2Tap) }.getOrDefault(GestureAction.NONE)
     session.threeFingerTapAction = runCatching { GestureAction.valueOf(r.gesture3Tap) }.getOrDefault(GestureAction.NONE)
     session.longPressAction = runCatching { GestureAction.valueOf(r.gestureLongPress) }.getOrDefault(GestureAction.NONE)
-    session.gridColumns = r.gridColumns
+    session.largeCovers = r.largeCovers
     session.brushColor = r.brushColor
     BrushType.entries.forEach { t ->
         r.brushSizes[t.name]?.let { session.setBrushSize(t, it) }
