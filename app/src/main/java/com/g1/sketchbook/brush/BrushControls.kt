@@ -169,7 +169,8 @@ private fun FavoritesGrid(favorites: List<Long>, modifier: Modifier = Modifier, 
 }
 
 /** Single-row floating dock for brush/color/eraser tools. Page/rotate/lock/fullscreen live in the
- *  separate [ScreenControls] surface now — this one only keeps `onBack` (used by the diary editor). */
+ *  separate [ScreenControls] surface now — no back button here either (모든 화면이 시스템 뒤로가기/
+ *  스와이프로 나가지, 일기 편집기도 더 이상 인라인 뒤로가기 버튼을 안 씀, 2026-08-27). */
 @Composable
 fun BrushControls(
     brush: BrushType, color: Long, sizeDp: Float, opacity: Float, erasing: Boolean,
@@ -178,7 +179,6 @@ fun BrushControls(
     /** 지우개 전용 경계 블러(부드러움) 정도 — 브러시에는 없는 지우개만의 슬라이더. 0이면 또렷한 경계. */
     eraserBlur: Float = 0f,
     onEraserBlur: (Float) -> Unit = {},
-    onBack: (() -> Unit)? = null,
     favorites: List<Long> = BrushPalette.take(5),
     onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
     eyedropArmed: Boolean = false,
@@ -304,18 +304,14 @@ fun BrushControls(
                 ) { collapsedContent() }
             }
         } else {
-        // 페이지/회전/잠금/전체화면은 별도 ScreenControls 서피스로 옮겼음(2026-08-20) — 여기 남은
-        // 건 onBack뿐(다이어리에서만 쓰임).
-        val hasNav = onBack != null
+        // 페이지/회전/잠금/전체화면은 별도 ScreenControls 서피스로 옮겼고, 뒤로가기 버튼도 뺐다
+        // (2026-08-27) — 여기 남은 건 순수 그리기 도구뿐.
 
         // 버튼바를 구분선 기준 "그룹"으로 나눠서 그린다 — 그룹 안 버튼 간격(GroupButtonGap)과
         // 그룹-구분선 사이 간격(GroupDividerGap)을 서로 다른 Arrangement.spacedBy로 따로 조절하기
         // 위함(공유 spacedBy 하나만으로는 구분선 쪽만 더 좁게 만들 수 없어서 이렇게 나눔).
         val segments = buildList<@Composable () -> Unit> {
             if (onDragBar != null && onDragBarEnd != null) add { DragHandle(onDragBar, onDragBarEnd) }
-            if (hasNav) add {
-                onBack?.let { IconBtn(Icons.AutoMirrored.Filled.ArrowBack, "뒤로", onClick = it) }
-            }
             add {
                 // 붓 종류(펜/연필/크레파스/수채화/지우개) 묶음 — 접으면 지금 쓰는 도구 아이콘 하나만
                 // 남고, 탭하면 다시 5개가 펼쳐진다(2026-08-26, 툴바 전체 최소화와 별개로 이 묶음만

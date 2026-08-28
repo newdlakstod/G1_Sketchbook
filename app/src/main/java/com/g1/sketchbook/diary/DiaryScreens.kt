@@ -301,7 +301,6 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                     flushCompositeSave(v)
                 }
             },
-            onBack = flushAndBack,
             favorites = favorites,
             onEditFavorite = { i, c ->
                 val nf = favorites.toMutableList(); nf[i] = c; favorites = nf
