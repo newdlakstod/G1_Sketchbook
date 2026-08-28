@@ -490,19 +490,40 @@ fun BrushControls(
         }
         }
         }
-        // 굵기/불투명도 그립 — 평소엔 버튼바 위쪽 테두리에 걸친 얇은 알약 선일 뿐이다가, 누르고
-        // 좌우로 드래그하면 그립이 커지고 진하게 활성화되면서 값 툴팁이 뜬다(2026-08-28, 샘플
-        // 스크린샷 참고 — 항상 떠 있는 라벨+슬라이더 형태 시도 두 번은 다 요청과 달랐다). 버튼바
-        // Surface 자체 패딩(10dp)에 맞춰 코너를 피해 안쪽으로 들여서 배치.
+        // 굵기/불투명도 그립 — 평소엔 버튼바 테두리에 걸친 얇은 알약 선일 뿐이다가, 누르고 좌우로
+        // 드래그하면 그립이 커지고 진하게 활성화되면서 값 툴팁이 뜬다(2026-08-28, 샘플 스크린샷
+        // 참고). 항상 버튼바가 도킹된 화면 가장자리의 "반대쪽"(=캔버스를 향한 안쪽) 변에 붙인다 —
+        // 화면 가장자리에 딱 붙어서 손가락이 화면 밖으로 나가거나 그립이 가려지는 일이 없도록.
+        // 코너 둥근 부분은 피해서 살짝 안쪽으로 들여 배치.
+        val sizeGripModifier = when (dock) {
+            ToolbarDock.TOP -> Modifier.align(Alignment.BottomStart).padding(start = 34.dp, bottom = 4.dp)
+            ToolbarDock.BOTTOM -> Modifier.align(Alignment.TopStart).padding(start = 34.dp, top = 4.dp)
+            ToolbarDock.LEFT -> Modifier.align(Alignment.TopEnd).padding(end = 4.dp, top = 28.dp)
+            ToolbarDock.RIGHT -> Modifier.align(Alignment.TopStart).padding(start = 4.dp, top = 28.dp)
+        }
+        val opacityGripModifier = when (dock) {
+            ToolbarDock.TOP -> Modifier.align(Alignment.BottomEnd).padding(end = 34.dp, bottom = 4.dp)
+            ToolbarDock.BOTTOM -> Modifier.align(Alignment.TopEnd).padding(end = 34.dp, top = 4.dp)
+            ToolbarDock.LEFT -> Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 28.dp)
+            ToolbarDock.RIGHT -> Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 28.dp)
+        }
+        // 값 툴팁도 같은 논리로 버튼바 반대쪽(캔버스 쪽)으로 더 밀어서 띄운다 — 그래야 화면
+        // 가장자리에 잘리지 않는다.
+        val tooltipSide = when (dock) {
+            ToolbarDock.TOP -> TooltipSide.BELOW
+            ToolbarDock.BOTTOM -> TooltipSide.ABOVE
+            ToolbarDock.LEFT -> TooltipSide.END
+            ToolbarDock.RIGHT -> TooltipSide.START
+        }
         EdgeGripSlider(
             value = sizeDp, range = sizeRangeForGrip, onChange = onSize, label = "굵기",
             valueText = { "${sizeLevel(it, sizeRangeForGrip)}" },
-            modifier = Modifier.align(Alignment.TopStart).padding(start = 34.dp, top = 4.dp),
+            tooltipSide = tooltipSide, modifier = sizeGripModifier,
         )
         EdgeGripSlider(
             value = opacity, range = 0f..100f, onChange = onOpacity, label = "불투명도",
             valueText = { "${it.toInt()}" },
-            modifier = Modifier.align(Alignment.TopEnd).padding(end = 34.dp, top = 4.dp),
+            tooltipSide = tooltipSide, modifier = opacityGripModifier,
         )
     }
 }
@@ -670,20 +691,27 @@ fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Mo
     }
 }
 
-private val GripIdleLength = 22.dp
-private val GripIdleThickness = 3.dp
-private val GripActiveLength = 40.dp
-private val GripActiveThickness = 8.dp
+// 달력 오버레이 등 다른 화면의 그립/썸(RingSliderThumb 등)과는 독립된, 이 그립 전용 치수 —
+// 2026-08-28: "2배 키워달라"는 요청으로 기존 값(22/3/40/8)에서 두 배로.
+private val GripIdleLength = 44.dp
+private val GripIdleThickness = 6.dp
+private val GripActiveLength = 80.dp
+private val GripActiveThickness = 16.dp
+
+/** 값 툴팁이 그립 기준 어느 쪽으로 뜰지 — 버튼바가 도킹된 화면 가장자리 반대쪽(캔버스 쪽)으로
+ *  띄워야 화면 밖으로 안 잘린다. */
+private enum class TooltipSide { ABOVE, BELOW, START, END }
 
 /** 굵기/불투명도 조절 그립(2026-08-28, 세 번째 시도 — 샘플 스크린샷 두 장을 보고서야 정확한
  *  동작을 확인함). 평소엔 버튼바 테두리에 걸친 얇고 흐린 알약 선일 뿐이고, 누른 채 좌우로
- *  드래그하면: (1) 그립 자체가 커지고 강조색으로 진해지고, (2) 그립 위로 "굵기: 12" 같은 값
- *  툴팁이 뜬다. 뗄 때까지는 드래그 델타 누적으로 값이 바뀐다(트랙 위 절대 위치가 아니라 상대
- *  드래그 — Procreate 사이드바의 사이즈 슬라이더와 같은 조작감). 손을 떼면 다시 얇은 선으로. */
+ *  드래그하면: (1) 그립 자체가 커지고(길이+두께 모두) 강조색으로 진해지고, (2) 그립 옆으로
+ *  "굵기: 12" 같은 값 툴팁이 뜬다. 뗄 때까지는 드래그 델타 누적으로 값이 바뀐다(트랙 위 절대
+ *  위치가 아니라 상대 드래그 — Procreate 사이드바의 사이즈 슬라이더와 같은 조작감). 손을 떼면
+ *  다시 얇은 선으로. */
 @Composable
 private fun EdgeGripSlider(
     value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit,
-    label: String, valueText: (Float) -> String, modifier: Modifier = Modifier,
+    label: String, valueText: (Float) -> String, tooltipSide: TooltipSide, modifier: Modifier = Modifier,
 ) {
     var dragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(value) }
@@ -691,6 +719,12 @@ private fun EdgeGripSlider(
     val span = range.endInclusive - range.start
     val accent = MaterialTheme.colorScheme.primary
     val idle = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    val (popupAlignment, popupOffset) = when (tooltipSide) {
+        TooltipSide.ABOVE -> Alignment.TopCenter to IntOffset(0, with(density) { (-40).dp.roundToPx() })
+        TooltipSide.BELOW -> Alignment.BottomCenter to IntOffset(0, with(density) { 40.dp.roundToPx() })
+        TooltipSide.START -> Alignment.CenterStart to IntOffset(with(density) { (-72).dp.roundToPx() }, 0)
+        TooltipSide.END -> Alignment.CenterEnd to IntOffset(with(density) { 72.dp.roundToPx() }, 0)
+    }
     Box(modifier.height(GripActiveThickness + 8.dp), contentAlignment = Alignment.TopCenter) {
         Box(
             Modifier
@@ -714,7 +748,7 @@ private fun EdgeGripSlider(
                 },
         )
         if (dragging) {
-            Popup(alignment = Alignment.TopCenter, offset = IntOffset(0, with(density) { (-34).dp.roundToPx() })) {
+            Popup(alignment = popupAlignment, offset = popupOffset) {
                 Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp, tonalElevation = 3.dp) {
                     Text("$label: ${valueText(dragValue)}", fontSize = 12.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
                 }
