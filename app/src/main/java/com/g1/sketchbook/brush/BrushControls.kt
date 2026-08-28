@@ -245,17 +245,21 @@ fun BrushControls(
         )
     }
 
-    Surface(
-        shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 8.dp, tonalElevation = 2.dp,
-        modifier = modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-    ) {
-        // 굵기/불투명도 상단 바 — 최소화 여부와 무관하게 항상 보인다(2026-08-28, 예전엔 브러시
-        // 아이콘마다 따로 있던 팝업들을 여기 하나로 통합). 브러시별 마지막 값은 그대로 호출부
-        // (sizeByBrush/opacityByBrush)가 기억하고, 이 바는 그 값을 보여주고 조절만 한다.
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // 버튼바가 fillMaxWidth를 받는 조건(가로 도킹 + 펼침 상태)을 호출부의 barModifier와 동일하게
+    // 복제 — modifier(정렬·드래그 오프셋 포함)는 이제 아래 Column 전체에 한 번만 걸리므로, 버튼바
+    // Surface 자신의 너비 결정은 이 로컬 플래그로 따로 재현해야 예전과 같은 폭 동작이 유지된다.
+    val fillToolbarWidth = !collapsed && !vertical
+
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // 굵기/불투명도 상단 바 — 버튼바 Surface와는 별개의 독립된 요소로 그 위에 떠 있다(2026-08-28,
+        // 처음엔 버튼바 Surface 안에 같이 넣었더니 "버튼바를 위로 늘린 것"처럼 보인다는 피드백을 받아
+        // 완전히 분리함). 최소화 여부와 무관하게 항상 보인다.
         ActiveToolSlidersBar(erasing, brush, sizeDp, opacity, onSize, onOpacity)
-        Box(Modifier.width(216.dp).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
+        Surface(
+            shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 8.dp, tonalElevation = 2.dp,
+            modifier = (if (fillToolbarWidth) Modifier.fillMaxWidth() else Modifier).padding(horizontal = 10.dp, vertical = 10.dp),
+        ) {
         if (collapsed) {
             val collapsedContent: @Composable () -> Unit = {
                 if (onDragBar != null && onDragBarEnd != null) DragHandle(onDragBar, onDragBarEnd)
