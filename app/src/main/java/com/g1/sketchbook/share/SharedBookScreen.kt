@@ -147,7 +147,7 @@ fun SharedBookScreen(
     var eraserOpacity by remember { mutableFloatStateOf(session.eraserOpacity) }
     var eraserBlur by remember { mutableFloatStateOf(session.eraserBlur) }
     // SMOOTH_TEST 실험 브러시 전용(test/smooth-brush 브랜치) — 세션 저장 없이 화면 안에서만 기억.
-    var smoothStrength by remember { mutableFloatStateOf(80f) }
+    var smoothStrength by remember { mutableFloatStateOf(30f) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) eraserOpacity else opacityByBrush[brush] ?: 100f
     var favorites by remember { mutableStateOf(session.favoriteColors) }

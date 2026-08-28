@@ -162,7 +162,7 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var eraserOpacity by remember { mutableFloatStateOf(100f) }
     var eraserBlur by remember { mutableFloatStateOf(0f) }
     // SMOOTH_TEST 실험 브러시 전용(test/smooth-brush 브랜치) — 세션 저장 없이 화면 안에서만 기억.
-    var smoothStrength by remember { mutableFloatStateOf(80f) }
+    var smoothStrength by remember { mutableFloatStateOf(30f) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) eraserOpacity else opacityByBrush[brush] ?: 100f
     val session = if (previewMode) null else remember(ctx) { com.g1.sketchbook.data.SessionStore(ctx) }

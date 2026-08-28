@@ -180,8 +180,9 @@ fun BrushControls(
     eraserBlur: Float = 0f,
     onEraserBlur: (Float) -> Unit = {},
     /** SMOOTH_TEST 실험 브러시 전용 — 스무딩 강도(0~100, 높을수록 더 뭉근하고 손떨림이 덜 남).
-     *  test/smooth-brush 브랜치의 임시 파라미터, 실험이 끝나면 걷어낸다. */
-    smoothStrength: Float = 80f,
+     *  기본값은 낮게(30) 잡아서 처음 켰을 때 손가락과 너무 벌어지지 않게 — 80은 "렉 심하다"는
+     *  피드백을 받은 값(2026-08-28). test/smooth-brush 브랜치의 임시 파라미터, 실험이 끝나면 걷어낸다. */
+    smoothStrength: Float = 30f,
     onSmoothStrength: (Float) -> Unit = {},
     favorites: List<Long> = BrushPalette.take(5),
     onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
@@ -657,30 +658,66 @@ fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Mo
     }
 }
 
-/** 굵기·불투명도 상단 바(2026-08-28) — 팝업이 아니라 툴바 안에 항상 떠 있는 불투명한 줄. 지금
- *  선택된 브러시(또는 지우개)의 굵기/불투명도를 보여주고 바로 조절한다. 브러시별 "마지막 값"
- *  기억은 이 컴포저블이 아니라 호출부(sizeByBrush/opacityByBrush)의 몫 — 여기 온 sizeDp/opacity는
- *  이미 그 값이고, onSize/onOpacity가 그 맵에 다시 써넣는다. */
+/** 굵기·불투명도 상단 바(2026-08-28, 2026-08-28 재수정) — 팝업이 아니라 툴바 위에 항상 떠 있는
+ *  줄. 아이콘·숫자 라벨 없이 그립(손잡이)만 있는 얇은 pill 트랙 두 개를 한 줄에 나란히 배치해서
+ *  차지하는 공간을 최소화한다(샘플 이미지 참고) — 왼쪽이 굵기, 오른쪽이 불투명도. 브러시별
+ *  "마지막 값" 기억은 이 컴포저블이 아니라 호출부(sizeByBrush/opacityByBrush)의 몫 — 여기 온
+ *  sizeDp/opacity는 이미 그 값이고, onSize/onOpacity가 그 맵에 다시 써넣는다. */
 @Composable
 private fun ActiveToolSlidersBar(erasing: Boolean, brush: BrushType, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
     val sizeRange = if (erasing) EraserSizeRange else brushSizeRange(brush)
-    Column(Modifier.width(248.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        // 굵기 표시는 실제 dp가 아니라 이 슬라이더 안에서의 1~30 단계 번호(브러시 종류마다 범위가
-        // 달라도 표시는 항상 1~30으로 통일 — sizeRange 기준으로 위치를 환산).
-        SliderPill(Icons.Filled.LineWeight, "굵기", "${sizeLevel(sizeDp, sizeRange)}", sizeDp, sizeRange, onSize)
-        SliderPill(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
+    Row(Modifier.width(220.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        MinimalSliderPill(sizeDp, sizeRange, onSize, Modifier.weight(1f))
+        MinimalSliderPill(opacity, 0f..100f, onOpacity, Modifier.weight(1f))
     }
 }
 
-/** 슬라이더 한 줄을 그 자체로 얇고 불투명한 알약(pill) 캡슐로 감싼다 — 툴바 배경에 섞여 들어가지
- *  않고 독립된 조절 칩처럼 보이도록(2026-08-28, 샘플 참고: 완전히 둥근 모서리 + 얇은 세로 폭). */
+private val MinimalPillHeight = 26.dp
+private val MinimalThumbSize = 14.dp
+private val MinimalTrackHeight = 4.dp
+
+/** 아이콘·숫자 라벨 없이 그립(원형 손잡이)만 있는 얇은 pill 트랙 — 값만큼 진하게 채워지는 캡슐형
+ *  게이지. IconSliderRow가 쓰는 SliderThumbTouchSize(40dp) 등 공용 상수는 다른 화면(즐겨찾기,
+ *  색상 슬라이더, 블러 패널 등)에서도 써서 여기서 못 줄이므로, 이 바 전용으로 작게 새로 정의. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SliderPill(icon: ImageVector, contentDescription: String, valueText: String, value: Float,
-                        range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
-    Surface(shape = RoundedCornerShape(percent = 50), color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 1.dp) {
-        Box(Modifier.padding(horizontal = 14.dp, vertical = 2.dp)) {
-            IconSliderRow(icon, contentDescription, valueText, value, range, onChange)
-        }
+private fun MinimalSliderPill(value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, modifier: Modifier = Modifier) {
+    Surface(shape = RoundedCornerShape(percent = 50), color = MaterialTheme.colorScheme.surfaceVariant, tonalElevation = 1.dp, modifier = modifier) {
+        Slider(
+            value = value, onValueChange = onChange, valueRange = range, steps = SliderStepCount,
+            track = { state -> MinimalPillTrack(state) },
+            thumb = { MinimalGripThumb() },
+            modifier = Modifier.height(MinimalPillHeight).padding(horizontal = 6.dp),
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MinimalPillTrack(state: SliderState) {
+    val span = state.valueRange.endInclusive - state.valueRange.start
+    val fraction = if (span == 0f) 0f else ((state.value - state.valueRange.start) / span).coerceIn(0f, 1f)
+    val inactiveColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+    val activeColor = MaterialTheme.colorScheme.onSurfaceVariant
+    Canvas(Modifier.fillMaxWidth().height(MinimalPillHeight)) {
+        val strokeWidthPx = MinimalTrackHeight.toPx()
+        val y = size.height / 2f
+        val thumbX = size.width * fraction
+        drawLine(color = inactiveColor, start = Offset(thumbX, y), end = Offset(size.width, y), strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
+        if (thumbX > 0f) drawLine(color = activeColor, start = Offset(0f, y), end = Offset(thumbX, y), strokeWidth = strokeWidthPx, cap = StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun MinimalGripThumb() {
+    Box(Modifier.size(MinimalPillHeight), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(MinimalThumbSize)
+                .shadow(1.dp, CircleShape, clip = false)
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(1.dp, Color(0x1F000000), CircleShape),
+        )
     }
 }
 
@@ -714,7 +751,6 @@ internal const val SliderStepCount = 28
 // 최소/최대 굵기 — 굵기 슬라이더가 오갈 수 있는 양 끝값. 둘 다 여기서 직접 숫자를 바꾸면 된다.
 internal const val MinBrushSize = 4f
 internal const val MaxBrushSize = 96f
-private val SizeRange = MinBrushSize..MaxBrushSize
 private val BlurRange = 0f..32f
 private val SliderAccentColor = Color(0xFFE85555)
 // RGB/HSL 슬라이더 전용 — 이 슬라이더가 조절하는 값 자체가 색상이라, 트랙까지 색이 있으면 어떤 색을
@@ -723,12 +759,6 @@ private val NeutralSliderAccentColor = Color(0xFF8A8A8A)
 internal val SliderThumbSize = 30.dp
 internal val SliderThumbTouchSize = 40.dp
 internal val SliderTrackHeight = 6.dp
-
-/** 실제 dp 값과 무관하게, 슬라이더 내 위치를 1~30 단계 번호로 환산 (표시는 모든 브러시 공통, 범위는 브러시별). */
-private fun sizeLevel(sizeDp: Float, range: ClosedFloatingPointRange<Float> = SizeRange): Int {
-    val fraction = ((sizeDp - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
-    return (fraction * (SliderStepCount + 1)).roundToInt() + 1
-}
 
 /** 브러시별 굵기 슬라이더 최소/최대값(Dimens.Brush 기준) — 펜처럼 가는 도구와 수채화처럼 굵은 도구가
  *  같은 범위를 쓰면 세밀한 조절이 어려워서 브러시 기본값 스케일에 맞춰 나눠뒀다. */
