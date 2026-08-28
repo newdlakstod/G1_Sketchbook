@@ -208,9 +208,8 @@ fun BrushControls(
     var editFavAt by remember { mutableIntStateOf(-1) } // -1 none, else favourites index being edited
     var favoritesGridOpen by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
-    // Which brush's width/opacity panel is open (hoisted here, same pattern as editFavAt above —
-    // per-button local state + Popup turned out unreliable, this mirrors the known-good approach).
-    var openBrushPanel by remember { mutableStateOf<BrushType?>(null) }
+    // 지우개 전용 "경계 블러" 팝업 열림 상태 — 굵기/불투명도는 이제 항상 보이는 상단 바로 옮겨가서
+    // 브러시별 팝업이 필요 없어졌고, 블러(지우개 전용)만 예전처럼 탭-토글 팝업으로 남았다.
     var openEraserPanel by remember { mutableStateOf(false) }
     var miniBrushPickerOpen by remember { mutableStateOf(false) }
     var collapsedSizePanelOpen by remember { mutableStateOf(false) } // 최소화 모드: 브러시 아이콘 길게 누르면 굵기/투명도 패널
@@ -224,7 +223,7 @@ fun BrushControls(
         ToolbarDock.LEFT -> SideAnchor(gap, toRight = true)
         ToolbarDock.RIGHT -> SideAnchor(gap, toRight = false)
     }
-    // 굵기/투명도 패널(SlidersPanel) 전용 앵커 — 화면 가장자리에서 최소 20dp는 띄워서 뜨게 한다.
+    // 지우개 경계 블러 패널(BlurPanel) 전용 앵커 — 화면 가장자리에서 최소 20dp는 띄워서 뜨게 한다.
     val sizePopupAnchor: PopupPositionProvider = when (dock) {
         ToolbarDock.BOTTOM -> AboveAnchor(gap, screenEdgeMargin)
         ToolbarDock.TOP -> BelowAnchor(gap, screenEdgeMargin)
@@ -251,16 +250,23 @@ fun BrushControls(
         shadowElevation = 8.dp, tonalElevation = 2.dp,
         modifier = modifier.padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
+        // 굵기/불투명도 상단 바 — 최소화 여부와 무관하게 항상 보인다(2026-08-28, 예전엔 브러시
+        // 아이콘마다 따로 있던 팝업들을 여기 하나로 통합). 브러시별 마지막 값은 그대로 호출부
+        // (sizeByBrush/opacityByBrush)가 기억하고, 이 바는 그 값을 보여주고 조절만 한다.
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActiveToolSlidersBar(erasing, brush, sizeDp, opacity, onSize, onOpacity)
+        Box(Modifier.width(216.dp).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
         if (collapsed) {
             val collapsedContent: @Composable () -> Unit = {
                 if (onDragBar != null && onDragBarEnd != null) DragHandle(onDragBar, onDragBarEnd)
-                // 현재 브러시(또는 지우개) 아이콘 — 탭하면 4개(+지우개) 미니 팝업, 길게 누르면 굵기/투명도 패널.
+                // 현재 브러시(또는 지우개) 아이콘 — 탭하면 4개(+지우개) 미니 팝업. 지우개일 때만
+                // 길게 눌러 경계 블러 패널(굵기/불투명도는 항상 보이는 상단 바에서 이미 조절 가능).
                 Box {
                     Box(
-                        Modifier.size(ButtonTapSize).bounceClick(onLongClick = { collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
+                        Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 길게 눌러 굵기·투명도 조절",
+                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 지우개 선택 시 길게 눌러 경계 블러 조절",
                             colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
@@ -269,8 +275,7 @@ fun BrushControls(
                             onEraser = { onToggleErase(); miniBrushPickerOpen = false })
                     }
                     if (collapsedSizePanelOpen) Popup(sizePopupAnchor, { collapsedSizePanelOpen = false }, PopupProperties(focusable = true)) {
-                        SlidersPanel(!erasing, sizeDp, opacity, onSize, onOpacity,
-                            sizeRange = if (erasing) EraserSizeRange else brushSizeRange(brush))
+                        BlurPanel(eraserBlur, onEraserBlur)
                     }
                 }
                 // 현재 색상 — 탭하면 전체 툴바와 같은 색상휠이 뜬다.
@@ -317,42 +322,26 @@ fun BrushControls(
                 // 남고, 탭하면 다시 5개가 펼쳐진다(2026-08-26, 툴바 전체 최소화와 별개로 이 묶음만
                 // 따로 접을 수 있게).
                 if (brushCategoryExpanded) {
-                    // Brush icons: tap to switch; tap the already-selected one again to open ITS OWN
-                    // width/opacity panel (anchored, not a single shared control).
-                    BrushBtnWithPanel(!erasing && brush == BrushType.PEN, sizeDp, opacity, true, sizePopupAnchor,
-                        panelOpen = openBrushPanel == BrushType.PEN,
-                        setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PEN else null; if (o) openEraserPanel = false },
-                        onClick = { onBrush(BrushType.PEN); openBrushPanel = null; openEraserPanel = false },
-                        onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.PEN)) { t ->
+                    // Brush icons: tap to switch. 굵기/불투명도는 이제 브러시별 팝업이 아니라 항상
+                    // 보이는 상단 바(ActiveToolSlidersBar)에서 조절하므로 여기선 그냥 단순 토글.
+                    BrushBtn(!erasing && brush == BrushType.PEN, onClick = { onBrush(BrushType.PEN); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    BrushBtnWithPanel(!erasing && brush == BrushType.PENCIL, sizeDp, opacity, true, sizePopupAnchor,
-                        panelOpen = openBrushPanel == BrushType.PENCIL,
-                        setPanelOpen = { o -> openBrushPanel = if (o) BrushType.PENCIL else null; if (o) openEraserPanel = false },
-                        onClick = { onBrush(BrushType.PENCIL); openBrushPanel = null; openEraserPanel = false },
-                        onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.PENCIL)) { t ->
+                    BrushBtn(!erasing && brush == BrushType.PENCIL, onClick = { onBrush(BrushType.PENCIL); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    BrushBtnWithPanel(!erasing && brush == BrushType.CRAYON, sizeDp, opacity, true, sizePopupAnchor,
-                        panelOpen = openBrushPanel == BrushType.CRAYON,
-                        setPanelOpen = { o -> openBrushPanel = if (o) BrushType.CRAYON else null; if (o) openEraserPanel = false },
-                        onClick = { onBrush(BrushType.CRAYON); openBrushPanel = null; openEraserPanel = false },
-                        onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.CRAYON)) { t ->
+                    BrushBtn(!erasing && brush == BrushType.CRAYON, onClick = { onBrush(BrushType.CRAYON); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    BrushBtnWithPanel(!erasing && brush == BrushType.WATER, sizeDp, opacity, true, sizePopupAnchor,
-                        panelOpen = openBrushPanel == BrushType.WATER,
-                        setPanelOpen = { o -> openBrushPanel = if (o) BrushType.WATER else null; if (o) openEraserPanel = false },
-                        onClick = { onBrush(BrushType.WATER); openBrushPanel = null; openEraserPanel = false },
-                        onSize = onSize, onOpacity = onOpacity, sizeRange = brushSizeRange(BrushType.WATER)) { t ->
+                    BrushBtn(!erasing && brush == BrushType.WATER, onClick = { onBrush(BrushType.WATER); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    BrushBtnWithPanel(erasing, sizeDp, opacity, true, sizePopupAnchor,
+                    // 지우개만 자기 자신의 "경계 블러" 팝업을 가진다(굵기/불투명도는 다른 브러시와
+                    // 동일하게 상단 바에서) — 이미 선택된 지우개를 다시 탭하면 블러 패널이 뜬다.
+                    EraserBtnWithBlurPanel(erasing, eraserBlur, onEraserBlur, sizePopupAnchor,
                         panelOpen = openEraserPanel,
-                        setPanelOpen = { o -> openEraserPanel = o; if (o) openBrushPanel = null },
-                        onClick = { onToggleErase(); openBrushPanel = null; openEraserPanel = false },
-                        onSize = onSize, onOpacity = onOpacity,
-                        showBlur = true, blur = eraserBlur, onBlur = onEraserBlur, sizeRange = EraserSizeRange) { t ->
+                        setPanelOpen = { o -> openEraserPanel = o },
+                        onClick = { onToggleErase(); openEraserPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     IconBtn(Icons.Filled.UnfoldLess, "붓 종류 접기", onClick = { brushCategoryExpanded = false })
@@ -362,10 +351,10 @@ fun BrushControls(
                     // 옆의 화살표 버튼.
                     Box {
                         Box(
-                            Modifier.size(ButtonTapSize).bounceClick(onLongClick = { collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
+                            Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 길게 눌러 굵기·투명도 조절",
+                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 지우개 선택 시 길게 눌러 경계 블러 조절",
                                 colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                         }
                         if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
@@ -374,8 +363,7 @@ fun BrushControls(
                                 onEraser = { onToggleErase(); miniBrushPickerOpen = false })
                         }
                         if (collapsedSizePanelOpen) Popup(sizePopupAnchor, { collapsedSizePanelOpen = false }, PopupProperties(focusable = true)) {
-                            SlidersPanel(!erasing, sizeDp, opacity, onSize, onOpacity,
-                                sizeRange = if (erasing) EraserSizeRange else brushSizeRange(brush))
+                            BlurPanel(eraserBlur, onEraserBlur)
                         }
                     }
                     IconBtn(Icons.Filled.UnfoldMore, "붓 종류 펼치기", onClick = { brushCategoryExpanded = true })
@@ -484,6 +472,7 @@ fun BrushControls(
             }
         }
         }
+        }
     }
 }
 
@@ -586,7 +575,7 @@ private fun currentToolIcon(brush: BrushType, erasing: Boolean): Int = when {
 }
 
 /** 최소화 상태에서 브러시 아이콘을 탭하면 뜨는 4개(+지우개) 미니 픽커 — 종류만 빠르게 바꾼다.
- *  같은 아이콘을 길게 누르면 현재 브러시의 굵기·투명도 패널(SlidersPanel)이 뜬다. */
+ *  지우개가 선택된 상태에서 같은 아이콘을 길게 누르면 경계 블러 패널(BlurPanel)이 뜬다. */
 @Composable
 private fun MiniBrushPopup(current: BrushType, erasing: Boolean, onPick: (BrushType) -> Unit, onEraser: () -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
@@ -650,29 +639,29 @@ fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Mo
     }
 }
 
-/** Width (and, unless erasing, opacity) sliders for ONE specific brush — opened by tapping that
- *  brush's icon again while it's already selected (each brush keeps its own width/opacity, not a
- *  shared value). 팝업 자체가 화면 가장자리에서 20dp 띄워서 뜨도록 anchor 쪽(sizePopupAnchor)에서 처리한다.
- *  showBlur/blur/onBlur은 지우개 전용 — 다른 브러시는 showBlur=false로 호출해 이 줄이 안 보인다. */
+/** 굵기·불투명도 상단 바(2026-08-28) — 팝업이 아니라 툴바 안에 항상 떠 있는 불투명한 줄. 지금
+ *  선택된 브러시(또는 지우개)의 굵기/불투명도를 보여주고 바로 조절한다. 브러시별 "마지막 값"
+ *  기억은 이 컴포저블이 아니라 호출부(sizeByBrush/opacityByBrush)의 몫 — 여기 온 sizeDp/opacity는
+ *  이미 그 값이고, onSize/onOpacity가 그 맵에 다시 써넣는다. */
 @Composable
-private fun SlidersPanel(
-    showOpacity: Boolean, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
-    showBlur: Boolean = false, blur: Float = 0f, onBlur: (Float) -> Unit = {},
-    sizeRange: ClosedFloatingPointRange<Float> = SizeRange,
-) {
+private fun ActiveToolSlidersBar(erasing: Boolean, brush: BrushType, sizeDp: Float, opacity: Float, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit) {
+    val sizeRange = if (erasing) EraserSizeRange else brushSizeRange(brush)
+    Column(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 6.dp)) {
+        // 굵기 표시는 실제 dp가 아니라 이 슬라이더 안에서의 1~30 단계 번호(브러시 종류마다 범위가
+        // 달라도 표시는 항상 1~30으로 통일 — sizeRange 기준으로 위치를 환산).
+        IconSliderRow(Icons.Filled.LineWeight, "굵기", "${sizeLevel(sizeDp, sizeRange)}", sizeDp, sizeRange, onSize)
+        Spacer(Modifier.height(5.dp))
+        IconSliderRow(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
+    }
+}
+
+/** 지우개 전용 "경계 블러" 패널 — 굵기/불투명도는 이제 상단 바에서 항상 조절하니, 지우개만 갖는
+ *  블러는 그대로 기존처럼(선택된 지우개를 다시 탭 — 또는 최소화 모드에선 길게 눌러) 여는 팝업으로 남긴다. */
+@Composable
+private fun BlurPanel(blur: Float, onBlur: (Float) -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
-        Column(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
-            // 굵기 표시는 실제 dp가 아니라 이 슬라이더 안에서의 1~30 단계 번호(브러시 종류마다 범위가
-            // 달라도 표시는 항상 1~30으로 통일 — sizeRange 기준으로 위치를 환산).
-            IconSliderRow(Icons.Filled.LineWeight, "굵기", "${sizeLevel(sizeDp, sizeRange)}", sizeDp, sizeRange, onSize)
-            if (showOpacity) {
-                Spacer(Modifier.height(5.dp))
-                IconSliderRow(Icons.Filled.Opacity, "불투명도", "${opacity.toInt()}", opacity, 0f..100f, onOpacity)
-            }
-            if (showBlur) {
-                Spacer(Modifier.height(5.dp))
-                IconSliderRow(Icons.Filled.BlurOn, "경계 블러", "${blur.toInt()}", blur, BlurRange, onBlur)
-            }
+        Box(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
+            IconSliderRow(Icons.Filled.BlurOn, "경계 블러", "${blur.toInt()}", blur, BlurRange, onBlur)
         }
     }
 }
@@ -1127,28 +1116,32 @@ private class SideAnchor(private val gapPx: Int, private val toRight: Boolean, p
     }
 }
 
-/** Tap to select; tap again while already selected opens THIS brush's own width/opacity panel,
- *  anchored right above this icon (not a shared control).
- *  Open/closed state is hoisted by the caller (BrushControls) — mirrors the favourites-edit popup. */
+/** 펜/연필/크레파스/수채화 버튼 — 그냥 탭해서 전환. 굵기/불투명도는 항상 보이는 상단 바
+ *  (ActiveToolSlidersBar)가 담당하므로 더 이상 자기만의 팝업이 없다. */
 @Composable
-private fun BrushBtnWithPanel(
-    selected: Boolean, sizeDp: Float, opacity: Float, showOpacity: Boolean, anchor: PopupPositionProvider,
-    panelOpen: Boolean, setPanelOpen: (Boolean) -> Unit,
-    onClick: () -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit,
-    // 지우개 전용 — 다른 브러시 버튼 호출부는 그냥 기본값(showBlur=false)을 쓴다.
-    showBlur: Boolean = false, blur: Float = 0f, onBlur: (Float) -> Unit = {},
-    sizeRange: ClosedFloatingPointRange<Float> = SizeRange,
+private fun BrushBtn(selected: Boolean, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
+    val tint = if (selected) MaterialTheme.colorScheme.onSurface
+    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    // Tap area is ButtonTapSize, matching the icon's own size exactly — no extra margin
+    // between the tap zone and the visible icon (source art has no built-in padding either).
+    Box(Modifier.size(ButtonTapSize).bounceClick { onClick() }, contentAlignment = Alignment.Center) { icon(tint) }
+}
+
+/** 지우개 버튼 — 탭해서 선택, 이미 선택된 상태에서 다시 탭하면 자기만의 "경계 블러" 팝업이 뜬다
+ *  (굵기/불투명도는 다른 브러시와 마찬가지로 상단 바에서 조절하니 블러만 남았다). */
+@Composable
+private fun EraserBtnWithBlurPanel(
+    selected: Boolean, blur: Float, onBlur: (Float) -> Unit, anchor: PopupPositionProvider,
+    panelOpen: Boolean, setPanelOpen: (Boolean) -> Unit, onClick: () -> Unit,
     icon: @Composable (Color) -> Unit,
 ) {
     val tint = if (selected) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     Box {
-        // Tap area is ButtonTapSize, matching the icon's own size exactly — no extra margin
-        // between the tap zone and the visible icon (source art has no built-in padding either).
         Box(Modifier.size(ButtonTapSize).bounceClick { if (selected) setPanelOpen(!panelOpen) else onClick() },
             contentAlignment = Alignment.Center) { icon(tint) }
         if (panelOpen) Popup(anchor, { setPanelOpen(false) }, PopupProperties(focusable = true)) {
-            SlidersPanel(showOpacity, sizeDp, opacity, onSize, onOpacity, showBlur, blur, onBlur, sizeRange)
+            BlurPanel(blur, onBlur)
         }
     }
 }
