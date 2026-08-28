@@ -54,6 +54,12 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
      *  caller, so it can't be bypassed by any entry point (button, gesture, future ones). */
     var locked = false
     var paper: Bitmap? = null
+    /** "선생님모드" 가이드 — 공유그리기 host의 최신 스냅샷을 50% 투명도로 내 캔버스 위에 겹쳐
+     *  보여준다(공유그리기 전용, 그 외엔 항상 null). content 위에 그려야 하므로 paper처럼 배경이
+     *  아니라 onDraw에서 contentBmp 다음에 합성한다. 외부에서 매번 다시 대입하므로 setter에서 직접
+     *  invalidate() — 다른 프레임 트리거(스트로크 등)에 얹혀가지 않는 유일한 값이라 필요하다. */
+    var teacherOverlay: Bitmap? = null
+        set(value) { field = value; invalidate() }
     var onStrokeEnd: (() -> Unit)? = null
 
     // Gesture shortcuts (configured in Settings; NONE = off, so behaviour is unchanged until opted in).
@@ -199,6 +205,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val compositeP = Paint()
     private val paperPaint = Paint(Paint.FILTER_BITMAP_FLAG)   // smooth, full-quality paper scaling
     private val paperM = Matrix()                              // places/rotates the paper texture to cover the page
+    private val teacherOverlayPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = 128 }
     private val pageEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeWidth = 1f * resources.displayMetrics.density; color = 0x2E000000
     }
@@ -317,6 +324,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         c.clipRect(0f, 0f, cw.toFloat(), ch.toFloat())
         drawPaper(c)
         c.drawBitmap(cb, 0f, 0f, null)
+        teacherOverlay?.let { c.drawBitmap(it, null, RectF(0f, 0f, cw.toFloat(), ch.toFloat()), teacherOverlayPaint) }
         if (movingSelection) {
             selectionBmp?.let { sb ->
                 // disp → selectionTransform(화면좌표 델타) → inv, 세 개를 이어붙여 원본 비트맵의

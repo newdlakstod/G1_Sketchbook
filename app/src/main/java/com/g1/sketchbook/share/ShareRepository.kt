@@ -19,6 +19,8 @@ import kotlin.random.Random
  * shareSessions/{CODE}/
  *   host: uid
  *   createdAt: ts
+ *   teacherMode: bool     — host-only 토글("선생님모드"). true면 host의 현재 페이지 스냅샷을
+ *                           다른 참가자들이 자기 캔버스 위에 50% 투명도 가이드로 겹쳐 본다.
  *   slots/{uid}/  { name, role, currentPage, snapshots/{pageIndex}(base64), updatedAt }
  * ```
  * Each participant keeps their own canvas; we sync a downscaled Base64 snapshot per page whenever
@@ -44,6 +46,8 @@ class ShareRepository {
     data class SessionState(
         val exists: Boolean,
         val slots: List<Slot>,
+        val host: String? = null,
+        val teacherMode: Boolean = false,
     )
 
     /** Creates a fresh session with the caller as host, returning the invite code. */
@@ -79,6 +83,12 @@ class ShareRepository {
         ))
     }
 
+    /** host만 부르는 게 맞다(다른 화면에서 role을 미리 확인해서 버튼 자체를 host에게만 보여줌) —
+     *  여기선 그 권한을 다시 검사하지 않는다(다른 write들과 같은 신뢰 수준). */
+    fun setTeacherMode(code: String, enabled: Boolean) {
+        root.child(code).child("teacherMode").setValue(enabled)
+    }
+
     /** Emits the session's participants whenever anything changes. */
     fun observeSession(code: String): Flow<SessionState> = callbackFlow {
         val ref = root.child(code)
@@ -100,7 +110,12 @@ class ShareRepository {
                         updatedAt = c.child("updatedAt").getValue(Long::class.java) ?: 0L,
                     )
                 }
-                trySend(SessionState(exists = snapshot.exists(), slots = slots))
+                trySend(SessionState(
+                    exists = snapshot.exists(),
+                    slots = slots,
+                    host = snapshot.child("host").getValue(String::class.java),
+                    teacherMode = snapshot.child("teacherMode").getValue(Boolean::class.java) ?: false,
+                ))
             }
             override fun onCancelled(error: DatabaseError) { /* keep last state */ }
         }

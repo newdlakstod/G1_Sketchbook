@@ -39,10 +39,12 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -159,6 +161,9 @@ fun SharedBookScreen(
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var others by remember { mutableStateOf<List<ShareRepository.Slot>>(emptyList()) }
+    var host by remember { mutableStateOf<String?>(null) }
+    var teacherMode by remember { mutableStateOf(false) }
+    val isHost = myUid == host
     var mode by remember { mutableStateOf(ViewMode.GRID) }
     // MAXIMIZE mode: null = "나", else a participant's uid. popupUid is just a preference — the
     // effective value (popupDisplay, computed below near the layout code) self-heals if the person
@@ -167,8 +172,20 @@ fun SharedBookScreen(
     var popupUid by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(code) {
-        share.observeSession(code).collect { st -> others = st.slots.filter { it.uid != myUid } }
+        share.observeSession(code).collect { st ->
+            others = st.slots.filter { it.uid != myUid }
+            host = st.host
+            teacherMode = st.teacherMode
+        }
     }
+
+    // 선생님모드: host가 아닌 참가자가, host와 같은 페이지를 보고 있을 때만 host의 최신 스냅샷을
+    // 50% 투명도 가이드로 내 캔버스 위에 겹쳐 보여준다. host 본인 화면엔 표시하지 않는다.
+    val hostSlot = others.firstOrNull { it.uid == host }
+    val teacherOverlayBmp = if (!isHost && teacherMode && hostSlot != null && hostSlot.currentPage == page) {
+        participantBitmap(hostSlot, page)
+    } else null
+    LaunchedEffect(view, teacherOverlayBmp) { view?.teacherOverlay = teacherOverlayBmp }
 
     fun pushMine() {
         val b = view?.exportBitmap() ?: return
@@ -398,6 +415,9 @@ fun SharedBookScreen(
             // (2026-08-20, 예전엔 "분할"/"최대화" 텍스트 세그먼트가 헤더 바에 따로 있었음). 화면버튼은
             // 탭하면 펼쳐지고 기능을 고르거나 밖을 탭하면 자동으로 닫힌다.
             Row(Modifier.align(Alignment.TopEnd), verticalAlignment = Alignment.CenterVertically) {
+                if (isHost) {
+                    TeacherModeButton(teacherMode) { share.setTeacherMode(code, !teacherMode) }
+                }
                 ModeToggleButton(mode == ViewMode.GRID) { mode = if (mode == ViewMode.GRID) ViewMode.MAXIMIZE else ViewMode.GRID }
                 com.g1.sketchbook.brush.ScreenControls(
                     onOpenPages = { pagesOpen = true },
@@ -443,6 +463,29 @@ internal fun ModeToggleButton(gridMode: Boolean, onToggle: () -> Unit) {
                     Icon(
                         if (gridMode) Icons.Filled.OpenInFull else Icons.Filled.GridView,
                         if (gridMode) "최대화 보기로 전환" else "분할 보기로 전환",
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** "선생님모드" 토글 — host에게만 보인다. 켜면 다른 참가자들 캔버스에 내(host) 현재 페이지가
+ *  50% 투명도 가이드로 겹쳐 뜬다. ModeToggleButton과 같은 반투명 원형 버튼 스타일, 켜져 있을 때는
+ *  강조색으로 활성 상태를 알려준다. */
+@Composable
+private fun TeacherModeButton(active: Boolean, onToggle: () -> Unit) {
+    Box(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
+        Surface(
+            shape = CircleShape,
+            color = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+            tonalElevation = 2.dp,
+        ) {
+            Box(Modifier.padding(6.dp)) {
+                Box(Modifier.size(30.dp).bounceClick(onClick = onToggle), contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Filled.School, "선생님모드 " + (if (active) "끄기" else "켜기"),
+                        tint = if (active) MaterialTheme.colorScheme.onPrimary else LocalContentColor.current,
                     )
                 }
             }
