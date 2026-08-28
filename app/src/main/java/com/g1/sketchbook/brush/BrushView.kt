@@ -233,7 +233,9 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     // 찍지 않고, 뒤에서 완만하게 따라오는 별도 좌표를 유지해서 그 좌표로 찍는다. alpha가 작을수록
     // 더 뭉근하게(더 늦게) 따라오고 떨림이 더 줄어든다 — 첫 시도값이라 필요하면 조절.
     private var smoothX = 0f; private var smoothY = 0f
-    private val SmoothTestAlpha = 0.2f
+    /** 0f~1f, 낮을수록 더 뭉근하게(더 느리게) 따라와서 떨림이 더 줄어듦 — 툴바의 스무딩 강도
+     *  슬라이더가 (1 - 강도%) 로 변환해서 넣어준다. SMOOTH_TEST 브러시에만 쓰인다. */
+    var smoothAlpha = 0.2f
 
     /** Creates the canvas bitmaps at [w]x[h] px (capped for memory). Call once when opening a page-set. */
     fun initCanvas(w: Int, h: Int) {
@@ -617,8 +619,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     // smoothX/Y로 찍는다(다른 브러시는 원본 좌표 그대로, 지금까지와 동일).
                     val x: Float; val y: Float
                     if (brush == BrushType.SMOOTH_TEST) {
-                        smoothX += (rawX - smoothX) * SmoothTestAlpha
-                        smoothY += (rawY - smoothY) * SmoothTestAlpha
+                        smoothX += (rawX - smoothX) * smoothAlpha
+                        smoothY += (rawY - smoothY) * smoothAlpha
                         x = smoothX; y = smoothY
                     } else { x = rawX; y = rawY }
                     strokeMove(lx, ly, x, y, smoothedSpeed); lx = x; ly = y; lt = now; invalidate()

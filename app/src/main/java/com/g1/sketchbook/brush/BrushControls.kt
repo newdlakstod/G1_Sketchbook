@@ -179,6 +179,10 @@ fun BrushControls(
     /** 지우개 전용 경계 블러(부드러움) 정도 — 브러시에는 없는 지우개만의 슬라이더. 0이면 또렷한 경계. */
     eraserBlur: Float = 0f,
     onEraserBlur: (Float) -> Unit = {},
+    /** SMOOTH_TEST 실험 브러시 전용 — 스무딩 강도(0~100, 높을수록 더 뭉근하고 손떨림이 덜 남).
+     *  test/smooth-brush 브랜치의 임시 파라미터, 실험이 끝나면 걷어낸다. */
+    smoothStrength: Float = 80f,
+    onSmoothStrength: (Float) -> Unit = {},
     favorites: List<Long> = BrushPalette.take(5),
     onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
     eyedropArmed: Boolean = false,
@@ -211,6 +215,8 @@ fun BrushControls(
     // 지우개 전용 "경계 블러" 팝업 열림 상태 — 굵기/불투명도는 이제 항상 보이는 상단 바로 옮겨가서
     // 브러시별 팝업이 필요 없어졌고, 블러(지우개 전용)만 예전처럼 탭-토글 팝업으로 남았다.
     var openEraserPanel by remember { mutableStateOf(false) }
+    // SMOOTH_TEST 실험 브러시 전용 "스무딩 강도" 팝업 열림 상태 — 지우개 블러와 같은 패턴.
+    var openSmoothPanel by remember { mutableStateOf(false) }
     var miniBrushPickerOpen by remember { mutableStateOf(false) }
     var collapsedSizePanelOpen by remember { mutableStateOf(false) } // 최소화 모드: 브러시 아이콘 길게 누르면 굵기/투명도 패널
     var brushCategoryExpanded by remember { mutableStateOf(true) } // 붓 종류(펜/연필/크레파스/수채화/지우개) 묶음 접기
@@ -267,10 +273,10 @@ fun BrushControls(
                 // 길게 눌러 경계 블러 패널(굵기/불투명도는 항상 보이는 상단 바에서 이미 조절 가능).
                 Box {
                     Box(
-                        Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
+                        Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing || brush == BrushType.SMOOTH_TEST) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 지우개 선택 시 길게 눌러 경계 블러 조절",
+                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 지우개 선택 시 길게 눌러 경계 블러(스무딩 테스트는 강도) 조절",
                             colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
@@ -279,7 +285,7 @@ fun BrushControls(
                             onEraser = { onToggleErase(); miniBrushPickerOpen = false })
                     }
                     if (collapsedSizePanelOpen) Popup(sizePopupAnchor, { collapsedSizePanelOpen = false }, PopupProperties(focusable = true)) {
-                        BlurPanel(eraserBlur, onEraserBlur)
+                        if (erasing) BlurPanel(eraserBlur, onEraserBlur) else SmoothPanel(smoothStrength, onSmoothStrength)
                     }
                 }
                 // 현재 색상 — 탭하면 전체 툴바와 같은 색상휠이 뜬다.
@@ -328,31 +334,32 @@ fun BrushControls(
                 if (brushCategoryExpanded) {
                     // Brush icons: tap to switch. 굵기/불투명도는 이제 브러시별 팝업이 아니라 항상
                     // 보이는 상단 바(ActiveToolSlidersBar)에서 조절하므로 여기선 그냥 단순 토글.
-                    BrushBtn(!erasing && brush == BrushType.PEN, onClick = { onBrush(BrushType.PEN); openEraserPanel = false }) { t ->
+                    BrushBtn(!erasing && brush == BrushType.PEN, onClick = { onBrush(BrushType.PEN); openEraserPanel = false; openSmoothPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     // 실험용 임시 브러시(test/smooth-brush 브랜치) — PEN과 렌더링은 같고 입력 좌표
                     // 스무딩만 다르다. 다른 브러시와 헷갈리지 않도록 항상 파란 톤으로 구분(선택 여부와
-                    // 무관한 고정 색조). 실험이 끝나면 이 버튼째로 걷어낸다.
-                    BrushBtn(!erasing && brush == BrushType.SMOOTH_TEST, onClick = { onBrush(BrushType.SMOOTH_TEST); openEraserPanel = false }) {
-                        val testTint = if (!erasing && brush == BrushType.SMOOTH_TEST) Color(0xFF4DABF7) else Color(0xFF4DABF7).copy(alpha = 0.45f)
-                        Image(painterResource(R.drawable.brush_pen), "스무딩 테스트(임시 브러시)", colorFilter = ColorFilter.tint(testTint), modifier = Modifier.size(25.dp))
-                    }
-                    BrushBtn(!erasing && brush == BrushType.PENCIL, onClick = { onBrush(BrushType.PENCIL); openEraserPanel = false }) { t ->
+                    // 무관한 고정 색조). 이미 선택된 상태에서 다시 탭하면 스무딩 강도 패널이 뜬다
+                    // (지우개 블러와 같은 패턴). 실험이 끝나면 이 버튼째로 걷어낸다.
+                    SmoothTestBtnWithPanel(!erasing && brush == BrushType.SMOOTH_TEST, smoothStrength, onSmoothStrength, sizePopupAnchor,
+                        panelOpen = openSmoothPanel,
+                        setPanelOpen = { o -> openSmoothPanel = o; if (o) openEraserPanel = false },
+                        onClick = { onBrush(BrushType.SMOOTH_TEST); openEraserPanel = false; openSmoothPanel = false })
+                    BrushBtn(!erasing && brush == BrushType.PENCIL, onClick = { onBrush(BrushType.PENCIL); openEraserPanel = false; openSmoothPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    BrushBtn(!erasing && brush == BrushType.CRAYON, onClick = { onBrush(BrushType.CRAYON); openEraserPanel = false }) { t ->
+                    BrushBtn(!erasing && brush == BrushType.CRAYON, onClick = { onBrush(BrushType.CRAYON); openEraserPanel = false; openSmoothPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
-                    BrushBtn(!erasing && brush == BrushType.WATER, onClick = { onBrush(BrushType.WATER); openEraserPanel = false }) { t ->
+                    BrushBtn(!erasing && brush == BrushType.WATER, onClick = { onBrush(BrushType.WATER); openEraserPanel = false; openSmoothPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     // 지우개만 자기 자신의 "경계 블러" 팝업을 가진다(굵기/불투명도는 다른 브러시와
                     // 동일하게 상단 바에서) — 이미 선택된 지우개를 다시 탭하면 블러 패널이 뜬다.
                     EraserBtnWithBlurPanel(erasing, eraserBlur, onEraserBlur, sizePopupAnchor,
                         panelOpen = openEraserPanel,
-                        setPanelOpen = { o -> openEraserPanel = o },
-                        onClick = { onToggleErase(); openEraserPanel = false }) { t ->
+                        setPanelOpen = { o -> openEraserPanel = o; if (o) openSmoothPanel = false },
+                        onClick = { onToggleErase(); openEraserPanel = false; openSmoothPanel = false }) { t ->
                         Image(painterResource(R.drawable.brush_eraser), "지우개", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     IconBtn(Icons.Filled.UnfoldLess, "붓 종류 접기", onClick = { brushCategoryExpanded = false })
@@ -362,10 +369,10 @@ fun BrushControls(
                     // 옆의 화살표 버튼.
                     Box {
                         Box(
-                            Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
+                            Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing || brush == BrushType.SMOOTH_TEST) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 지우개 선택 시 길게 눌러 경계 블러 조절",
+                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 지우개 선택 시 길게 눌러 경계 블러(스무딩 테스트는 강도) 조절",
                                 colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                         }
                         if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
@@ -684,6 +691,17 @@ private fun BlurPanel(blur: Float, onBlur: (Float) -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Box(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
             IconSliderRow(Icons.Filled.BlurOn, "경계 블러", "${blur.toInt()}", blur, BlurRange, onBlur)
+        }
+    }
+}
+
+/** SMOOTH_TEST 실험 브러시 전용 "스무딩 강도" 패널(test/smooth-brush 브랜치) — 0~100, 높을수록
+ *  선이 더 뭉근하게(손가락보다 살짝 늦게) 따라오며 손떨림이 줄어든다. BlurPanel과 같은 패턴. */
+@Composable
+private fun SmoothPanel(strength: Float, onStrength: (Float) -> Unit) {
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
+        Box(Modifier.width(248.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
+            IconSliderRow(Icons.Filled.BlurOn, "스무딩 강도", "${strength.toInt()}", strength, 0f..100f, onStrength)
         }
     }
 }
@@ -1165,6 +1183,27 @@ private fun EraserBtnWithBlurPanel(
             contentAlignment = Alignment.Center) { icon(tint) }
         if (panelOpen) Popup(anchor, { setPanelOpen(false) }, PopupProperties(focusable = true)) {
             BlurPanel(blur, onBlur)
+        }
+    }
+}
+
+/** SMOOTH_TEST 실험 브러시 버튼(test/smooth-brush 브랜치) — 탭해서 선택, 이미 선택된 상태에서
+ *  다시 탭하면 "스무딩 강도" 팝업이 뜬다. 아이콘은 항상 고정 파란 톤(다른 브러시와 구분용)이라
+ *  EraserBtnWithBlurPanel처럼 selected 기반 회색조 tint를 받지 않고 직접 계산한다. */
+@Composable
+private fun SmoothTestBtnWithPanel(
+    selected: Boolean, strength: Float, onStrength: (Float) -> Unit, anchor: PopupPositionProvider,
+    panelOpen: Boolean, setPanelOpen: (Boolean) -> Unit, onClick: () -> Unit,
+) {
+    val tint = if (selected) Color(0xFF4DABF7) else Color(0xFF4DABF7).copy(alpha = 0.45f)
+    Box {
+        Box(Modifier.size(ButtonTapSize).bounceClick { if (selected) setPanelOpen(!panelOpen) else onClick() },
+            contentAlignment = Alignment.Center) {
+            Image(painterResource(R.drawable.brush_pen), "스무딩 테스트(임시 브러시) — 탭해서 선택, 다시 탭하면 강도 조절",
+                colorFilter = ColorFilter.tint(tint), modifier = Modifier.size(25.dp))
+        }
+        if (panelOpen) Popup(anchor, { setPanelOpen(false) }, PopupProperties(focusable = true)) {
+            SmoothPanel(strength, onStrength)
         }
     }
 }
