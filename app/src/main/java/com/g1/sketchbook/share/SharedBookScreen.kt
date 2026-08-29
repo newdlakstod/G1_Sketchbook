@@ -71,8 +71,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -164,12 +162,6 @@ fun SharedBookScreen(
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.TOP) }
     var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-    // 도킹 판정을 "화면 중앙 + 누적 델타"가 아니라 "손가락의 실제 절대 위치" 기준으로 하기 위한
-    // 값들 — toolbarDragOrigin은 드래그가 시작된 손가락의 화면(루트) 절대 좌표, containerRootPos는
-    // 버튼바가 떠 있는 BoxWithConstraints 자신의 화면상 위치(둘의 차가 컨테이너 안에서의 손가락
-    // 위치, 2026-08-29).
-    var toolbarDragOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-    var containerRootPos by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var others by remember { mutableStateOf<List<ShareRepository.Slot>>(emptyList()) }
@@ -282,7 +274,7 @@ fun SharedBookScreen(
     ) {
         // 가용 영역 전부를 스케치북으로 — 바깥 여백 없음, 칸 사이 구분도 간격이 아니라 PaneFrame
         // 자체 테두리 선 하나로만(2026-08-20).
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { containerRootPos = it.positionInRoot() }) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val density2 = LocalDensity.current
             val landscape = maxWidth > maxHeight
             val mine = remember {
@@ -436,12 +428,10 @@ fun SharedBookScreen(
                 fillActive = fillActive,
                 onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
                 collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
-                onDragBarStart = { absoluteStart -> toolbarDragOrigin = absoluteStart },
                 onDragBar = { d -> toolbarDragPx += d },
                 onDragBarEnd = {
-                    val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
-                    val posInContainer = toolbarDragOrigin + toolbarDragPx - containerRootPos
-                    toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, posInContainer, cwPx, chPx)
+                    val minDragPx = with(density2) { com.g1.sketchbook.brush.DockSwitchMinDrag.toPx() }
+                    toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, toolbarDragPx, minDragPx)
                     toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
                 },
                 dock = toolbarDock,

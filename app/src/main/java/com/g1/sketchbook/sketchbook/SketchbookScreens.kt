@@ -106,8 +106,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -1081,11 +1079,6 @@ fun SketchbookCanvasScreen(
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.TOP) }
     var toolbarDragPx by remember { mutableStateOf(Offset.Zero) }
-    // 도킹 판정을 "화면 중앙 + 누적 델타"가 아니라 "손가락의 실제 절대 위치" 기준으로 하기 위한
-    // 값들 — toolbarDragOrigin은 드래그가 시작된 손가락의 화면(루트) 절대 좌표, containerRootPos는
-    // 이 BoxWithConstraints 자신의 화면상 위치(둘의 차가 컨테이너 안에서의 손가락 위치, 2026-08-29).
-    var toolbarDragOrigin by remember { mutableStateOf(Offset.Zero) }
-    var containerRootPos by remember { mutableStateOf(Offset.Zero) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
@@ -1109,8 +1102,7 @@ fun SketchbookCanvasScreen(
             // 버튼바를 좌/우 가장자리로 끌어 도킹하려는 드래그, 캔버스 가장자리까지 붙여 그리는
             // 드로잉 모두 시스템 뒤로가기 스와이프에 터치를 뺏길 수 있었다(2026-08-29, "버튼바가
             // 좌우에 안 붙는다"는 문제의 원인 중 하나로 확인).
-            .excludeSystemGestureEdges()
-            .onGloballyPositioned { containerRootPos = it.positionInRoot() },
+            .excludeSystemGestureEdges(),
     ) {
         val density2 = LocalDensity.current
         Box(Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding)) {
@@ -1200,12 +1192,10 @@ fun SketchbookCanvasScreen(
             fillActive = fillActive,
             onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
             collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
-            onDragBarStart = { absoluteStart -> toolbarDragOrigin = absoluteStart },
             onDragBar = { d -> toolbarDragPx += d },
             onDragBarEnd = {
-                val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
-                val posInContainer = toolbarDragOrigin + toolbarDragPx - containerRootPos
-                toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, posInContainer, cwPx, chPx)
+                val minDragPx = with(density2) { com.g1.sketchbook.brush.DockSwitchMinDrag.toPx() }
+                toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, toolbarDragPx, minDragPx)
                 toolbarDragPx = Offset.Zero
             },
             dock = toolbarDock,

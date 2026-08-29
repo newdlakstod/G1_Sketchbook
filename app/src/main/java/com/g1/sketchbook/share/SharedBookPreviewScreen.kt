@@ -135,8 +135,8 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
                 onToggleCollapsed = { collapsed = !collapsed },
                 onDragBar = { d -> dragPx += d },
                 onDragBarEnd = {
-                    val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
-                    dock = nearestDock(dock, dragPx, cwPx, chPx)
+                    val minDragPx = with(density2) { com.g1.sketchbook.brush.DockSwitchMinDrag.toPx() }
+                    dock = nearestDock(dock, dragPx, minDragPx)
                     dragPx = Offset.Zero
                 },
                 dock = dock,
