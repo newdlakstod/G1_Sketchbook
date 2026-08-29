@@ -130,7 +130,14 @@ fun ToolbarDock.alignment(): Alignment = when (this) {
  *  어디서 시작했는지와 완전히 무관해진다 — 위로 크게 끌었으면 TOP, 오른쪽으로 크게 끌었으면 RIGHT,
  *  이런 식으로 항상 예측 가능하다. [dragDelta]는 드래그 시작부터 지금까지의 누적 이동량(px),
  *  [minDragPx]보다 짧으면(의도치 않은 흔들림) 제자리를 지킨다. */
-val DockSwitchMinDrag = 32.dp
+// 손잡이는 항상 자기 컨테이너(가로 도킹이면 Row, 세로 도킹이면 Column)의 맨 앞 항목이라, 도킹된
+// 가장자리에서 불과 20dp 안팎 떨어진 채로 시작한다(2026-08-29, 에뮬레이터로 실측: TOP 도킹 손잡이는
+// 화면 왼쪽 가장자리에서 약 34dp). 그 방향으로 "더" 끌 수 있는 화면 여유가 그만큼밖에 없다는
+// 뜻이라, 문턱값이 그 여유와 비슷하거나 크면 화면 끝까지 정확히 끌어야만 겨우 넘는(또는 아예 못
+// 넘는) 문제가 생긴다 — 32dp였을 때 정확히 이 증상이 재현됐다("가로모드에서 좌측으로 고정안됨",
+// "세로모드에서 상단으로 고정안됨"). 실수로 살짝 흔들리는 것만 걸러내면 충분하므로 여유 있게 작게
+// 잡는다.
+val DockSwitchMinDrag = 12.dp
 
 fun nearestDock(current: ToolbarDock, dragDelta: Offset, minDragPx: Float): ToolbarDock {
     if (dragDelta.getDistance() < minDragPx) return current
