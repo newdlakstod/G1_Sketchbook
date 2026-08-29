@@ -283,12 +283,19 @@ fun BrushControls(
     val toolbarPadding = when {
         !vertical && dock == ToolbarDock.BOTTOM -> PaddingValues(start = 10.dp, end = 10.dp, top = ToolbarGripGap, bottom = 10.dp)
         // TOP + 펼침 상태에서만 우측에 ScreenControls 자리를 남긴다 — 최소화 상태는 폭이 좁아
-        // 애초에 안 겹치므로 그대로 10dp.
+        // 애초에 안 겹치므로 그대로 10dp. 화면 위쪽 여백은 4dp로 더 좁힘(2026-08-29, 재요청).
         !vertical && dock == ToolbarDock.TOP -> PaddingValues(
             start = 10.dp, end = if (fillToolbarWidth) ScreenControlsClearance else 10.dp,
-            top = 10.dp, bottom = ToolbarGripGap,
+            top = 4.dp, bottom = ToolbarGripGap,
         )
-        vertical && dock == ToolbarDock.RIGHT -> PaddingValues(start = ToolbarGripGap, end = 10.dp, top = 10.dp, bottom = 10.dp)
+        // RIGHT + 펼침 상태에서도 TOP과 같은 이유로 ScreenControls(우측 상단 고정)와 겹친다 — 펼친
+        // 세로 버튼바는 내용이 길어서 화면 중앙 정렬만으론 위쪽까지 닿을 수 있다. 호출부(각 화면의
+        // barModifier)에서 이때만 정렬을 TopEnd로 바꿔주는 것과 짝을 이뤄, 위쪽 여백을 그 자리만큼
+        // 확보한다(2026-08-29).
+        vertical && dock == ToolbarDock.RIGHT -> PaddingValues(
+            start = ToolbarGripGap, end = 10.dp,
+            top = if (!collapsed) ScreenControlsClearance else 10.dp, bottom = 10.dp,
+        )
         vertical && dock == ToolbarDock.LEFT -> PaddingValues(start = 10.dp, end = ToolbarGripGap, top = 10.dp, bottom = 10.dp)
         else -> PaddingValues(10.dp)
     }
@@ -533,7 +540,7 @@ fun BrushControls(
         ToolbarDock.LEFT -> TooltipSide.END
         ToolbarDock.RIGHT -> TooltipSide.START
     }
-    val laneCrossAxis = GripIdleThickness + 8.dp
+    val laneCrossAxis = GripTouchThickness
     val gripLane: @Composable () -> Unit = {
         if (toolbarSizePx.width > 0 && toolbarSizePx.height > 0) {
             if (!vertical) {
@@ -754,6 +761,10 @@ fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Mo
 // 구분 없이 이 크기 하나만 쓴다.
 private val GripIdleLength = 44.dp
 private val GripIdleThickness = 6.dp
+// 실제 보이는 그립은 6dp로 얇게 유지하되(모양 그대로), 손가락으로 잡는 영역(pointerInput)만 이만큼
+// 두껍게 넓힌다 — "잘 안 잡힌다"는 피드백(2026-08-29). laneCrossAxis도 이 값 기준으로 맞춰서 그립
+// 레인 자체가 이 터치 영역을 잘라내지 않게 한다.
+private val GripTouchThickness = 28.dp
 
 /** 값 툴팁이 그립 기준 어느 쪽으로 뜰지 — 버튼바가 도킹된 화면 가장자리 반대쪽(캔버스 쪽)으로
  *  띄워야 화면 밖으로 안 잘린다. */
@@ -785,8 +796,18 @@ private fun EdgeGripSlider(
     val accent = MaterialTheme.colorScheme.primary
     val idle = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     val shownValue = if (dragging) dragValue else value
+    // 그립은 레인의 "버튼바 쪽(가까운)" 가장자리에 붙어야 한다 — 길이 축 위치 계산(posPx, offset)은
+    // 항상 Start(가로) / Top(세로) 기준이라 그 성분은 그대로 두고, 두께 축 성분만 도킹 방향에 맞게
+    // 바꾼다. tooltipSide는 이미 "버튼바 반대쪽(캔버스 쪽)"으로 정의돼 있어서 그 반대가 정답이다.
+    // 이전엔 항상 TopStart로 고정해뒀는데, 터치 영역을 두껍게 넓히면서(2026-08-29) BOTTOM/RIGHT
+    // 도킹에서 그립이 버튼바 반대쪽으로 밀려 보이는 회귀가 생겨 다시 도킹별로 계산하게 됨.
+    val gripAnchor = if (!vertical) {
+        if (tooltipSide == TooltipSide.BELOW) Alignment.TopStart else Alignment.BottomStart
+    } else {
+        if (tooltipSide == TooltipSide.END) Alignment.TopStart else Alignment.TopEnd
+    }
 
-    BoxWithConstraints(modifier, contentAlignment = Alignment.TopStart) {
+    BoxWithConstraints(modifier, contentAlignment = gripAnchor) {
         val laneLenPx = with(density) { (if (vertical) maxHeight else maxWidth).roundToPx() }
         // 그립 크기는 idle/dragging 상관없이 항상 고정(GripIdleLength) — 활성화되면 색상만
         // 강조색으로 바뀔 뿐 커지지 않는다(2026-08-29). 크기가 안 바뀌니 위치 계산도 fraction을
@@ -811,15 +832,17 @@ private fun EdgeGripSlider(
             IntOffset(popupOffsetBase.x, popupOffsetBase.y + gripCenterDeltaPx)
         }
 
+        // 보이는 그립(pill)은 기존과 똑같이 얇게 두고, 손가락으로 잡는 영역만 그보다 두껍게 넓힌다
+        // ("잘 안 잡힌다"는 피드백, 2026-08-29) — 바깥 Box가 터치 영역(GripTouchThickness)이자 위치
+        // 기준이고, 안쪽 Box는 순수 시각적 pill(GripIdleThickness)만 담당한다. 둘 다 같은 가장자리
+        // (TopStart)에 붙여서, 얇은 pill이 두꺼운 터치 영역 안에서 렌더링 위치가 그대로 유지된다.
         Box(
             (if (vertical) {
-                Modifier.height(GripIdleLength).width(GripIdleThickness)
+                Modifier.height(GripIdleLength).width(GripTouchThickness)
             } else {
-                Modifier.width(GripIdleLength).height(GripIdleThickness)
+                Modifier.width(GripIdleLength).height(GripTouchThickness)
             })
                 .offset { if (vertical) IntOffset(0, posPx) else IntOffset(posPx, 0) }
-                .clip(RoundedCornerShape(percent = 50))
-                .background(if (dragging) accent else idle)
                 .pointerInput(range, laneLenPx, vertical) {
                     if (vertical) {
                         detectVerticalDragGestures(
@@ -845,7 +868,18 @@ private fun EdgeGripSlider(
                         )
                     }
                 },
-        )
+            contentAlignment = gripAnchor,
+        ) {
+            Box(
+                (if (vertical) {
+                    Modifier.height(GripIdleLength).width(GripIdleThickness)
+                } else {
+                    Modifier.width(GripIdleLength).height(GripIdleThickness)
+                })
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(if (dragging) accent else idle),
+            )
+        }
         if (dragging) {
             Popup(alignment = popupAlignment, offset = popupOffset) {
                 Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 6.dp, tonalElevation = 3.dp) {

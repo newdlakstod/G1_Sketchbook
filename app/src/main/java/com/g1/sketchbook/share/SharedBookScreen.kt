@@ -90,6 +90,7 @@ import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.bgDrawable
 import com.g1.sketchbook.ui.bounceClick
+import com.g1.sketchbook.ui.excludeSystemGestureEdges
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -266,7 +267,10 @@ fun SharedBookScreen(
     // 위로 겹쳐서 떠 있는 작은 라벨 하나로 대신한다.
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-            .let { if (fullscreen) it else it.systemBarsPadding() },
+            .let { if (fullscreen) it else it.systemBarsPadding() }
+            // 버튼바를 좌/우 가장자리로 끌어 도킹하려는 드래그가 시스템 뒤로가기 스와이프에 터치를
+            // 뺏길 수 있었다(2026-08-29).
+            .excludeSystemGestureEdges(),
     ) {
         // 가용 영역 전부를 스케치북으로 — 바깥 여백 없음, 칸 사이 구분도 간격이 아니라 PaneFrame
         // 자체 테두리 선 하나로만(2026-08-20).
@@ -397,7 +401,10 @@ fun SharedBookScreen(
             // 길게 눌러 드래그하면 자유 2D로 움직이다가 놓은 위치에서 가장 가까운 가장자리로 옮겨
             // 붙는다(최소화 상태여도 동일).
             fun barModifier(dock: com.g1.sketchbook.brush.ToolbarDock, collapsed: Boolean, dragPx: androidx.compose.ui.geometry.Offset) = Modifier
-                .align(dock.alignment())
+                // RIGHT + 펼침 상태는 화면 중앙 정렬 대신 우측 상단 기준으로 바꾸고, BrushControls의
+                // toolbarPadding이 그 자리만큼 위쪽 여백을 남겨서 ScreenControls와 안 겹치게 한다
+                // (TOP 도킹의 ScreenControlsClearance와 같은 대응, 2026-08-29).
+                .align(if (dock == com.g1.sketchbook.brush.ToolbarDock.RIGHT && !collapsed) Alignment.TopEnd else dock.alignment())
                 .let {
                     val horizontal = dock == com.g1.sketchbook.brush.ToolbarDock.TOP || dock == com.g1.sketchbook.brush.ToolbarDock.BOTTOM
                     if (!collapsed && horizontal) it.fillMaxWidth() else it
