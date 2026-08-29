@@ -384,7 +384,6 @@ fun BrushControls(
         // 그룹-구분선 사이 간격(GroupDividerGap)을 서로 다른 Arrangement.spacedBy로 따로 조절하기
         // 위함(공유 spacedBy 하나만으로는 구분선 쪽만 더 좁게 만들 수 없어서 이렇게 나눔).
         val segments = buildList<@Composable () -> Unit> {
-            if (onDragBar != null && onDragBarEnd != null) add { DragHandle(onDragBar, onDragBarEnd) }
             add {
                 // 붓 종류(펜/연필/크레파스/수채화/지우개) 묶음 — 접으면 지금 쓰는 도구 아이콘 하나만
                 // 남고, 탭하면 다시 5개가 펼쳐진다(2026-08-26, 툴바 전체 최소화와 별개로 이 묶음만
@@ -516,26 +515,56 @@ fun BrushControls(
             onToggleCollapsed?.let { toggle -> add { IconBtn(Icons.Filled.ExpandLess, "버튼바 최소화", onClick = toggle) } }
         }
 
+        // 손잡이(DragHandle)는 나머지 버튼들과 달리 스크롤 영역 밖에 고정 배치한다 — 예전엔 스크롤
+        // 가능한 Row/Column 맨 앞 항목이었는데, 그러면 손잡이의 롱프레스+드래그 제스처가 부모의
+        // horizontalScroll/verticalScroll과 같은 터치를 두고 경쟁하게 된다. 롱프레스가 인식되려면
+        // 대기 시간(약 500ms) 동안 손가락이 터치 슬롭 안에 머물러야 하는데, 실제 손가락은 에뮬레이터
+        // 합성 입력과 달리 미세하게 떨린다 — 그 흔들림이 슬롭을 넘으면 롱프레스 인식 자체가 취소되고,
+        // 부모 스크롤이 그 미소(微小) 이동을 "스크롤 시도"로 먼저 가로채 버릴 수 있다. 이러면
+        // nearestDock 판정 로직과 무관하게 애초에 드래그 자체가 시작되지 않는다(2026-08-29, 로직
+        // 자체는 에뮬레이터 재현으로 여러 번 확인됐는데 실기기에서 "가로/세로 서로 반대쪽만 되고
+        // 안되는 쪽은 계속 안된다"는 리포트가 사라지지 않아 의심). 손잡이를 스크롤 영역 밖으로 빼면
+        // 이 경쟁 자체가 원천적으로 없어진다.
         if (vertical) {
             Column(
-                Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 8.dp),
+                Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
             ) {
-                segments.forEachIndexed { i, seg ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(15.dp)) { seg() } // 버튼 간격(세로 도킹)
-                    if (i < segments.lastIndex) ToolbarDivider(vertical)
+                if (onDragBar != null && onDragBarEnd != null) {
+                    DragHandle(onDragBar, onDragBarEnd)
+                    ToolbarDivider(vertical)
+                }
+                Column(
+                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
+                ) {
+                    segments.forEachIndexed { i, seg ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(15.dp)) { seg() } // 버튼 간격(세로 도킹)
+                        if (i < segments.lastIndex) ToolbarDivider(vertical)
+                    }
                 }
             }
         } else {
             Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
+                Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
             ) {
-                segments.forEachIndexed { i, seg ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(15.dp)) { seg() } // 버튼 간격(가로 도킹, 기본)
-                    if (i < segments.lastIndex) ToolbarDivider(vertical)
+                if (onDragBar != null && onDragBarEnd != null) {
+                    DragHandle(onDragBar, onDragBarEnd)
+                    ToolbarDivider(vertical)
+                }
+                Row(
+                    Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
+                ) {
+                    segments.forEachIndexed { i, seg ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(15.dp)) { seg() } // 버튼 간격(가로 도킹, 기본)
+                        if (i < segments.lastIndex) ToolbarDivider(vertical)
+                    }
                 }
             }
         }
