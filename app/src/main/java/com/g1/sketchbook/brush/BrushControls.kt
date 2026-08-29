@@ -125,13 +125,26 @@ fun nearestDock(current: ToolbarDock, dragPx: Offset, containerWidthPx: Float, c
     // 못 넘어가는 버그가 있었다(화면 폭의 절반 이상을 끌어야만 겨우 넘어감) — RIGHT로 한 번 옮겨서
     // 세로 도킹이 된 뒤에는 반대로 LEFT까지는 쉽게 넘어갔던 것도 같은 비대칭 때문. 중앙을 기준으로
     // 통일하면 어느 축으로 드래그하든 공평하게 반응한다.
-    val x = containerWidthPx / 2f + dragPx.x
-    val y = containerHeightPx / 2f + dragPx.y
+    val halfW = containerWidthPx / 2f
+    val halfH = containerHeightPx / 2f
+    val x = halfW + dragPx.x
+    val y = halfH + dragPx.y
+    // 위 중앙 기준 통일만으로는 여전히 부족했다 — 가로로 넓은 태블릿(halfW가 halfH보다 훨씬 큼)에서는
+    // 픽셀 거리를 그대로 비교하면 세로(위/아래) 쪽 "절반 길이" 자체가 짧아서, 좌우로 아무리 크게
+    // 끌어도 위/아래 거리가 계속 더 작게 이겨버려 좌우 도킹에 거의 도달할 수 없었다(2026-08-29,
+    // "좌우 도킹이 안 된다" 재확인 후 실제 원인으로 확인). 각 축의 "절반 길이" 대비 비율로 정규화해서
+    // 화면 비율과 무관하게 네 방향이 공평하게 겨루도록 고친다.
     val distances = mapOf(
-        ToolbarDock.LEFT to x, ToolbarDock.RIGHT to (containerWidthPx - x),
-        ToolbarDock.TOP to y, ToolbarDock.BOTTOM to (containerHeightPx - y),
+        ToolbarDock.LEFT to (x / halfW), ToolbarDock.RIGHT to ((containerWidthPx - x) / halfW),
+        ToolbarDock.TOP to (y / halfH), ToolbarDock.BOTTOM to ((containerHeightPx - y) / halfH),
     )
-    return distances.minByOrNull { it.value }?.key ?: current
+    val nearest = distances.minByOrNull { it.value } ?: return current
+    // 정규화하면 드래그가 거의 없을 때 네 방향 비율이 죄다 1.0 근처로 동률에 가까워지는데, 그 상태로
+    // minByOrNull을 쓰면 맵 순서(LEFT가 먼저) 때문에 아주 작은 흔들림에도 매번 LEFT로 튀어버린다 —
+    // 다른 방향이 지금 도킹된 곳보다 뚜렷하게(2%p 이상) 가까울 때만 옮기고, 그 정도가 아니면 제자리를
+    // 지킨다.
+    val currentDist = distances.getValue(current)
+    return if (nearest.value < currentDist - 0.02f) nearest.key else current
 }
 
 val BrushPalette = listOf(
