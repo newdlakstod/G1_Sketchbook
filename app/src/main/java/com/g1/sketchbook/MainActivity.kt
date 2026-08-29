@@ -68,6 +68,7 @@ private fun AppRoot(vm: RootViewModel = viewModel()) {
             )
             state.cleanCalendar != null -> com.g1.sketchbook.diary.CleanCalendarScreen(
                 year = state.cleanCalendar!!.first, month = state.cleanCalendar!!.second, onBack = vm::closeCleanCalendar,
+                onOpenDiary = vm::openDiary,
             )
             else -> MainScreen(
                 nickname = state.nickname ?: "친구",

@@ -45,6 +45,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Opacity
@@ -527,6 +528,9 @@ fun CleanCalendarScreen(
     year: Int,
     month: Int,
     onBack: () -> Unit,
+    /** 오늘 날짜에 아직 일기가 없을 때 상세 화면에 뜨는 "오늘 그리기 시작" 버튼에서 호출 —
+     *  DiaryEditorScreen을 열어 바로 스케치모드로 들어간다(2026-08-29). */
+    onOpenDiary: (String) -> Unit = {},
     previewDetailDate: String? = null,
     previewMode: Boolean = false,
     previewBitmap: Bitmap? = null,
@@ -559,17 +563,20 @@ fun CleanCalendarScreen(
             Column(
                 Modifier.weight(0.42f).fillMaxHeight().systemBarsPadding()
                     .padding(start = Dimens.CleanCalendar.landscapeSidePadding, end = Dimens.CleanCalendar.landscapeSidePadding,
-                        top = Dimens.CleanCalendar.topPadding, bottom = Dimens.CleanCalendar.landscapeBottomPadding),
+                        top = Dimens.CleanCalendar.landscapeTopPadding, bottom = Dimens.CleanCalendar.landscapeBottomPadding),
             ) {
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$curYear", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.landscapeYearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 가로는 연·월을 한 줄로 붙여서(세로처럼 두 줄로 쌓지 않고) 위쪽에 남는 높이를
+                // 최소화 — 그만큼 아래 썸네일 달력이 커진다(2026-08-29, 재요청).
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.Bottom) {
                     Text(MonthNames[curMonth], fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.landscapeMonthSp, maxLines = 1)
+                    Spacer(Modifier.width(6.dp))
+                    Text("$curYear", fontFamily = Cavorting, fontSize = Dimens.CleanCalendar.landscapeYearSp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.height(Dimens.CleanCalendar.titleGap))
                 CleanGrid(curYear, curMonth, thumbs, Modifier.weight(1f).fillMaxWidth()) { navigate(it) }
             }
             // 우측 상세는 남은 폭을 꽉 채운다 — 그림이 그 안을 채우고 날짜는 그 위 워터마크로만 표시.
-            CleanDetailBody(repo, detailDate ?: today, Modifier.weight(0.58f).fillMaxHeight(), previewBitmap = previewBitmap) { navigate(it) }
+            CleanDetailBody(repo, detailDate ?: today, Modifier.weight(0.58f).fillMaxHeight(), today = today, onOpenDiary = onOpenDiary, previewBitmap = previewBitmap) { navigate(it) }
         }
     } else {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -586,7 +593,7 @@ fun CleanCalendarScreen(
                 }
             } else {
                 // 일자 상세는 전체화면 — 그림이 화면을 꽉 채우고 날짜는 그 위 워터마크로만 표시(별도 헤더 없음).
-                CleanDetailBody(repo, detailDate!!, Modifier.fillMaxSize(), previewBitmap = previewBitmap) { navigate(it) }
+                CleanDetailBody(repo, detailDate!!, Modifier.fillMaxSize(), today = today, onOpenDiary = onOpenDiary, previewBitmap = previewBitmap) { navigate(it) }
             }
         }
     }
@@ -632,7 +639,9 @@ private fun CleanGrid(year: Int, month: Int, thumbs: Map<String, ImageBitmap>, m
 
 @Composable
 private fun CleanDetailBody(
-    repo: DiaryRepository?, date: String, modifier: Modifier, previewBitmap: Bitmap? = null,
+    repo: DiaryRepository?, date: String, modifier: Modifier,
+    today: String = date, onOpenDiary: (String) -> Unit = {},
+    previewBitmap: Bitmap? = null,
     onNavigate: (String) -> Unit,
 ) {
     val bmp = remember(date, repo, previewBitmap) { previewBitmap ?: repo?.load(date) }
@@ -733,6 +742,20 @@ private fun CleanDetailBody(
                         Text(dateLabel, fontFamily = Cavorting, fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(8.dp))
                         Text("이 날의 일기가 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                        // 오늘 날짜에 아직 일기가 없을 때만 — 달력에서 여기까지 들어온 김에 바로
+                        // 스케치모드로 진입할 수 있게(2026-08-29, 재요청). 지난 날짜는 그림일기 특성상
+                        // 새로 그릴 수 없으므로 버튼을 안 보여준다.
+                        if (date == today) {
+                            Spacer(Modifier.height(16.dp))
+                            Box(
+                                Modifier.size(48.dp).clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .bounceClick { onOpenDiary(date) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Filled.Edit, "오늘 그리기 시작", tint = MaterialTheme.colorScheme.onPrimary)
+                            }
+                        }
                     }
                 }
             }

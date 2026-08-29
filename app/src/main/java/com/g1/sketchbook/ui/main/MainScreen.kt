@@ -445,9 +445,18 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                                 Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
                                     .background(stackColor.copy(alpha = 0.75f)))
                                 // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
+                                // 그림자는 SketchbookCover 바깥의 별도 Box에 건다 — SketchbookCover가
+                                // 내부에서 자기 modifier에 .clip(SketchbookCoverShape)을 추가로 거는데,
+                                // shadow(clip=false)는 "이 레이어 안 내용물"만 안 잘리게 할 뿐이라, 그
+                                // 뒤에 곧바로 이어지는 별개의 clip 레이어(SketchbookCover 내부 Box)가
+                                // 그림자까지 표지 크기 그대로 잘라버렸다 — shadowSlack을 아무리 키워도
+                                // 안 고쳐졌던 이유(2026-08-29, 재발 리포트로 원인 특정). 그림자를 클립
+                                // 없는 바깥 Box에 걸면 안쪽 SketchbookCover의 클립은 표지 내용물만
+                                // 정상적으로 둥근 모서리로 잘라내고, 그림자는 그 밖으로 번져 보인다.
+                                Box(Modifier.width(w).height(h)
+                                    .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)) {
                                 SketchbookCover(
-                                    modifier = Modifier.width(w).height(h)
-                                        .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black),
+                                    modifier = Modifier.fillMaxSize(),
                                     coverColor = stackColor,
                                     coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
                                 ) {
@@ -455,6 +464,7 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                                         Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
                                             .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
                                     }
+                                }
                                 }
                             }
                         }

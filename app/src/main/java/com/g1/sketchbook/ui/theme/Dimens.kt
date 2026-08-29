@@ -99,6 +99,8 @@ object Dimens {
         val yearSp = 26.sp          // 연도 글자 크기 (세로)
         val monthSp = 78.sp         // 월 글자 크기 (세로)
         val landscapeSidePadding = 12.dp
+        val landscapeTopPadding = 12.dp  // 세로용 topPadding(63.5dp)과 달리 가로는 썸네일을 최대한
+                                          // 키우려고 다른 여백들과 같은 12dp로 최소화(2026-08-29)
         val landscapeBottomPadding = 12.dp
         val landscapeYearSp = 14.sp
         val landscapeMonthSp = 20.sp
