@@ -452,29 +452,27 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     val shadowSlack = 28.dp
                     Box(
                         Modifier.width(w + 4.dp + shadowSlack).height(h + 4.dp + shadowSlack)
-                            .alpha(fade)
                             .bounceClick(onLongClick = { onLongPress(book) }) { onOpen(book.id) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Box(Modifier.width(scaledW + 4.dp).height(scaledH + 4.dp)) {
+                        // 그림자 전용 레이어 — 표지 그림(아래 alpha(fade) 블록)과 완전히 분리해서 항상
+                        // 100% 밝기로 그린다. 예전엔 이 shadow가 표지 그림과 같은 alpha(fade) 안에 있어서,
+                        // 옆(비-중심)으로 갈수록 alpha가 최대 50%까지 떨어지며 그림자도 같이 옅어져
+                        // 크림색 배경 위에서 거의 안 보였다 — "옆 표지는 그림자가 잘려 보이다가 가운데로
+                        // 오면서 안 잘린 표지로 바뀐다"는 재현 리포트(2026-08-29, 스크린샷으로 원인 확정)의
+                        // 진짜 원인이었다. 잘린 게 아니라 흐려서 안 보인 것 — 그림자를 별도 레이어로
+                        // 떼어내 fade의 영향 밖에 두면 옆 표지도 가운데와 똑같은 밝기의 그림자를 갖는다.
+                        Box(Modifier.width(scaledW).height(scaledH)
+                            .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black))
+                        Box(Modifier.width(scaledW + 4.dp).height(scaledH + 4.dp).alpha(fade)) {
                             // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
                             Box(Modifier.width(scaledW).height(scaledH).offset(x = 4.dp, y = 4.dp).clip(coverShape)
                                 .background(stackColor.copy(alpha = 0.5f)))
                             Box(Modifier.width(scaledW).height(scaledH).offset(x = 2.dp, y = 2.dp).clip(coverShape)
                                 .background(stackColor.copy(alpha = 0.75f)))
                             // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
-                            // 그림자는 SketchbookCover 바깥의 별도 Box에 건다 — SketchbookCover가
-                            // 내부에서 자기 modifier에 .clip(SketchbookCoverShape)을 추가로 거는데,
-                            // shadow(clip=false)는 "이 레이어 안 내용물"만 안 잘리게 할 뿐이라, 그
-                            // 뒤에 곧바로 이어지는 별개의 clip 레이어(SketchbookCover 내부 Box)가
-                            // 그림자까지 표지 크기 그대로 잘라버렸다 — shadowSlack을 아무리 키워도
-                            // 안 고쳐졌던 이유(2026-08-29, 재발 리포트로 원인 특정). 그림자를 클립
-                            // 없는 바깥 Box에 걸면 안쪽 SketchbookCover의 클립은 표지 내용물만
-                            // 정상적으로 둥근 모서리로 잘라내고, 그림자는 그 밖으로 번져 보인다.
-                            Box(Modifier.width(scaledW).height(scaledH)
-                                .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)) {
                             SketchbookCover(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.width(scaledW).height(scaledH),
                                 coverColor = stackColor,
                                 coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
                             ) {
@@ -482,7 +480,6 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                                     Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
                                         .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
                                 }
-                            }
                             }
                         }
                     }
