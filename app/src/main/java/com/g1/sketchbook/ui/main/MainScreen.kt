@@ -413,12 +413,14 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     val sideScale = Dimens.Home.carouselSideW / Dimens.Home.carouselCenterW
                     val scale = androidx.compose.ui.util.lerp(1f, sideScale, distance)
                     val fade = 1f - distance * 0.5f
-                    // Shadow strength follows proximity too — the focused cover "lifts forward", neighbours
-                    // recede — so the size shrink alone doesn't have to carry the whole depth illusion.
-                    // 12dp로 상한을 낮춤(예전 18dp) — scale/alpha가 만드는 그래픽 레이어는 자기 레이아웃
-                    // 크기 밖으로는 그림자를 못 그리는데(아래 shadowSlack 참고), 너무 큰 elevation은
-                    // slack을 넉넉히 줘도 여전히 잘릴 수 있어 값 자체도 같이 낮췄다(2026-08-20).
-                    val elevation = androidx.compose.ui.unit.lerp(12.dp, 4.dp, distance)
+                    // 예전엔 elevation을 distance로 매 프레임 다시 계산했다(가까울수록 진하게) — 그런데
+                    // Android의 elevation 그림자는 RenderNode의 Z값이 바뀔 때마다 다시 그려지고, 스크롤 중
+                    // 매 프레임 값이 바뀌면 그 다시-그리기가 프레임마다 못 따라가면서 스크롤이 멈추고 나서야
+                    // (Z값이 더 이상 안 바뀌고 나서야) 그림자가 "뜨는" 것처럼 보이는 재현 리포트가 있었다
+                    // (2026-08-29). elevation을 고정값으로 둬서 Z값이 스크롤 내내 안 바뀌게 하면 그림자가
+                    // 처음부터 끝까지 계속 떠 있다 — 원근감(가까울수록 크게/진하게)은 scale·alpha만으로도
+                    // 충분히 표현된다.
+                    val elevation = 12.dp
                     val coverShape = SketchbookCoverShape
                     // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 (커스텀 지정 시) coverColor, 그것도
                     // 없으면 기본색을 보여준다(목록탭 CoverCard와 동일). coverVersion을 키에 넣어야 같은 id라도
