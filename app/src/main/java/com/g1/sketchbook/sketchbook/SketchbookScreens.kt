@@ -145,6 +145,7 @@ fun bgDrawable(key: String) = when (key) {
     "kraft" -> R.drawable.paper_kraft
     else -> R.drawable.paper_watercolor
 }
+
 private val PAPER_KEYS = listOf("a5", "a4", "a3")
 private val DISPLAY_KEYS = listOf("desktop", "mobile", "tablet")
 

@@ -5,14 +5,21 @@ import android.graphics.Rect
 import android.os.Build
 import android.util.Log
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,11 +36,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gdo.pagecurl.PageCurl
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
@@ -84,17 +95,67 @@ fun ReadModeScreen(
  *  "전체화면 모달"에만 해당하는 것은 여기 없고 호출부가 각자 갖춘다. */
 @Composable
 fun ReadingPane(
-    repo: SketchbookRepository,
+    /** null이면(프리뷰 등 실제 저장소가 없는 상황) 정적 종이 이미지로 대신 그린다 — 아래 참고. */
+    repo: SketchbookRepository?,
     book: Sketchbook,
     currentPage: Int,
     onPageChanged: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var errorMessage by remember(book.id) { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val paper = remember(context, book.bgKey) {
         BitmapFactory.decodeResource(context.resources, bgDrawable(book.bgKey))
     }
+    if (repo == null) {
+        // PageCurl은 OpenGL 서피스(GLSurfaceView)라 Compose 프리뷰(레이아웃 도구가 실제 GL 컨텍스트를
+        // 못 그림)에서는 항상 비어 보인다 — 이 자리에 종이 텍스처를 정적 이미지로 대신 그려서, 최소한
+        // 크기·비율·라운드 코너 같은 레이아웃은 프리뷰에서도 확인할 수 있게 한다(2026-08-29).
+        // PageCurl은 가로모드에서 항상 TwoPageSpread(펼친 책처럼 좌우 두 쪽)로 그린다(PageCurl.kt의
+        // layoutMode 분기) — 0페이지만 단독으로 오른쪽에 오고(왼쪽은 빈 자리), 그 뒤로는 (1,2)
+        // (3,4)... 짝을 지어 펼침면을 이룬다(PageBookState.spreadStart/stableSelection과 동일 규칙).
+        // 이전 버전은 한 쪽만 꽉 채워 그려서 실제와 다르게 보였다(재요청 — "두 쪽으로 보여야지").
+        val density = LocalDensity.current
+        val pageIndex = normalizeReadPage(currentPage, book.pageCount)
+        val spreadStart = when {
+            pageIndex == 0 -> 0
+            pageIndex % 2 == 0 -> pageIndex - 1
+            else -> pageIndex
+        }
+        val leftPage = if (spreadStart == 0) null else spreadStart
+        val rightPage = if (spreadStart == 0) 0 else (spreadStart + 1).takeIf { it < book.pageCount }
+        BoxWithConstraints(modifier) {
+            val halfWPx = with(density) { (maxWidth / 2).roundToPx() }.coerceAtLeast(1)
+            val hPx = with(density) { maxHeight.roundToPx() }.coerceAtLeast(1)
+            val staticHalf = remember(paper, halfWPx, hPx) { composePageBitmap(content = null, paper = paper, width = halfWPx, height = hPx) }
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    if (leftPage != null) Image(staticHalf.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
+                }
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    if (rightPage != null) Image(staticHalf.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
+                }
+            }
+            Text(
+                "${pageIndex + 1} / ${book.pageCount} (프리뷰 — 실제 페이지 내용 없음)",
+                fontSize = 11.sp, color = Color.White,
+                modifier = Modifier.align(Alignment.TopCenter).padding(10.dp)
+                    .background(Color(0x99000000), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+            Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                IconButton(onClick = { if (spreadStart > 0) onPageChanged((spreadStart - 2).coerceAtLeast(0)) },
+                    modifier = Modifier.clip(CircleShape).background(Color(0x99000000))) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "이전 펼침면", tint = Color.White)
+                }
+                IconButton(onClick = { if (rightPage != null || leftPage != null) onPageChanged(if (spreadStart == 0) 1 else spreadStart + 2) },
+                    modifier = Modifier.clip(CircleShape).background(Color(0x99000000))) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "다음 펼침면", tint = Color.White)
+                }
+            }
+        }
+        return
+    }
+    var errorMessage by remember(book.id) { mutableStateOf<String?>(null) }
     val source = remember(repo, book.id, book.pageCount, book.sizeKey, paper) {
         SketchbookPageSource(
             repo = repo,

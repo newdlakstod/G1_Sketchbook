@@ -219,13 +219,30 @@ private fun HomeTab(
                 }
             } else if (landscape) {
                 val book = selectedBook
-                if (book != null && repo != null) {
-                    // 책 비율에 맞춰 레터박스를 두면 그 여백에 홈 화면 배경(베이지)이 그대로 비쳐서
-                    // 오히려 어색했다 — 다시 좌우 꽉 채우는 방식으로(2026-08-29, 재요청).
-                    ReadingPane(
-                        repo, book, selectedReadPage, onPageChanged = { selectedReadPage = it },
-                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
-                    )
+                if (book != null) {
+                    // PageCurl(GLSurfaceView 기반)은 fillMaxSize를 줘도 페이지 비율을 유지한 채
+                    // 내부에서 알아서 레터박스를 둔다 — 라운드 코너를 바깥(꽉 찬) 상자에 주면 종이
+                    // 자체는 네모난 채로 그 안 여백에 떠 있는 것처럼 보였다(2026-08-29). 책 비율에
+                    // 맞는 크기로 직접 감싸서 라운드 코너가 종이 가장자리에 딱 맞게 한다. 여백 색은
+                    // 종이 톤을 흉내내려고 몇 번 시도했었는데(고정 베이지 → 텍스처 평균색), 질감 없는
+                    // 단색은 실제 텍스처 있는 종이 옆에서 아무리 색을 맞춰도 이음새가 보였다 — 홈 탭이
+                    // 원래 쓰는 배경색을 그대로 써서 "종이처럼 보이게" 흉내내지 않고 그냥 이 패널의
+                    // 나머지 부분(3열 등)과 자연스럽게 이어지는 UI 배경으로 두기로 함(재요청).
+                    androidx.compose.foundation.layout.BoxWithConstraints(
+                        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center,
+                    ) {
+                        // 이 블록은 항상 landscape일 때만 그려지고, PageCurl은 landscape에서 항상
+                        // 좌우 두 쪽(TwoPageSpread)으로 그려서 실제 표시 비율이 페이지 하나의 2배로
+                        // 넓다 — 여기서 상자를 페이지 1장 비율로만 잡으면 PageCurl이 그 안에서 또
+                        // 한 번 축소해 레터박스가 이중으로 생겼다(2026-08-29, "두 쪽으로 보여야지").
+                        val ratio = book.size.ratio * 2f
+                        val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
+                        val h = w / ratio
+                        ReadingPane(
+                            repo, book, selectedReadPage, onPageChanged = { selectedReadPage = it },
+                            modifier = Modifier.width(w).height(h).clip(RoundedCornerShape(16.dp)),
+                        )
+                    }
                     // 3열 표지리스트를 탭하면 여기서 읽을 뿐 — 그리기는 이 별도 버튼으로만 들어간다
                     // (탭=읽기, 그리기 진입은 명시적 버튼으로 분리하기로 결정, 2026-08-29). 텍스트 없이
                     // 아이콘만(2026-08-29, 재요청).
