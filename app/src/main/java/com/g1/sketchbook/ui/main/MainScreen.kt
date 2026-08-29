@@ -73,7 +73,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -431,8 +430,17 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     // 마지막으로 골랐던(또는 기본) 색이 그대로 남아있는 필드라, 사진 표지에 그 색을
                     // 그대로 쓰면 "직전 표지 색"이 두께 부분에서만 새어나오는 것처럼 보였다.
                     val stackColor = if (cover != null) Color.Black else (book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor)
-                    // scale()/alpha()는 graphicsLayer(오프스크린 레이어)를 만드는데, 그 레이어는 이 Box
-                    // 자신의 레이아웃 크기로 딱 잘려서 그려진다 — shadowSlack만큼 여유를 준다(2026-08-20).
+                    // 옆(비-중심) 표지는 그림자가 잘려 보이다가 가운데로 오면 안 잘린 표지로
+                    // "바뀌는" 것처럼 보인다는 재현 리포트(2026-08-29) — 원인은 scale()이 만드는
+                    // graphicsLayer 안에 elevation 그림자(RenderNode 기반)가 들어있던 구조였다.
+                    // scale이 1이 아닌 동안은 그 축소 레이어 안의 그림자가 온전히 다시 그려지지
+                    // 않고, scale이 정확히 1로 돌아오는 가운데 위치에서만 제대로 그려졌다. scale()
+                    // 대신 표지·그림자 크기 자체를 scaledW/scaledH로 직접 계산해서 그림자를 그리는
+                    // Box가 항상 "지금 실제 보여야 할 크기"이게 만든다 — 별도 축소 레이어를 더 거치지
+                    // 않으니 이 상호작용 자체가 사라진다. 바깥 아이템 슬롯 크기(w+4dp+shadowSlack)는
+                    // scale과 무관하게 이미 고정값이라(아래) LazyRow 자기참조 루프 걱정도 없다.
+                    val scaledW = w * scale
+                    val scaledH = h * scale
                     // 예전엔 이 Box를 fillMaxHeight()짜리 바깥 Box로 한 번 더 감쌌었는데, 그 바깥 Box의
                     // 실제 높이는 LazyRow가 그 순간에 스스로에게 부여한 높이를 그대로 물려받는 값이라
                     // (wrapContentHeight를 걸어도 Row 안 아이템이 fillMaxHeight를 쓰는 한 완전히
@@ -444,15 +452,15 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     val shadowSlack = 28.dp
                     Box(
                         Modifier.width(w + 4.dp + shadowSlack).height(h + 4.dp + shadowSlack)
-                            .scale(scale).alpha(fade)
+                            .alpha(fade)
                             .bounceClick(onLongClick = { onLongPress(book) }) { onOpen(book.id) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Box(Modifier.width(w + 4.dp).height(h + 4.dp)) {
+                        Box(Modifier.width(scaledW + 4.dp).height(scaledH + 4.dp)) {
                             // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
-                            Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape)
+                            Box(Modifier.width(scaledW).height(scaledH).offset(x = 4.dp, y = 4.dp).clip(coverShape)
                                 .background(stackColor.copy(alpha = 0.5f)))
-                            Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
+                            Box(Modifier.width(scaledW).height(scaledH).offset(x = 2.dp, y = 2.dp).clip(coverShape)
                                 .background(stackColor.copy(alpha = 0.75f)))
                             // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
                             // 그림자는 SketchbookCover 바깥의 별도 Box에 건다 — SketchbookCover가
@@ -463,7 +471,7 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                             // 안 고쳐졌던 이유(2026-08-29, 재발 리포트로 원인 특정). 그림자를 클립
                             // 없는 바깥 Box에 걸면 안쪽 SketchbookCover의 클립은 표지 내용물만
                             // 정상적으로 둥근 모서리로 잘라내고, 그림자는 그 밖으로 번져 보인다.
-                            Box(Modifier.width(w).height(h)
+                            Box(Modifier.width(scaledW).height(scaledH)
                                 .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)) {
                             SketchbookCover(
                                 modifier = Modifier.fillMaxSize(),
