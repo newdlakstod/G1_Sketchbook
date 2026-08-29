@@ -7,8 +7,7 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -40,6 +39,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
@@ -79,12 +79,9 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
-import androidx.compose.ui.input.pointer.PointerInputChange
-import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -119,115 +116,38 @@ fun ToolbarDock.alignment(): Alignment = when (this) {
     ToolbarDock.RIGHT -> Alignment.CenterEnd
 }
 
-/** 버튼바를 드래그한 "방향"만 보고 어느 가장자리로 보낼지 정한다 — 손잡이가 지금 화면 어디에 있는지,
- *  버튼바 내용물이 얼마나 긴지와는 전혀 무관하게 항상 같은 규칙으로 동작한다.
- *
- *  절대 위치 기반("손가락이 컨테이너 안 어디에 있는가" vs 네 가장자리까지 거리)으로 두 차례 고쳐봤지만
- *  (2026-08-29) 실기기에서 계속 재현됐다 — 펼친 세로(LEFT/RIGHT) 버튼바는 항목이 20개 가까이 되어
- *  verticalScroll이 필요할 만큼 길고, 그러면 Surface 자신이 컨테이너 높이 전체로 늘어나며 맨 위
- *  항목인 손잡이는 항상 "화면 위쪽 가장자리 근처"에 있게 된다 — 즉 LEFT 도킹의 손잡이는 왼쪽
- *  가장자리에도, 위쪽 가장자리에도 동시에 바짝 붙어 있는 셈이라, "지금 위치가 어느 가장자리에
- *  가까운가"라는 기준 자체가 손잡이의 우연한(그리고 펼침 상태에 따라 달라지는) 시작 위치에 계속
- *  휘둘렸다.
- *
- *  그 대신 "순 이동량(드래그 시작점 대비 최종 변위)이 어느 축으로 더 컸는가"만 보면, 손잡이가
- *  어디서 시작했는지와 완전히 무관해진다 — 위로 크게 끌었으면 TOP, 오른쪽으로 크게 끌었으면 RIGHT,
- *  이런 식으로 항상 예측 가능하다. [dragDelta]는 드래그 시작부터 지금까지의 누적 이동량(px),
- *  [minDragPx]보다 짧으면(의도치 않은 흔들림) 제자리를 지킨다. */
-// 손잡이는 항상 자기 컨테이너(가로 도킹이면 Row, 세로 도킹이면 Column)의 맨 앞 항목이라, 도킹된
-// 가장자리에서 불과 20dp 안팎 떨어진 채로 시작한다(2026-08-29, 에뮬레이터로 실측: TOP 도킹 손잡이는
-// 화면 왼쪽 가장자리에서 약 34dp). 그 방향으로 "더" 끌 수 있는 화면 여유가 그만큼밖에 없다는
-// 뜻이라, 문턱값이 그 여유와 비슷하거나 크면 화면 끝까지 정확히 끌어야만 겨우 넘는(또는 아예 못
-// 넘는) 문제가 생긴다 — 32dp였을 때 정확히 이 증상이 재현됐다("가로모드에서 좌측으로 고정안됨",
-// "세로모드에서 상단으로 고정안됨"). 실수로 살짝 흔들리는 것만 걸러내면 충분하므로 여유 있게 작게
-// 잡는다.
+// 도킹 판정을 시작하기 전에 최소 이 거리(dp)는 움직여야 한다 — 롱프레스 직후 손을 떼거나 살짝
+// 떨리는 정도로는 도킹이 안 바뀌게 하는 잡음 방지용. 실제 방향 판정 자체에는 관여하지 않는다.
 val DockSwitchMinDrag = 12.dp
 
-fun nearestDock(current: ToolbarDock, dragDelta: Offset, minDragPx: Float): ToolbarDock {
-    if (dragDelta.getDistance() < minDragPx) return current
-    return if (abs(dragDelta.x) > abs(dragDelta.y)) {
-        if (dragDelta.x < 0f) ToolbarDock.LEFT else ToolbarDock.RIGHT
-    } else {
-        if (dragDelta.y < 0f) ToolbarDock.TOP else ToolbarDock.BOTTOM
-    }
-}
-
-/** 드래그 중 현재까지의 전체 이동량으로 도킹 후보를 계속 갱신한다. 임계값 전에는 기존 후보를
- * 유지하고, 넘은 뒤에는 더 크게 움직인 축을 매번 다시 보므로 롱프레스 직후의 흔들림이 최종 방향을
- * 영구히 잠그지 않는다. */
-fun updatedDockCandidate(
-    startDock: ToolbarDock,
-    currentCandidate: ToolbarDock?,
-    dragDelta: Offset,
-    minDragPx: Float,
-): ToolbarDock? {
-    if (dragDelta.getDistance() < minDragPx) return currentCandidate
-    return nearestDock(startDock, dragDelta, minDragPx)
-}
-
-/**
- * Surface 안의 버튼보다 먼저 포인터를 관찰하는 롱프레스 드래그 감지기.
+/** 손을 뗀 지점([posInContainer], 버튼바가 떠 있는 컨테이너의 왼쪽/위 모서리를 (0,0)으로 하는
+ *  좌표)이 네 가장자리 중 어디에 가장 가까운지로 도킹을 정한다. [containerWidthPx]/
+ *  [containerHeightPx]는 그 컨테이너의 크기(px) — 폭과 높이가 크게 다른 화면(가로로 넓은 태블릿
+ *  등)에서 픽셀 거리를 그대로 비교하면 짧은 쪽 축이 유리해지므로, 각 축의 "절반 길이" 대비 비율로
+ *  정규화해서 화면 비율과 무관하게 네 방향이 공평하게 겨루도록 한다.
  *
- * 일반 [androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress]는 자식 버튼이
- * 이벤트를 소비하면 취소되므로 버튼 위에서는 시작되지 않는다. Initial pass에서는 자식이 처리하기
- * 전에 같은 이벤트를 볼 수 있다. 롱프레스가 성립하기 전에는 소비하지 않아 평소 탭/스크롤을 그대로
- * 살리고, 성립한 뒤의 이동과 손 떼기만 소비해 Surface 이동이 버튼 동작보다 우선하게 한다.
- */
-private suspend fun PointerInputScope.detectSurfaceDragAfterLongPress(
-    onDragStart: () -> Unit,
-    onDragEnd: () -> Unit,
-    onDragCancel: () -> Unit,
-    onDrag: (PointerInputChange, Offset) -> Unit,
-) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        val pointerId = down.id
-        val downPosition = down.position
-        var cancelledBeforeLongPress = false
-
-        try {
-            withTimeout(viewConfiguration.longPressTimeoutMillis) {
-                while (true) {
-                    val change = awaitPointerEvent(PointerEventPass.Initial)
-                        .changes
-                        .firstOrNull { it.id == pointerId }
-                    if (change == null || !change.pressed ||
-                        (change.position - downPosition).getDistance() > viewConfiguration.touchSlop
-                    ) {
-                        cancelledBeforeLongPress = true
-                        return@withTimeout
-                    }
-                }
-            }
-        } catch (_: PointerEventTimeoutCancellationException) {
-            // 제한 시간이 끝날 때까지 손가락이 유지됐으면 롱프레스가 성립한 것이다.
-        }
-
-        if (cancelledBeforeLongPress) return@awaitEachGesture
-
-        onDragStart()
-        var dragging = true
-        while (dragging) {
-            val event = awaitPointerEvent(PointerEventPass.Initial)
-            val change = event.changes.firstOrNull { it.id == pointerId }
-            when {
-                change == null -> {
-                    onDragCancel()
-                    dragging = false
-                }
-                !change.pressed -> {
-                    change.consume()
-                    onDragEnd()
-                    dragging = false
-                }
-                else -> {
-                    val dragAmount = change.position - change.previousPosition
-                    change.consume()
-                    if (dragAmount != Offset.Zero) onDrag(change, dragAmount)
-                }
-            }
-        }
-    }
+ *  이 함수로 오기까지 세 가지 접근을 거쳤다(2026-08-29):
+ *  1. 순 드래그 "방향"(어느 축으로 더 많이 움직였는가)만 보는 방식 — 손잡이의 시작 위치와 무관해
+ *     보이지만 실은 아니다: 예를 들어 TOP 도킹(화면 위쪽에서 시작)에서 LEFT 가장자리의 자연스러운
+ *     정착 지점(세로 중앙 부근)으로 끌면, 그 경로 자체가 가로보다 세로로 훨씬 더 많이 움직이게
+ *     되어(단순히 시작점과 도착점의 기하학적 위치 때문에) "아래로 더 크게 움직였다"고 오판해
+ *     BOTTOM으로 도킹해버린다 — 사용자가 명백히 LEFT에 놓았는데도. 실기기에서 계속 재현된
+ *     "가로모드에서 좌측 안 됨"의 진짜 원인이 이거였다.
+ *  2. 절대 위치 기반이되 "지금 도킹의 거리"에 고정 마진을 더해 히스테리시스를 준 방식 — 손잡이가
+ *     자기 도킹된 가장자리에서 불과 수십 px 떨어진 채 시작하다 보니, 그 마진이 반대쪽으로 건너갈
+ *     문턱을 사실상 넘을 수 없는 수준으로 높여버렸다.
+ *  결국 정답은 "손을 뗀 최종 절대 위치 → 순수하게 가장 가까운 가장자리"였다 — 현재 도킹이나 마진,
+ *  방향 같은 부가 조건 없이 이 함수 하나로 결정한다. */
+fun nearestDock(posInContainer: Offset, containerWidthPx: Float, containerHeightPx: Float): ToolbarDock {
+    val halfW = containerWidthPx / 2f
+    val halfH = containerHeightPx / 2f
+    val distances = mapOf(
+        ToolbarDock.LEFT to (posInContainer.x / halfW),
+        ToolbarDock.RIGHT to ((containerWidthPx - posInContainer.x) / halfW),
+        ToolbarDock.TOP to (posInContainer.y / halfH),
+        ToolbarDock.BOTTOM to ((containerHeightPx - posInContainer.y) / halfH),
+    )
+    return distances.minBy { it.value }.key
 }
 
 val BrushPalette = listOf(
@@ -309,10 +229,17 @@ fun BrushControls(
      *  그 자리에서 바로 바뀜). onToggleCollapsed가 null이면 최소화 버튼 자체가 나타나지 않는다. */
     collapsed: Boolean = false,
     onToggleCollapsed: (() -> Unit)? = null,
-    /** 버튼서피스 어디든 길게 눌러 드래그로 옮기기. onDragBar/onDragBarEnd 둘 다 있어야 활성화되며,
-     *  onDragBarEnd에는 손을 뗄 때까지 계속 갱신된 최종 도킹 방향이 전달된다. */
+    /** 버튼바를 길게 눌러 드래그로 옮기기 — 왼쪽 끝(세로 도킹이면 맨 위) 손잡이 아이콘에서만
+     *  반응한다(다른 버튼들과 터치 영역이 겹치지 않도록). onDragBar/onDragBarEnd 둘 다 null이면
+     *  손잡이가 나타나지 않는다. onDragBarEnd에는 손을 뗀 절대 위치를 기준으로 확정된 도킹 방향이
+     *  전달된다 — 그 판정에 [containerRootPos]/[containerWidthPx]/[containerHeightPx]가 쓰이므로,
+     *  버튼바가 떠 있는 화면 영역(보통 화면 전체를 채우는 바깥 BoxWithConstraints)의 루트 좌표와
+     *  크기(px)를 호출부가 그대로 넘겨야 한다. */
     onDragBar: ((Offset) -> Unit)? = null,
     onDragBarEnd: ((ToolbarDock) -> Unit)? = null,
+    containerRootPos: Offset = Offset.Zero,
+    containerWidthPx: Float = 0f,
+    containerHeightPx: Float = 0f,
     /** 버튼바가 지금 어느 가장자리에 붙어있는지 — 좌/우면 세로로 눕고(내부 배치·스크롤 방향 전환),
      *  팝업(브러시 패널·색상휠·즐겨찾기 편집)도 화면 밖으로 안 나가는 쪽으로 열린다. */
     dock: ToolbarDock = ToolbarDock.TOP,
@@ -365,40 +292,6 @@ fun BrushControls(
     val fillToolbarWidth = !collapsed && !vertical
     val sizeRangeForGrip = if (erasing) EraserSizeRange else brushSizeRange(brush)
     val density = LocalDensity.current
-    val dockSwitchMinDragPx = with(density) { DockSwitchMinDrag.toPx() }
-    val currentOnDragBar = rememberUpdatedState(onDragBar)
-    val currentOnDragBarEnd = rememberUpdatedState(onDragBarEnd)
-    val toolbarDraggable = onDragBar != null && onDragBarEnd != null
-    val surfaceDragModifier = if (toolbarDraggable) {
-        Modifier.pointerInput(dock, dockSwitchMinDragPx) {
-            var dragDelta = Offset.Zero
-            var dockCandidate: ToolbarDock? = null
-
-            detectSurfaceDragAfterLongPress(
-                onDragStart = {
-                    dragDelta = Offset.Zero
-                    dockCandidate = null
-                },
-                onDrag = { change, dragAmount ->
-                    dragDelta += dragAmount
-                    dockCandidate = updatedDockCandidate(dock, dockCandidate, dragDelta, dockSwitchMinDragPx)
-                    currentOnDragBar.value?.invoke(dragAmount)
-                },
-                onDragEnd = {
-                    currentOnDragBarEnd.value?.invoke(dockCandidate ?: dock)
-                    dragDelta = Offset.Zero
-                    dockCandidate = null
-                },
-                onDragCancel = {
-                    currentOnDragBarEnd.value?.invoke(dock)
-                    dragDelta = Offset.Zero
-                    dockCandidate = null
-                },
-            )
-        }
-    } else {
-        Modifier
-    }
     // 그립 레인(굵기/불투명도 각각 절반씩)을 버튼바 Surface의 실제 렌더링 크기에 맞추기 위해
     // onGloballyPositioned로 실측 — 최소화·세로 도킹처럼 Surface가 내용물 크기로 줄어드는
     // 경우엔 이 실측값 없이는 레인 폭을 알 수 없다(고정폭 fillMaxWidth를 못 쓰는 경우).
@@ -435,24 +328,19 @@ fun BrushControls(
             shadowElevation = 8.dp, tonalElevation = 2.dp,
             modifier = (if (fillToolbarWidth) Modifier.fillMaxWidth() else Modifier)
                 .padding(toolbarPadding)
-                .then(surfaceDragModifier)
                 .onGloballyPositioned { toolbarSizePx = it.size },
         ) {
         if (collapsed) {
             val collapsedContent: @Composable () -> Unit = {
-                // 현재 브러시(또는 지우개) 아이콘 — 탭하면 4개(+지우개) 미니 팝업. 버튼바 이동이
-                // 비활성인 호출부에서만 지우개 롱프레스로 경계 블러 패널을 연다. 스케치 화면에서는
-                // Surface 전체의 롱프레스를 버튼바 이동에 일관되게 사용한다.
+                if (onDragBar != null && onDragBarEnd != null) DragHandle(dock, containerRootPos, containerWidthPx, containerHeightPx, onDragBar, onDragBarEnd)
+                // 현재 브러시(또는 지우개) 아이콘 — 탭하면 4개(+지우개) 미니 팝업. 지우개일 때만
+                // 길게 눌러 경계 블러 패널(굵기/불투명도는 항상 보이는 상단 바에서 이미 조절 가능).
                 Box {
                     Box(
-                        Modifier.size(ButtonTapSize).bounceClick(
-                            onLongClick = if (toolbarDraggable) null else {
-                                { if (erasing) collapsedSizePanelOpen = true }
-                            },
-                        ) { miniBrushPickerOpen = true },
+                        Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                         contentAlignment = Alignment.Center,
                     ) {
-                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 버튼바를 길게 눌러 이동",
+                        Image(painterResource(currentToolIcon(brush, erasing)), "현재 브러시 — 탭해서 변경, 지우개 선택 시 길게 눌러 경계 블러(스무딩 테스트는 강도) 조절",
                             colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                     }
                     if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
@@ -536,19 +424,14 @@ fun BrushControls(
                     IconBtn(Icons.Filled.ExpandLess, "붓 종류 접기", onClick = { brushCategoryExpanded = false })
                 } else {
                     // 접힌 상태에서도 툴바 전체 최소화 모드와 같은 조작: 탭하면 붓 종류 미니 팝업,
-                    // 버튼바 이동이 비활성인 호출부에서만 지우개 롱프레스로 경계 블러 패널을 연다.
-                    // 스케치 화면의 롱프레스는 Surface 이동에 사용하며, 줄 자체를 다시 펼치려면 옆의
-                    // 화살표 버튼을 누른다.
+                    // 길게 누르면 지금 붓의 굵기/투명도 패널(2026-08-26). 줄 자체를 다시 펼치려면
+                    // 옆의 화살표 버튼.
                     Box {
                         Box(
-                            Modifier.size(ButtonTapSize).bounceClick(
-                                onLongClick = if (toolbarDraggable) null else {
-                                    { if (erasing) collapsedSizePanelOpen = true }
-                                },
-                            ) { miniBrushPickerOpen = true },
+                            Modifier.size(ButtonTapSize).bounceClick(onLongClick = { if (erasing) collapsedSizePanelOpen = true }) { miniBrushPickerOpen = true },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 버튼바를 길게 눌러 이동",
+                            Image(painterResource(currentToolIcon(brush, erasing)), "현재 붓 — 탭해서 종류 고르기, 지우개 선택 시 길게 눌러 경계 블러(스무딩 테스트는 강도) 조절",
                                 colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
                         }
                         if (miniBrushPickerOpen) Popup(popupAnchor, { miniBrushPickerOpen = false }, PopupProperties(focusable = true)) {
@@ -641,14 +524,19 @@ fun BrushControls(
             onToggleCollapsed?.let { toggle -> add { IconBtn(Icons.Filled.ExpandLess, "버튼바 최소화", onClick = toggle) } }
         }
 
-        // 별도 손잡이는 없다. 위 Surface 전체에 롱프레스 드래그를 붙였으므로 버튼 사이의 빈 공간뿐
-        // 아니라 버튼 위에서 시작해도 버튼서피스 전체가 함께 움직인다(짧은 탭은 기존 버튼 동작 유지).
+        // 손잡이(DragHandle)는 나머지 버튼들과 달리 스크롤 영역 밖에 고정 배치한다 — 스크롤 가능한
+        // Row/Column 안에 있으면 손잡이의 롱프레스+드래그 제스처가 부모의 horizontalScroll/
+        // verticalScroll과 같은 터치를 두고 경쟁하게 된다(2026-08-29).
         if (vertical) {
             Column(
                 Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
             ) {
+                if (onDragBar != null && onDragBarEnd != null) {
+                    DragHandle(dock, containerRootPos, containerWidthPx, containerHeightPx, onDragBar, onDragBarEnd)
+                    ToolbarDivider(vertical)
+                }
                 Column(
                     Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -666,6 +554,10 @@ fun BrushControls(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
             ) {
+                if (onDragBar != null && onDragBarEnd != null) {
+                    DragHandle(dock, containerRootPos, containerWidthPx, containerHeightPx, onDragBar, onDragBarEnd)
+                    ToolbarDivider(vertical)
+                }
                 Row(
                     Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
@@ -809,6 +701,87 @@ fun ScreenControls(
             }
         }
     }
+}
+
+// 손잡이 터치 영역 — 실기기에서 정확히 맞히기 쉽도록 표준 최소 터치 타깃(48dp)보다도 여유 있게
+// 잡는다(2026-08-29, 이전의 32x48dp는 작아서 놓치기 쉬웠을 수 있다는 의심).
+private val DragHandleSize = androidx.compose.ui.unit.DpSize(48.dp, 64.dp)
+
+/** 버튼바 길게 눌러 드래그로 옮길 때 잡는 손잡이 — 다른 버튼들과 터치 영역이 겹치지 않도록 전용
+ *  자리 하나에만 반응한다. 짧게 눌러도 아무 동작 없음(탭 기능은 없고 드래그 전용).
+ *
+ *  Compose 표준 [detectDragGesturesAfterLongPress]를 그대로 쓴다 — 롱프레스+드래그를 손으로 다시
+ *  구현하면(Initial pass 가로채기 등) 버튼 클릭·스크롤 같은 다른 제스처와의 상호작용을 하나하나
+ *  다시 검증해야 해서 버그가 숨기 쉽다. 대신 손잡이를 스크롤 영역 밖에 고정하고(호출부) 터치
+ *  영역을 넉넉히 키워, 표준 감지기가 실제로 문제없이 동작할 조건을 만드는 쪽을 택했다.
+ *
+ *  [onGloballyPositioned]로 손잡이 자신의 화면(루트) 절대 좌표를 실측해뒀다가, 드래그가 시작되는
+ *  순간의 손가락 절대 위치([handleRootPos] + 롱프레스가 시작된 손잡이 안 로컬 오프셋)를 기준점으로
+ *  잡는다. 이후 누적된 [dragDelta]를 더하면 "지금 손가락이 화면 어디에 있는지"를 항상 정확히 알 수
+ *  있다 — 컨테이너 중앙이나 손잡이의 관성적인 시작 위치를 가정하지 않는다. */
+@Composable
+private fun DragHandle(
+    dock: ToolbarDock,
+    containerRootPos: Offset,
+    containerWidthPx: Float,
+    containerHeightPx: Float,
+    onDrag: (Offset) -> Unit,
+    onDragEnd: (ToolbarDock) -> Unit,
+) {
+    // pointerInput(Unit)은 이 손잡이가 조립되는 동안 딱 한 번만 시작되고 다시 안 켜진다 — 그 안에서
+    // 그냥 콜백/컨테이너 정보를 직접 참조하면 그 첫 프레임 이후 바뀐 최신 값을 못 본다 —
+    // rememberUpdatedState로 항상 최신 값을 참조하게 한다.
+    val currentOnDrag = rememberUpdatedState(onDrag)
+    val currentOnDragEnd = rememberUpdatedState(onDragEnd)
+    val currentDock = rememberUpdatedState(dock)
+    val currentContainerRootPos = rememberUpdatedState(containerRootPos)
+    val currentContainerWidthPx = rememberUpdatedState(containerWidthPx)
+    val currentContainerHeightPx = rememberUpdatedState(containerHeightPx)
+    val minDragPx = with(LocalDensity.current) { DockSwitchMinDrag.toPx() }
+    var handleRootPos by remember { mutableStateOf(Offset.Zero) }
+    Box(
+        Modifier.size(DragHandleSize.width, DragHandleSize.height)
+            .onGloballyPositioned { handleRootPos = it.positionInRoot() }
+            .pointerInput(Unit) {
+                var fingerStartRootPos = Offset.Zero
+                var dragDelta = Offset.Zero
+                // detectDragGesturesAfterLongPress가 onDragEnd 직후 곧바로 onDragCancel을 한 번 더
+                // 보내는 경우가 실측으로 확인됐다(2026-08-29) — 이 두 번째 호출이 onDragEnd가 이미
+                // 반영한 새 dock을 다시 읽어 덮어써버리면, 그 시점에 아직 recomposition이 끝나지
+                // 않아 currentDock.value가 "예전" 값을 가리키고 있어서 방금 막 확정한 도킹이 조용히
+                // 원래대로 되돌아가 버린다(실기기 재현 리포트가 계속 남아있던 이유). 한 제스처당
+                // 콜백은 정확히 한 번만 반영되도록 막는다.
+                var settled = false
+                fun settle(target: ToolbarDock) {
+                    if (settled) return
+                    settled = true
+                    currentOnDragEnd.value(target)
+                    dragDelta = Offset.Zero
+                }
+                fun resolve(): ToolbarDock {
+                    val cw = currentContainerWidthPx.value
+                    val ch = currentContainerHeightPx.value
+                    if (dragDelta.getDistance() < minDragPx || cw <= 0f || ch <= 0f) return currentDock.value
+                    val posInContainer = fingerStartRootPos + dragDelta - currentContainerRootPos.value
+                    return nearestDock(posInContainer, cw, ch)
+                }
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { localOffset ->
+                        fingerStartRootPos = handleRootPos + localOffset
+                        dragDelta = Offset.Zero
+                        settled = false
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        dragDelta += dragAmount
+                        currentOnDrag.value(dragAmount)
+                    },
+                    onDragEnd = { settle(resolve()) },
+                    onDragCancel = { settle(currentDock.value) },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) { Icon(Icons.Filled.DragIndicator, "버튼바 이동(길게 눌러 드래그)", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
 }
 
 private fun currentToolIcon(brush: BrushType, erasing: Boolean): Int = when {

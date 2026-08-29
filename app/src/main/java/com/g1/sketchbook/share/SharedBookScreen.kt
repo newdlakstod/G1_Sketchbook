@@ -71,6 +71,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -162,6 +164,9 @@ fun SharedBookScreen(
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.TOP) }
     var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    // 버튼바 도킹 판정에 쓰는, 버튼바가 떠 있는 BoxWithConstraints(캔버스 영역)의 화면(루트) 좌표 —
+    // DragHandle이 손을 뗀 절대 위치를 이 컨테이너 기준 상대 좌표로 바꾸는 데 필요하다.
+    var toolbarContainerRootPos by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     var others by remember { mutableStateOf<List<ShareRepository.Slot>>(emptyList()) }
@@ -274,7 +279,9 @@ fun SharedBookScreen(
     ) {
         // 가용 영역 전부를 스케치북으로 — 바깥 여백 없음, 칸 사이 구분도 간격이 아니라 PaneFrame
         // 자체 테두리 선 하나로만(2026-08-20).
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().onGloballyPositioned { toolbarContainerRootPos = it.positionInRoot() }) {
+            val toolbarContainerWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+            val toolbarContainerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
             val landscape = maxWidth > maxHeight
             val mine = remember {
                 movableContentOf<Modifier> { m ->
@@ -432,6 +439,9 @@ fun SharedBookScreen(
                     toolbarDock = targetDock
                     toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
                 },
+                containerRootPos = toolbarContainerRootPos,
+                containerWidthPx = toolbarContainerWidthPx,
+                containerHeightPx = toolbarContainerHeightPx,
                 dock = toolbarDock,
                 modifier = barModifier(toolbarDock, toolbarCollapsed, toolbarDragPx),
             )

@@ -90,6 +90,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -221,6 +222,9 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.TOP) }
     var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    // 버튼바 도킹 판정에 쓰는, 버튼바가 떠 있는 바깥 컨테이너(BoxWithConstraints)의 화면(루트)
+    // 좌표 — DragHandle이 손을 뗀 절대 위치를 이 컨테이너 기준 상대 좌표로 바꾸는 데 필요하다.
+    var toolbarContainerRootPos by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
     // 나가기 전엔 디바운스 중이던 합성 저장을 기다리지 않고 바로 한 번 반영 — 마지막 몇 붓질이
     // 최대 800ms 늦게 반영되는 것조차 남지 않도록.
@@ -232,8 +236,11 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             .let { if (fullscreen) it else it.systemBarsPadding() }
             // 버튼바를 좌/우 가장자리로 끌어 도킹하려는 드래그가 시스템 뒤로가기 스와이프에 터치를
             // 뺏길 수 있었다(2026-08-29).
-            .excludeSystemGestureEdges(),
+            .excludeSystemGestureEdges()
+            .onGloballyPositioned { toolbarContainerRootPos = it.positionInRoot() },
     ) {
+        val toolbarContainerWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+        val toolbarContainerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
         Box(Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding), contentAlignment = Alignment.Center) {
             BoxWithConstraints {
                 val ratio = cw.toFloat() / ch
@@ -341,6 +348,9 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                 toolbarDock = targetDock
                 toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
             },
+            containerRootPos = toolbarContainerRootPos,
+            containerWidthPx = toolbarContainerWidthPx,
+            containerHeightPx = toolbarContainerHeightPx,
             dock = toolbarDock,
             modifier = barModifier(toolbarDock, toolbarCollapsed, toolbarDragPx),
         )

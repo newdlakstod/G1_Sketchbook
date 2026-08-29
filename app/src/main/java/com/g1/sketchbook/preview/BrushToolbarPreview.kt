@@ -17,6 +17,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -32,9 +35,9 @@ import kotlin.math.roundToInt
 // 실제 그리기 화면(SketchbookCanvasScreen 등)엔 @Preview가 없어서, 버튼바 좌/우 도킹처럼 드래그로
 // 확인해야 하는 동작은 지금까지 Interactive Preview로 아예 테스트할 방법이 없었다(2026-08-29,
 // "프리뷰로 동작해봐도 안 붙어" — 사실 프리뷰 자체가 없었던 것). SketchbookCanvasScreen과 완전히
-// 같은 배선(barModifier, onDragBar/onDragBarEnd, 최초 드래그 방향 잠금)을 그대로 옮겨와서,
-// BrushView(실제 캔버스)나 SketchbookRepository 없이도 손잡이 드래그 → 도킹 로직만 독립적으로 켜볼 수
-// 있게 했다. 드래그 중 실시간으로 순 이동량·최종 도킹 결과를 화면에 그대로 찍어준다.
+// 같은 배선(barModifier, onDragBar/onDragBarEnd, containerRootPos/Width/HeightPx)을 그대로
+// 옮겨와서, BrushView(실제 캔버스)나 SketchbookRepository 없이도 손잡이 드래그 → 도킹 로직만
+// 독립적으로 켜볼 수 있게 했다. 드래그 중 실시간으로 순 이동량·최종 도킹 결과를 화면에 그대로 찍어준다.
 @Preview(name = "20 Brush toolbar drag-to-dock", showBackground = true, widthDp = 800, heightDp = 500)
 @Composable
 private fun BrushToolbarDockPreview() {
@@ -47,9 +50,15 @@ private fun BrushToolbarDockPreview() {
         var toolbarCollapsed by remember { mutableStateOf(false) }
         var toolbarDock by remember { mutableStateOf(ToolbarDock.TOP) }
         var toolbarDragPx by remember { mutableStateOf(Offset.Zero) }
+        var toolbarContainerRootPos by remember { mutableStateOf(Offset.Zero) }
         var lastResult by remember { mutableStateOf("아직 드래그 안 함") }
 
-        BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        BoxWithConstraints(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+                .onGloballyPositioned { toolbarContainerRootPos = it.positionInRoot() },
+        ) {
+            val toolbarContainerWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+            val toolbarContainerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
             fun barModifier(dock: ToolbarDock, collapsed: Boolean, dragPx: Offset) = Modifier
                 .align(if (dock == ToolbarDock.RIGHT && !collapsed) Alignment.TopEnd else dock.alignment())
                 .let {
@@ -74,6 +83,9 @@ private fun BrushToolbarDockPreview() {
                     toolbarDock = after
                     toolbarDragPx = Offset.Zero
                 },
+                containerRootPos = toolbarContainerRootPos,
+                containerWidthPx = toolbarContainerWidthPx,
+                containerHeightPx = toolbarContainerHeightPx,
                 dock = toolbarDock,
                 modifier = barModifier(toolbarDock, toolbarCollapsed, toolbarDragPx),
             )

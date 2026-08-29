@@ -108,6 +108,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -1079,6 +1081,9 @@ fun SketchbookCanvasScreen(
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.TOP) }
     var toolbarDragPx by remember { mutableStateOf(Offset.Zero) }
+    // 버튼바 도킹 판정에 쓰는, 버튼바가 떠 있는 바깥 컨테이너(BoxWithConstraints)의 화면(루트)
+    // 좌표 — DragHandle이 손을 뗀 절대 위치를 이 컨테이너 기준 상대 좌표로 바꾸는 데 필요하다.
+    var toolbarContainerRootPos by remember { mutableStateOf(Offset.Zero) }
     val cw = book.size.pxW(); val ch = book.size.pxH()
 
     // Save the current page SYNCHRONOUSLY (strokes only, no paper) before any page load, so a page
@@ -1102,8 +1107,11 @@ fun SketchbookCanvasScreen(
             // 버튼바를 좌/우 가장자리로 끌어 도킹하려는 드래그, 캔버스 가장자리까지 붙여 그리는
             // 드로잉 모두 시스템 뒤로가기 스와이프에 터치를 뺏길 수 있었다(2026-08-29, "버튼바가
             // 좌우에 안 붙는다"는 문제의 원인 중 하나로 확인).
-            .excludeSystemGestureEdges(),
+            .excludeSystemGestureEdges()
+            .onGloballyPositioned { toolbarContainerRootPos = it.positionInRoot() },
     ) {
+        val toolbarContainerWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+        val toolbarContainerHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
         Box(Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding)) {
             // BrushView fills the whole area and fits/auto-rotates the fixed-size page inside it.
             AndroidView(
@@ -1196,6 +1204,9 @@ fun SketchbookCanvasScreen(
                 toolbarDock = targetDock
                 toolbarDragPx = Offset.Zero
             },
+            containerRootPos = toolbarContainerRootPos,
+            containerWidthPx = toolbarContainerWidthPx,
+            containerHeightPx = toolbarContainerHeightPx,
             dock = toolbarDock,
             modifier = barModifier(toolbarDock, toolbarCollapsed, toolbarDragPx),
         )

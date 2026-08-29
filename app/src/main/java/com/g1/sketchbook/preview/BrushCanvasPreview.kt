@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -92,6 +94,7 @@ private fun BrushCanvasPreview() {
     var collapsed by remember { mutableStateOf(false) }
     var dock by remember { mutableStateOf(ToolbarDock.TOP) }
     var dragPx by remember { mutableStateOf(Offset.Zero) }
+    var toolbarContainerRootPos by remember { mutableStateOf(Offset.Zero) }
     var pagesOpen by remember { mutableStateOf(false) }
     var currentPage by remember { mutableIntStateOf(0) }
     var readModeOpen by remember { mutableStateOf(false) }
@@ -100,7 +103,12 @@ private fun BrushCanvasPreview() {
         // 실제 화면과 같은 구조: 캔버스가 전체를 채우고, 버튼바는 그 위에 떠 있는 오버레이
         // (기존엔 Column으로 버튼바를 캔버스 아래 고정시켰는데, 그러면 dock/드래그 손잡이를
         // 미리보기에서 확인할 수 없어서 실제와 동일한 BoxWithConstraints 오버레이 구조로 바꿈).
-        BoxWithConstraints(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
+        BoxWithConstraints(
+            Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+                .onGloballyPositioned { toolbarContainerRootPos = it.positionInRoot() },
+        ) {
+            val toolbarContainerWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() }
+            val toolbarContainerHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxHeight.toPx() }
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
@@ -173,6 +181,9 @@ private fun BrushCanvasPreview() {
                     dock = targetDock
                     dragPx = Offset.Zero
                 },
+                containerRootPos = toolbarContainerRootPos,
+                containerWidthPx = toolbarContainerWidthPx,
+                containerHeightPx = toolbarContainerHeightPx,
                 dock = dock,
                 modifier = barModifier(dock, collapsed, dragPx),
             )

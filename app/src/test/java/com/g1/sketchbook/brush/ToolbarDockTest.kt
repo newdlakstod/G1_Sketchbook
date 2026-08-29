@@ -5,78 +5,52 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ToolbarDockTest {
-    // nearestDock은 "터치를 시작한 지점이 컨테이너 안 어디에 있는지"(절대 위치 vs 네 가장자리 거리)가 아니라
-    // "드래그 시작부터 지금까지 순 이동량이 어느 축으로, 어느 방향으로 더 컸는지"만 본다(2026-08-29,
-    // 두 번째 재작성). 절대 위치 기반으로 두 차례(2026-08-29) 고쳐봤지만 실기기에서 "세로모드에서
-    // 가로모드로 고정이 안된다"가 계속 재현됐다 — 펼친 세로(LEFT/RIGHT) 버튼바는 항목이 20개 가까이
-    // 되어 verticalScroll이 필요할 만큼 길고, Surface 자신이 컨테이너 높이 전체로 늘어나면서 맨 위
-    // 첫 항목이 항상 "화면 위쪽 가장자리 근처"에도 동시에 있게 돼, "지금 위치가 어느 가장자리에
-    // 가까운가"라는 기준 자체가 터치의 우연한 시작 위치에 계속 휘둘렸다. 방향 기반이면 터치가
-    // 어디서 시작했는지와 완전히 무관해진다.
-    private val minDragPx = 32f
+    // nearestDock은 "손을 뗀 절대 위치가 네 가장자리 중 어디에 가장 가까운가"만 본다(2026-08-29,
+    // 세 번째 재작성). 이전엔 "순 드래그 방향(어느 축으로 더 많이 움직였는가)"만 봤는데, 그건 시작
+    // 위치와 무관해 보이지만 실은 아니었다 — TOP 도킹(화면 위쪽에서 시작)에서 LEFT 가장자리의
+    // 자연스러운 정착 지점(세로 중앙 부근)으로 끌면, 그 경로 자체가 기하학적으로 가로보다 세로로
+    // 훨씬 더 많이 움직이게 되어 "아래로 더 크게 움직였다"고 오판해 BOTTOM으로 도킹해버렸다 — 실기기
+    // 재현 리포트("가로모드에서 좌측 안 됨")의 진짜 원인이었다. 손을 뗀 최종 절대 위치로만 판정하면
+    // 이 문제가 아예 생기지 않는다.
+    private val w = 1200f
+    private val h = 1200f
 
     @Test
-    fun negligibleMovementKeepsTheCurrentDock() {
-        assertEquals(ToolbarDock.TOP, nearestDock(ToolbarDock.TOP, Offset(2f, 3f), minDragPx))
-        assertEquals(ToolbarDock.RIGHT, nearestDock(ToolbarDock.RIGHT, Offset.Zero, minDragPx))
+    fun positionNearEachEdgeDocksThere() {
+        assertEquals(ToolbarDock.LEFT, nearestDock(Offset(50f, 600f), w, h))
+        assertEquals(ToolbarDock.RIGHT, nearestDock(Offset(1150f, 600f), w, h))
+        assertEquals(ToolbarDock.TOP, nearestDock(Offset(600f, 50f), w, h))
+        assertEquals(ToolbarDock.BOTTOM, nearestDock(Offset(600f, 1150f), w, h))
+    }
+
+    // 가로로 넓은 태블릿(halfW가 halfH보다 훨씬 큼)에서는 픽셀 거리를 그대로 비교하면 세로(위/아래)
+    // 쪽 "절반 길이" 자체가 짧아서 좌우가 불리해진다 — 각 축을 "절반 길이" 대비 비율로 정규화해서
+    // 화면 비율과 무관하게 네 방향이 공평하게 겨루도록 한다.
+    @Test
+    fun wideContainerNormalizesByAxisNotRawPixels() {
+        val wideW = 2000f; val wideH = 1200f
+        // 중앙보다 왼쪽으로 살짝만 치우친 지점 — 픽셀 거리로는 위/아래 가장자리가 더 가깝지만
+        // (세로 절반 길이가 짧으므로), 정규화하면 좌우가 아직 멀다는 걸 반영해 TOP이 나와야 한다.
+        assertEquals(ToolbarDock.TOP, nearestDock(Offset(900f, 100f), wideW, wideH))
+        assertEquals(ToolbarDock.LEFT, nearestDock(Offset(50f, 600f), wideW, wideH))
+    }
+
+    // 예전 "드래그 방향" 판정이 정확히 오판했던 시나리오 — TOP 도킹 손잡이(화면 위쪽, 왼쪽에 가까운
+    // 위치)에서 LEFT 가장자리의 세로 중앙 부근으로 끌어 내린다. 시작점 대비 순 이동량은 세로가 훨씬
+    // 크지만(위→중앙까지 내려가야 하니까), 최종적으로 손을 뗀 자리는 명백히 왼쪽 가장자리에 가깝다.
+    @Test
+    fun dropNearLeftEdgeDocksLeftEvenWhenTheJourneyWasMostlyVertical() {
+        // 컨테이너 1200x1200, TOP 손잡이가 (90, 90) 부근에서 시작해 (60, 600)(왼쪽 가장자리, 세로
+        // 중앙)까지 이동했다고 가정 — 순 이동량은 (-30, 510), 세로가 17배 더 크다.
+        assertEquals(ToolbarDock.LEFT, nearestDock(Offset(60f, 600f), w, h))
     }
 
     @Test
-    fun draggingPastTheThresholdDocksInThatDirection() {
-        assertEquals(ToolbarDock.LEFT, nearestDock(ToolbarDock.TOP, Offset(-200f, 5f), minDragPx))
-        assertEquals(ToolbarDock.RIGHT, nearestDock(ToolbarDock.TOP, Offset(200f, -5f), minDragPx))
-        assertEquals(ToolbarDock.TOP, nearestDock(ToolbarDock.LEFT, Offset(5f, -200f), minDragPx))
-        assertEquals(ToolbarDock.BOTTOM, nearestDock(ToolbarDock.LEFT, Offset(-5f, 200f), minDragPx))
-    }
-
-    // 세로(LEFT/RIGHT) 도킹에서 가로(TOP/BOTTOM)로, 그리고 그 반대로도 건너갈 수 있어야 한다 —
-    // 정확히 사용자가 재현한 "세로모드에서 가로모드로 고정이 안된다" 패턴.
-    @Test
-    fun crossesFromVerticalDockToHorizontalDockAndBack() {
-        assertEquals(ToolbarDock.TOP, nearestDock(ToolbarDock.LEFT, Offset(10f, -150f), minDragPx))
-        assertEquals(ToolbarDock.BOTTOM, nearestDock(ToolbarDock.LEFT, Offset(-10f, 150f), minDragPx))
-        assertEquals(ToolbarDock.TOP, nearestDock(ToolbarDock.RIGHT, Offset(-10f, -150f), minDragPx))
-        assertEquals(ToolbarDock.BOTTOM, nearestDock(ToolbarDock.RIGHT, Offset(10f, 150f), minDragPx))
-        assertEquals(ToolbarDock.LEFT, nearestDock(ToolbarDock.TOP, Offset(-150f, 10f), minDragPx))
-        assertEquals(ToolbarDock.RIGHT, nearestDock(ToolbarDock.BOTTOM, Offset(150f, -10f), minDragPx))
-    }
-
-    // Surface 어디서 터치를 시작했든(컨테이너 크기와도 무관) 같은 순 이동량이면 항상 같은 방향으로
-    // 도킹돼야 한다 — 절대 위치를 아예 안 쓰므로 시작 위치 편향이 원천적으로 없다.
-    @Test
-    fun resultIsIndependentOfContainerSizeAndStartingDock() {
-        assertEquals(ToolbarDock.TOP, nearestDock(ToolbarDock.LEFT, Offset(0f, -100f), minDragPx))
-        assertEquals(ToolbarDock.TOP, nearestDock(ToolbarDock.RIGHT, Offset(0f, -100f), minDragPx))
-        assertEquals(ToolbarDock.TOP, nearestDock(ToolbarDock.BOTTOM, Offset(0f, -100f), minDragPx))
-    }
-
-    @Test
-    fun diagonalDragPicksTheDominantAxis() {
-        // |dx| > |dy| → 수평
-        assertEquals(ToolbarDock.RIGHT, nearestDock(ToolbarDock.TOP, Offset(100f, 40f), minDragPx))
-        // |dy| > |dx| → 수직
-        assertEquals(ToolbarDock.BOTTOM, nearestDock(ToolbarDock.TOP, Offset(40f, 100f), minDragPx))
-    }
-
-    @Test
-    fun laterDominantRightDragOverridesInitialVerticalMotion() {
-        var dockCandidate: ToolbarDock? = null
-
-        dockCandidate = updatedDockCandidate(
-            startDock = ToolbarDock.TOP,
-            currentCandidate = dockCandidate,
-            // 롱프레스 직후의 작은 상하 움직임이 먼저 임계값을 넘은 상황.
-            dragDelta = Offset(4f, 40f),
-            minDragPx = minDragPx,
-        )
-        dockCandidate = updatedDockCandidate(
-            startDock = ToolbarDock.TOP,
-            currentCandidate = dockCandidate,
-            // 이후 사용자가 분명하게 오른쪽으로 끌면 최종 의도는 RIGHT여야 한다.
-            dragDelta = Offset(180f, 40f),
-            minDragPx = minDragPx,
-        )
-
-        assertEquals(ToolbarDock.RIGHT, dockCandidate)
+    fun centerIsClosestToWhicheverEdgeIsFirstInIterationOrderOnAnExactTie() {
+        // 정확히 정중앙은 네 가장자리 모두 거리 비율이 1.0으로 동률이다 — 실질적으로 절대 일어나지
+        // 않는 입력(항상 어느 한쪽이 근소하게 더 가깝다)이라 특정 결과를 강제할 필요는 없지만,
+        // 함수가 예외 없이 항상 하나를 돌려준다는 것만 확인한다.
+        val result = nearestDock(Offset(w / 2f, h / 2f), w, h)
+        assert(result in ToolbarDock.entries)
     }
 }
