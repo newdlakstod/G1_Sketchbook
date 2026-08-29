@@ -141,12 +141,19 @@ fun nearestDock(current: ToolbarDock, posInContainer: Offset, containerWidthPx: 
         ToolbarDock.TOP to (y / halfH), ToolbarDock.BOTTOM to ((containerHeightPx - y) / halfH),
     )
     val nearest = distances.minByOrNull { it.value } ?: return current
-    // 정규화하면 드래그가 거의 없을 때 네 방향 비율이 죄다 1.0 근처로 동률에 가까워지는데, 그 상태로
-    // minByOrNull을 쓰면 맵 순서(LEFT가 먼저) 때문에 아주 작은 흔들림에도 매번 LEFT로 튀어버린다 —
-    // 다른 방향이 지금 도킹된 곳보다 뚜렷하게(2%p 이상) 가까울 때만 옮기고, 그 정도가 아니면 제자리를
-    // 지킨다.
+    // 동률(예: 컨테이너 정중앙)일 때 맵 순서(LEFT가 먼저) 때문에 흔들리지 않도록, "엄격히 더 가까울
+    // 때만" 옮기고 그 외엔 제자리를 지킨다 — strict "<" 자체로 이미 충분하다.
+    //
+    // 예전엔 여기에 고정 2%p 마진(`- 0.02f`)을 더 뒀었는데, 그건 LEFT/RIGHT처럼 손잡이가 이미 자기
+    // 도킹된 가장자리에 바짝 붙어 있는 상태(예: 세로 버튼바의 손잡이는 왼쪽/오른쪽 가장자리에서 불과
+    // 수십 px)에서 현재 도킹의 거리 비율 자체가 이미 매우 작다는 걸 놓치고 있었다 — 그 작은 값에서
+    // 다시 2%p를 더 빼면, TOP/BOTTOM으로 건너가려면 손잡이를 화면 반대쪽 모서리 몇 px 안으로 넣어야
+    // 할 만큼 문턱이 비현실적으로 높아졌다("세로모드에서 가로모드로 못 붙는다" 재현 리포트,
+    // 2026-08-29). 마진 없이 순수하게 "지금 이 위치가 실제로 어느 가장자리에 더 가까운가"만
+    // 비교하면, 동률 방지는 그대로 유지하면서 손잡이의 시작 위치와 무관하게 자연스러운 대각선
+    // 드래그만으로도 건너갈 수 있다.
     val currentDist = distances.getValue(current)
-    return if (nearest.value < currentDist - 0.02f) nearest.key else current
+    return if (nearest.value < currentDist) nearest.key else current
 }
 
 val BrushPalette = listOf(

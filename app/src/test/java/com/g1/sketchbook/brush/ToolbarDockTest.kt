@@ -27,6 +27,24 @@ class ToolbarDockTest {
         assertEquals(ToolbarDock.RIGHT, nearestDock(ToolbarDock.RIGHT, Offset(1002f, 601f), w, h))
     }
 
+    // LEFT/RIGHT 도킹은 손잡이가 자기 도킹된 가장자리에서 불과 수십 px 떨어진 곳에서 시작한다(세로
+    // 버튼바의 손잡이는 목록 맨 위 항목이라 위/아래로는 컨테이너 중앙 근처이지만, 좌/우로는 화면
+    // 가장자리에 바짝 붙어 있다). 예전 2%p 고정 마진은 이 "이미 매우 작은 현재 거리"에서 다시 2%p를
+    // 더 빼야 했기 때문에, TOP/BOTTOM으로 건너가려면 손잡이를 반대쪽 모서리 몇 px 안까지 몰아넣어야
+    // 할 만큼 문턱이 비현실적으로 높았다 — 실사용자가 왼쪽 중간에서 위쪽으로 자연스럽게(정확히 수직이
+    // 아니어도) 드래그하면 건너가야 정상이다(2026-08-29, "세로모드에서 가로모드로 고정이 안된다"
+    // 재현 리포트).
+    @Test
+    fun edgeHuggingHandleStillReachesThePerpendicularAxisOnANaturalDiagonalDrag() {
+        val w = 2000f; val h = 1200f
+        // LEFT 도킹, 손잡이가 왼쪽 가장자리에서 30px, 세로로는 컨테이너 중앙보다 위(펼친 버튼바 안
+        // 맨 위 항목)인 대략적인 실측 위치에서 시작.
+        val leftHandleRest = Offset(30f, 375f)
+        assertEquals(ToolbarDock.LEFT, nearestDock(ToolbarDock.LEFT, leftHandleRest, w, h))
+        // 위쪽으로 자연스럽게(완전한 수직이 아니라 약간 오른쪽으로 흘러도) 드래그하면 TOP으로 건너가야 한다.
+        assertEquals(ToolbarDock.TOP, nearestDock(ToolbarDock.LEFT, Offset(400f, 50f), w, h))
+    }
+
     @Test
     fun positionNearEachEdgeDocksThere() {
         val w = 1200f; val h = 1200f
