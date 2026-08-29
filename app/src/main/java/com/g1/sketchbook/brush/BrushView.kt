@@ -428,7 +428,12 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         if (!drawEnabled) return false
         // 지금 어떤 모드(브러시/올가미/채우기/스포이드)든 상관없이 버튼 눌림/뗌 변화만 먼저 감지 —
         // 아래 모드별 분기와 완전히 독립적이라 어느 도구를 쓰던 중이었어도 정확히 반영된다.
-        val stylusButtonNow = e.isButtonPressed(MotionEvent.BUTTON_STYLUS_PRIMARY)
+        // BUTTON_SECONDARY도 같이 본다 — S펜 사이드 버튼이 기기/OS 버전에 따라 표준
+        // BUTTON_STYLUS_PRIMARY가 아니라 마우스 우클릭과 같은 BUTTON_SECONDARY 비트로 들어오는
+        // 경우가 실사용에서 흔해서("S펜 버튼 지우개 작동 안 함" 리포트, 2026-08-30), 둘 중 하나만
+        // 켜져 있어도 눌린 것으로 인정한다.
+        val stylusButtonNow = e.isButtonPressed(MotionEvent.BUTTON_STYLUS_PRIMARY) ||
+            e.isButtonPressed(MotionEvent.BUTTON_SECONDARY)
         if (stylusButtonNow != stylusButtonDown) {
             stylusButtonDown = stylusButtonNow
             onStylusButtonChanged?.invoke(stylusButtonNow)
@@ -613,6 +618,14 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                         processMovePoint(e.getHistoricalX(i), e.getHistoricalY(i), e.getHistoricalEventTime(i))
                     }
                     processMovePoint(e.x, e.y, now)
+                    // PEN/WATER는 strokeMove 안에서 매번 composite()(전체 캔버스 clear + 비트맵 2장
+                    // drawBitmap)를 불렀었는데, 태블릿/S펜처럼 historySize가 큰 기기에서는 ACTION_MOVE
+                    // 한 번에 그 무거운 composite()가 historySize+1번 반복되어 워터브러시 렉의 주범이었다
+                    // (2026-08-30, "태블릿에서 수채화 브러쉬 렉이 너무 심함" 리포트로 확인). 스탬프는
+                    // strokeMove 안에서 그대로 다 찍되, 화면에 보여주는 composite()는 이 배치 전체가
+                    // 끝난 뒤 딱 한 번만 부른다 — 최종적으로 그려지는 픽셀은 동일하고, 중간 프레임을
+                    // 안 보여주는 것뿐이라 시각적 차이는 없다.
+                    if (strokeStarted && (brush == BrushType.PEN || brush == BrushType.WATER) && !erasing) composite()
                     invalidate()
                     if (longPressPending && hypot(e.x - downX, e.y - downY) > tapSlopPx) {
                         longPressPending = false; removeCallbacks(longPressRunnable)
@@ -874,8 +887,8 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 applyEraseStyle(eraseStroke)
                 content?.drawLine(x0, y0, x1, y1, eraseStroke)
             }
-            brush == BrushType.PEN -> { penSeg(x0, y0, x1, y1, speed); composite() }
-            brush == BrushType.WATER -> { seg(x0, y0, x1, y1, speed); composite() }
+            brush == BrushType.PEN -> penSeg(x0, y0, x1, y1, speed)
+            brush == BrushType.WATER -> seg(x0, y0, x1, y1, speed)
             else -> seg(x0, y0, x1, y1, speed)
         }
     }
