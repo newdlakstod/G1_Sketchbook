@@ -687,12 +687,26 @@ private fun CleanDetailBody(
                     style = TextStyle(shadow = Shadow(Color.White.copy(alpha = 0.5f), blurRadius = 8f)),
                     modifier = Modifier.align(Alignment.TopCenter).systemBarsPadding().padding(top = 18.dp),
                 )
-                IconButton(
-                    onClick = { showDownloadDialog = true },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp).size(40.dp)
-                        .clip(CircleShape).background(Color(0x66000000)),
+                Row(
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Icon(Icons.Filled.Save, "다운로드", tint = Color.White, modifier = Modifier.size(20.dp))
+                    // 오늘 날짜에만 — 이미 그린 오늘자 일기를 다시 열어 이어 그릴 수 있게 저장 버튼
+                    // 왼쪽에 그리기 버튼을 둔다(지난 날짜는 그림일기 특성상 수정 불가, 2026-08-29 재요청).
+                    if (date == today) {
+                        IconButton(
+                            onClick = { onOpenDiary(date) },
+                            modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0x66000000)),
+                        ) {
+                            Icon(Icons.Filled.Edit, "오늘 일기 다시 그리기", tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    IconButton(
+                        onClick = { showDownloadDialog = true },
+                        modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0x66000000)),
+                    ) {
+                        Icon(Icons.Filled.Save, "다운로드", tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
                 }
                 if (showDownloadDialog) {
                     DownloadOptionsDialog(

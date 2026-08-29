@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -374,10 +375,17 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
             // Side padding sized so the focused cover gets its full spec width, with whatever room is
             // left over used to peek the neighbours (never negative, even on narrow phones).
             val peek = ((maxWidth - Dimens.Home.carouselCenterW) / 2).coerceAtLeast(20.dp)
+            // 그림자가 위아래로 잘려 보인다는 재현 리포트(2026-08-29) — fillMaxSize()를 쓰면 이 Row가
+            // weight(1f) 영역의 남는 세로 공간을 전부 차지하는데, 그 안의 각 아이템은 fillMaxHeight()로
+            // Row 높이에 딱 맞춰지고, Row 자체 높이가 표지+그림자 슬랙이 필요로 하는 실제 콘텐츠 높이보다
+            // 작으면(화면·기기마다 weight(1f) 영역 크기가 다름) 아이템이 그 부족한 높이에 눌려 위아래가
+            // 잘렸다. wrapContentHeight로 Row 높이를 콘텐츠(표지+슬랙)가 실제 필요로 하는 만큼만 갖게
+            // 하고, TopCenter로 붙여서 표지를 위로 올린다 — 남는 공간은 전부 아래(타이틀 쪽)로 가고,
+            // Row 자신의 높이가 콘텐츠와 항상 일치하니 더 이상 눌려서 잘릴 일이 없다.
             LazyRow(
                 state = listState,
                 flingBehavior = snapFling,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth().wrapContentHeight().align(Alignment.TopCenter),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = peek),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
