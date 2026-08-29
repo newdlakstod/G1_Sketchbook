@@ -5,13 +5,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ToolbarDockTest {
-    // nearestDock은 "손잡이가 컨테이너 안 어디에 있는지"(절대 위치 vs 네 가장자리 거리)가 아니라
+    // nearestDock은 "터치를 시작한 지점이 컨테이너 안 어디에 있는지"(절대 위치 vs 네 가장자리 거리)가 아니라
     // "드래그 시작부터 지금까지 순 이동량이 어느 축으로, 어느 방향으로 더 컸는지"만 본다(2026-08-29,
     // 두 번째 재작성). 절대 위치 기반으로 두 차례(2026-08-29) 고쳐봤지만 실기기에서 "세로모드에서
     // 가로모드로 고정이 안된다"가 계속 재현됐다 — 펼친 세로(LEFT/RIGHT) 버튼바는 항목이 20개 가까이
     // 되어 verticalScroll이 필요할 만큼 길고, Surface 자신이 컨테이너 높이 전체로 늘어나면서 맨 위
-    // 항목인 손잡이가 항상 "화면 위쪽 가장자리 근처"에도 동시에 있게 돼, "지금 위치가 어느 가장자리에
-    // 가까운가"라는 기준 자체가 손잡이의 우연한 시작 위치에 계속 휘둘렸다. 방향 기반이면 손잡이가
+    // 첫 항목이 항상 "화면 위쪽 가장자리 근처"에도 동시에 있게 돼, "지금 위치가 어느 가장자리에
+    // 가까운가"라는 기준 자체가 터치의 우연한 시작 위치에 계속 휘둘렸다. 방향 기반이면 터치가
     // 어디서 시작했는지와 완전히 무관해진다.
     private val minDragPx = 32f
 
@@ -41,7 +41,7 @@ class ToolbarDockTest {
         assertEquals(ToolbarDock.RIGHT, nearestDock(ToolbarDock.BOTTOM, Offset(150f, -10f), minDragPx))
     }
 
-    // 손잡이가 화면 어디서 시작했든(컨테이너 크기와도 무관) 같은 순 이동량이면 항상 같은 방향으로
+    // Surface 어디서 터치를 시작했든(컨테이너 크기와도 무관) 같은 순 이동량이면 항상 같은 방향으로
     // 도킹돼야 한다 — 절대 위치를 아예 안 쓰므로 시작 위치 편향이 원천적으로 없다.
     @Test
     fun resultIsIndependentOfContainerSizeAndStartingDock() {
@@ -59,44 +59,24 @@ class ToolbarDockTest {
     }
 
     @Test
-    fun leftIntentStaysLockedAfterTheFingerHitsTheScreenEdge() {
-        var lockedDock: ToolbarDock? = null
+    fun laterDominantRightDragOverridesInitialVerticalMotion() {
+        var dockCandidate: ToolbarDock? = null
 
-        lockedDock = lockDockOnceThresholdIsCrossed(
+        dockCandidate = updatedDockCandidate(
             startDock = ToolbarDock.TOP,
-            lockedDock = lockedDock,
-            dragDelta = Offset(-40f, 4f),
+            currentCandidate = dockCandidate,
+            // 롱프레스 직후의 작은 상하 움직임이 먼저 임계값을 넘은 상황.
+            dragDelta = Offset(4f, 40f),
             minDragPx = minDragPx,
         )
-        lockedDock = lockDockOnceThresholdIsCrossed(
+        dockCandidate = updatedDockCandidate(
             startDock = ToolbarDock.TOP,
-            lockedDock = lockedDock,
-            // 왼쪽 이동은 화면 경계에서 멈췄지만 아래쪽 흔들림은 계속 누적된 실기기 재현값.
-            dragDelta = Offset(-40f, 180f),
+            currentCandidate = dockCandidate,
+            // 이후 사용자가 분명하게 오른쪽으로 끌면 최종 의도는 RIGHT여야 한다.
+            dragDelta = Offset(180f, 40f),
             minDragPx = minDragPx,
         )
 
-        assertEquals(ToolbarDock.LEFT, lockedDock)
-    }
-
-    @Test
-    fun topIntentStaysLockedAfterTheFingerHitsTheScreenEdge() {
-        var lockedDock: ToolbarDock? = null
-
-        lockedDock = lockDockOnceThresholdIsCrossed(
-            startDock = ToolbarDock.LEFT,
-            lockedDock = lockedDock,
-            dragDelta = Offset(3f, -40f),
-            minDragPx = minDragPx,
-        )
-        lockedDock = lockDockOnceThresholdIsCrossed(
-            startDock = ToolbarDock.LEFT,
-            lockedDock = lockedDock,
-            // 위쪽 이동은 화면 경계에서 멈춘 뒤 좌우 이동이 더 커져도 처음 의도를 유지해야 한다.
-            dragDelta = Offset(180f, -40f),
-            minDragPx = minDragPx,
-        )
-
-        assertEquals(ToolbarDock.TOP, lockedDock)
+        assertEquals(ToolbarDock.RIGHT, dockCandidate)
     }
 }
