@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -116,24 +117,25 @@ fun ToolbarDock.alignment(): Alignment = when (this) {
 
 /** 버튼바를 드래그로 놓은 위치에서 가장 가까운 화면 가장자리를 계산 — 펼친 상태든 최소화 상태든
  *  동일하게 적용해 자유 2D 드래그 + 재도킹이 되게 한다(2026-08-20, 예전엔 최소화 상태만 지금
- *  도킹된 가장자리의 축으로만 밀리는 특수 케이스였는데 통일함). [dragPx]는 [current] 기준 드래그
- *  누적량, [containerWidthPx]/[containerHeightPx]는 바가 떠 있는 영역(px) 크기. */
-fun nearestDock(current: ToolbarDock, dragPx: Offset, containerWidthPx: Float, containerHeightPx: Float): ToolbarDock {
-    // 항상 컨테이너 정중앙을 기준점으로 삼아 드래그량만 더한다 — 예전엔 "지금 도킹된 가장자리"를
-    // 기준점으로 삼아서(예: TOP면 y=0에서 시작) 그 축 거리가 항상 0에 가깝게 고정돼 있었다. 그래서
-    // 가로모드(TOP)에서 좌우로만 드래그해도 세로(TOP/BOTTOM) 거리가 계속 0으로 이겨버려 LEFT/RIGHT로
-    // 못 넘어가는 버그가 있었다(화면 폭의 절반 이상을 끌어야만 겨우 넘어감) — RIGHT로 한 번 옮겨서
-    // 세로 도킹이 된 뒤에는 반대로 LEFT까지는 쉽게 넘어갔던 것도 같은 비대칭 때문. 중앙을 기준으로
-    // 통일하면 어느 축으로 드래그하든 공평하게 반응한다.
+ *  도킹된 가장자리의 축으로만 밀리는 특수 케이스였는데 통일함).
+ *
+ *  [posInContainer]는 "화면 중앙 기준 누적 드래그량"이 아니라 **지금 손가락이 컨테이너 안 어디에
+ *  있는지(왼쪽/위 모서리를 (0,0)으로 하는 절대 좌표)** 다. 예전엔 "컨테이너 중앙 + 누적 델타"로
+ *  재구성했는데, 그 방식은 손잡이의 실제 화면상 시작 위치가 도킹 방향마다 다르다는 걸 놓치고
+ *  있었다 — TOP 도킹은 손잡이가 버튼바 맨 왼쪽(화면 왼쪽 가장자리 근처)에서 시작, LEFT/RIGHT
+ *  도킹은 세로 중앙 근처에서 시작한다. 손잡이가 이미 한쪽 가장자리 근처에 있으면 "그쪽으로 더"
+ *  끌 수 있는 화면 폭 자체가 얼마 없어서, 반대쪽(여유가 넉넉한 쪽)만 도킹되는 비대칭이
+ *  생겼었다(2026-08-29, 실기기 재현으로 확인). 손가락의 실제 절대 위치를 직접 추적하면 손잡이의
+ *  시작 위치와 무관하게 네 방향이 공평해진다. [containerWidthPx]/[containerHeightPx]는 바가 떠
+ *  있는 영역(px) 크기. */
+fun nearestDock(current: ToolbarDock, posInContainer: Offset, containerWidthPx: Float, containerHeightPx: Float): ToolbarDock {
     val halfW = containerWidthPx / 2f
     val halfH = containerHeightPx / 2f
-    val x = halfW + dragPx.x
-    val y = halfH + dragPx.y
-    // 위 중앙 기준 통일만으로는 여전히 부족했다 — 가로로 넓은 태블릿(halfW가 halfH보다 훨씬 큼)에서는
-    // 픽셀 거리를 그대로 비교하면 세로(위/아래) 쪽 "절반 길이" 자체가 짧아서, 좌우로 아무리 크게
-    // 끌어도 위/아래 거리가 계속 더 작게 이겨버려 좌우 도킹에 거의 도달할 수 없었다(2026-08-29,
-    // "좌우 도킹이 안 된다" 재확인 후 실제 원인으로 확인). 각 축의 "절반 길이" 대비 비율로 정규화해서
-    // 화면 비율과 무관하게 네 방향이 공평하게 겨루도록 고친다.
+    val x = posInContainer.x
+    val y = posInContainer.y
+    // 가로로 넓은 태블릿(halfW가 halfH보다 훨씬 큼)에서는 픽셀 거리를 그대로 비교하면 세로(위/아래)
+    // 쪽 "절반 길이" 자체가 짧아서 좌우가 불리해진다 — 각 축의 "절반 길이" 대비 비율로 정규화해서
+    // 화면 비율과 무관하게 네 방향이 공평하게 겨루도록 한다(2026-08-29).
     val distances = mapOf(
         ToolbarDock.LEFT to (x / halfW), ToolbarDock.RIGHT to ((containerWidthPx - x) / halfW),
         ToolbarDock.TOP to (y / halfH), ToolbarDock.BOTTOM to ((containerHeightPx - y) / halfH),
@@ -227,9 +229,12 @@ fun BrushControls(
     collapsed: Boolean = false,
     onToggleCollapsed: (() -> Unit)? = null,
     /** 버튼바를 길게 눌러 드래그로 옮기기 — 왼쪽 끝 손잡이 아이콘에서만 반응한다(다른 버튼들과
-     *  터치 영역이 겹치지 않도록). 둘 다 null이면 손잡이가 나타나지 않는다. */
+     *  터치 영역이 겹치지 않도록). onDragBar/onDragBarEnd 둘 다 null이면 손잡이가 나타나지 않는다.
+     *  onDragBarStart는 드래그가 시작된 손가락의 화면(루트) 절대 좌표를 한 번 알려준다 — 도킹 판정을
+     *  "화면 중앙 기준 누적 델타"가 아니라 "손가락의 실제 절대 위치" 기준으로 하기 위함(2026-08-29). */
     onDragBar: ((Offset) -> Unit)? = null,
     onDragBarEnd: (() -> Unit)? = null,
+    onDragBarStart: (Offset) -> Unit = {},
     /** 버튼바가 지금 어느 가장자리에 붙어있는지 — 좌/우면 세로로 눕고(내부 배치·스크롤 방향 전환),
      *  팝업(브러시 패널·색상휠·즐겨찾기 편집)도 화면 밖으로 안 나가는 쪽으로 열린다. */
     dock: ToolbarDock = ToolbarDock.TOP,
@@ -322,7 +327,7 @@ fun BrushControls(
         ) {
         if (collapsed) {
             val collapsedContent: @Composable () -> Unit = {
-                if (onDragBar != null && onDragBarEnd != null) DragHandle(onDragBar, onDragBarEnd)
+                if (onDragBar != null && onDragBarEnd != null) DragHandle(onDragBarStart, onDragBar, onDragBarEnd)
                 // 현재 브러시(또는 지우개) 아이콘 — 탭하면 4개(+지우개) 미니 팝업. 지우개일 때만
                 // 길게 눌러 경계 블러 패널(굵기/불투명도는 항상 보이는 상단 바에서 이미 조절 가능).
                 Box {
@@ -383,7 +388,7 @@ fun BrushControls(
         // 그룹-구분선 사이 간격(GroupDividerGap)을 서로 다른 Arrangement.spacedBy로 따로 조절하기
         // 위함(공유 spacedBy 하나만으로는 구분선 쪽만 더 좁게 만들 수 없어서 이렇게 나눔).
         val segments = buildList<@Composable () -> Unit> {
-            if (onDragBar != null && onDragBarEnd != null) add { DragHandle(onDragBar, onDragBarEnd) }
+            if (onDragBar != null && onDragBarEnd != null) add { DragHandle(onDragBarStart, onDragBar, onDragBarEnd) }
             add {
                 // 붓 종류(펜/연필/크레파스/수채화/지우개) 묶음 — 접으면 지금 쓰는 도구 아이콘 하나만
                 // 남고, 탭하면 다시 5개가 펼쳐진다(2026-08-26, 툴바 전체 최소화와 별개로 이 묶음만
@@ -672,21 +677,33 @@ fun ScreenControls(
 }
 
 /** 버튼바 길게 눌러 드래그로 옮길 때 잡는 손잡이 — 다른 버튼들과 터치 영역이 겹치지 않도록 전용
- *  자리 하나에만 반응한다. 짧게 눌러도 아무 동작 없음(탭 기능은 없고 드래그 전용). */
+ *  자리 하나에만 반응한다. 짧게 눌러도 아무 동작 없음(탭 기능은 없고 드래그 전용).
+ *
+ *  [onDragStart]는 드래그가 시작된 손가락의 "화면(루트) 절대 좌표"를 한 번 알려준다 — 예전엔 도킹
+ *  판정을 "화면 중앙 + 누적 드래그량"으로 재구성했는데, 손잡이의 실제 화면상 시작 위치가 도킹
+ *  방향마다 다르다는 걸 놓치고 있었다(TOP 도킹은 손잡이가 버튼바 맨 왼쪽=화면 왼쪽 가장자리 근처에서
+ *  시작, LEFT/RIGHT 도킹은 세로 중앙 근처에서 시작). 그래서 손잡이가 이미 왼쪽 가장자리 근처에 있는
+ *  상태에서 "더 왼쪽으로" 끌려고 하면 물리적으로 끌 수 있는 화면 폭 자체가 얼마 없어서 LEFT 판정에
+ *  필요한 만큼 드래그량이 안 쌓였다(반대로 오른쪽엔 화면이 넉넉히 남아 있어 RIGHT는 쉽게 됐던 것,
+ *  세로모드의 TOP/BOTTOM도 같은 이유) — "화면 중앙 기준 누적 델타"가 아니라 "손가락의 실제 절대
+ *  위치"를 직접 추적해야 손잡이의 시작 위치와 무관하게 네 방향이 공평해진다(2026-08-29, 실기기
+ *  재현으로 확인). */
 @Composable
-private fun DragHandle(onDrag: (Offset) -> Unit, onDragEnd: () -> Unit) {
+private fun DragHandle(onDragStart: (Offset) -> Unit, onDrag: (Offset) -> Unit, onDragEnd: () -> Unit) {
     // pointerInput(Unit)은 이 손잡이가 조립되는 동안 딱 한 번만 시작되고 다시 안 켜진다 — 그 안에서
     // 그냥 onDrag/onDragEnd를 직접 참조하면, 화면(예: BoxWithConstraints의 maxWidth/maxHeight, 도킹
     // 판정에 쓰는 컨테이너 크기)이 그 첫 프레임 이후 바뀌어도 이 코루틴은 그 "처음 캡처된" 콜백을
-    // 계속 붙들고 있어 최신 값을 못 본다 — 버튼바 좌/우 도킹이 잘 안 붙는 것처럼 보이던 원인 중
-    // 하나(2026-08-29). rememberUpdatedState로 항상 최신 콜백을 참조하게 한다.
+    // 계속 붙들고 있어 최신 값을 못 본다 — rememberUpdatedState로 항상 최신 콜백을 참조하게 한다.
+    val currentOnDragStart = rememberUpdatedState(onDragStart)
     val currentOnDrag = rememberUpdatedState(onDrag)
     val currentOnDragEnd = rememberUpdatedState(onDragEnd)
+    var handleRootPos by remember { mutableStateOf(Offset.Zero) }
     Box(
         Modifier.size(32.dp, 48.dp)
+            .onGloballyPositioned { handleRootPos = it.positionInRoot() }
             .pointerInput(Unit) {
                 detectDragGesturesAfterLongPress(
-                    onDragStart = {},
+                    onDragStart = { localOffset -> currentOnDragStart.value(handleRootPos + localOffset) },
                     onDrag = { change, dragAmount -> change.consume(); currentOnDrag.value(dragAmount) },
                     onDragEnd = { currentOnDragEnd.value() },
                     onDragCancel = { currentOnDragEnd.value() },

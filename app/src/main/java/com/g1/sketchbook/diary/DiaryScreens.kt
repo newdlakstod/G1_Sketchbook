@@ -90,6 +90,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -221,6 +222,11 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var toolbarCollapsed by remember { mutableStateOf(false) }
     var toolbarDock by remember { mutableStateOf(com.g1.sketchbook.brush.ToolbarDock.TOP) }
     var toolbarDragPx by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    // 도킹 판정을 "화면 중앙 + 누적 델타"가 아니라 "손가락의 실제 절대 위치" 기준으로 하기 위한
+    // 값들 — toolbarDragOrigin은 드래그가 시작된 손가락의 화면(루트) 절대 좌표, containerRootPos는
+    // 이 BoxWithConstraints 자신의 화면상 위치(둘의 차가 컨테이너 안에서의 손가락 위치, 2026-08-29).
+    var toolbarDragOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var containerRootPos by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
 
     // 나가기 전엔 디바운스 중이던 합성 저장을 기다리지 않고 바로 한 번 반영 — 마지막 몇 붓질이
     // 최대 800ms 늦게 반영되는 것조차 남지 않도록.
@@ -232,7 +238,8 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             .let { if (fullscreen) it else it.systemBarsPadding() }
             // 버튼바를 좌/우 가장자리로 끌어 도킹하려는 드래그가 시스템 뒤로가기 스와이프에 터치를
             // 뺏길 수 있었다(2026-08-29).
-            .excludeSystemGestureEdges(),
+            .excludeSystemGestureEdges()
+            .onGloballyPositioned { containerRootPos = it.positionInRoot() },
     ) {
         val density2 = LocalDensity.current
         Box(Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding), contentAlignment = Alignment.Center) {
@@ -337,10 +344,12 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             fillActive = fillActive,
             onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
             collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
+            onDragBarStart = { absoluteStart -> toolbarDragOrigin = absoluteStart },
             onDragBar = { d -> toolbarDragPx += d },
             onDragBarEnd = {
                 val cwPx = with(density2) { maxWidth.toPx() }; val chPx = with(density2) { maxHeight.toPx() }
-                toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, toolbarDragPx, cwPx, chPx)
+                val posInContainer = toolbarDragOrigin + toolbarDragPx - containerRootPos
+                toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, posInContainer, cwPx, chPx)
                 toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
             },
             dock = toolbarDock,
