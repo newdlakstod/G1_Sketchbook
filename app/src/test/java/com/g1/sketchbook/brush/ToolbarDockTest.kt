@@ -57,4 +57,46 @@ class ToolbarDockTest {
         // |dy| > |dx| → 수직
         assertEquals(ToolbarDock.BOTTOM, nearestDock(ToolbarDock.TOP, Offset(40f, 100f), minDragPx))
     }
+
+    @Test
+    fun leftIntentStaysLockedAfterTheFingerHitsTheScreenEdge() {
+        var lockedDock: ToolbarDock? = null
+
+        lockedDock = lockDockOnceThresholdIsCrossed(
+            startDock = ToolbarDock.TOP,
+            lockedDock = lockedDock,
+            dragDelta = Offset(-40f, 4f),
+            minDragPx = minDragPx,
+        )
+        lockedDock = lockDockOnceThresholdIsCrossed(
+            startDock = ToolbarDock.TOP,
+            lockedDock = lockedDock,
+            // 왼쪽 이동은 화면 경계에서 멈췄지만 아래쪽 흔들림은 계속 누적된 실기기 재현값.
+            dragDelta = Offset(-40f, 180f),
+            minDragPx = minDragPx,
+        )
+
+        assertEquals(ToolbarDock.LEFT, lockedDock)
+    }
+
+    @Test
+    fun topIntentStaysLockedAfterTheFingerHitsTheScreenEdge() {
+        var lockedDock: ToolbarDock? = null
+
+        lockedDock = lockDockOnceThresholdIsCrossed(
+            startDock = ToolbarDock.LEFT,
+            lockedDock = lockedDock,
+            dragDelta = Offset(3f, -40f),
+            minDragPx = minDragPx,
+        )
+        lockedDock = lockDockOnceThresholdIsCrossed(
+            startDock = ToolbarDock.LEFT,
+            lockedDock = lockedDock,
+            // 위쪽 이동은 화면 경계에서 멈춘 뒤 좌우 이동이 더 커져도 처음 의도를 유지해야 한다.
+            dragDelta = Offset(180f, -40f),
+            minDragPx = minDragPx,
+        )
+
+        assertEquals(ToolbarDock.TOP, lockedDock)
+    }
 }

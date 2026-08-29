@@ -1104,7 +1104,6 @@ fun SketchbookCanvasScreen(
             // 좌우에 안 붙는다"는 문제의 원인 중 하나로 확인).
             .excludeSystemGestureEdges(),
     ) {
-        val density2 = LocalDensity.current
         Box(Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding)) {
             // BrushView fills the whole area and fits/auto-rotates the fixed-size page inside it.
             AndroidView(
@@ -1193,9 +1192,8 @@ fun SketchbookCanvasScreen(
             onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
             collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
             onDragBar = { d -> toolbarDragPx += d },
-            onDragBarEnd = {
-                val minDragPx = with(density2) { com.g1.sketchbook.brush.DockSwitchMinDrag.toPx() }
-                toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, toolbarDragPx, minDragPx)
+            onDragBarEnd = { targetDock ->
+                toolbarDock = targetDock
                 toolbarDragPx = Offset.Zero
             },
             dock = toolbarDock,

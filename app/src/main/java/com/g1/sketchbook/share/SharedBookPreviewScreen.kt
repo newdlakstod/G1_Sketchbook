@@ -32,7 +32,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -42,7 +41,6 @@ import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.ScreenControls
 import com.g1.sketchbook.brush.ToolbarDock
 import com.g1.sketchbook.brush.alignment
-import com.g1.sketchbook.brush.nearestDock
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlin.math.roundToInt
 
@@ -76,7 +74,6 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
         // 2026-08-20) — 스케치북 이름은 아래에서 참가자 캔버스 위로 겹쳐 뜨는 라벨로 대신 그린다.
         // 바깥 여백·칸 사이 간격 없음 — 구분은 각 칸의 테두리 선 하나로만.
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val density2 = LocalDensity.current
             when (mode) {
                 PreviewViewMode.GRID -> Column(Modifier.fillMaxSize()) {
                     Row(Modifier.weight(1f).fillMaxWidth()) {
@@ -134,9 +131,8 @@ internal fun SharedBookPreviewScreen(startMaximized: Boolean) {
                 collapsed = collapsed,
                 onToggleCollapsed = { collapsed = !collapsed },
                 onDragBar = { d -> dragPx += d },
-                onDragBarEnd = {
-                    val minDragPx = with(density2) { com.g1.sketchbook.brush.DockSwitchMinDrag.toPx() }
-                    dock = nearestDock(dock, dragPx, minDragPx)
+                onDragBarEnd = { targetDock ->
+                    dock = targetDock
                     dragPx = Offset.Zero
                 },
                 dock = dock,

@@ -275,7 +275,6 @@ fun SharedBookScreen(
         // 가용 영역 전부를 스케치북으로 — 바깥 여백 없음, 칸 사이 구분도 간격이 아니라 PaneFrame
         // 자체 테두리 선 하나로만(2026-08-20).
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val density2 = LocalDensity.current
             val landscape = maxWidth > maxHeight
             val mine = remember {
                 movableContentOf<Modifier> { m ->
@@ -429,9 +428,8 @@ fun SharedBookScreen(
                 onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
                 collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
                 onDragBar = { d -> toolbarDragPx += d },
-                onDragBarEnd = {
-                    val minDragPx = with(density2) { com.g1.sketchbook.brush.DockSwitchMinDrag.toPx() }
-                    toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, toolbarDragPx, minDragPx)
+                onDragBarEnd = { targetDock ->
+                    toolbarDock = targetDock
                     toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
                 },
                 dock = toolbarDock,

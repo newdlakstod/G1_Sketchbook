@@ -17,17 +17,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
-import com.g1.sketchbook.brush.DockSwitchMinDrag
 import com.g1.sketchbook.brush.ToolbarDock
 import com.g1.sketchbook.brush.alignment
-import com.g1.sketchbook.brush.nearestDock
 import com.g1.sketchbook.ui.theme.DaymoryTheme
 import com.g1.sketchbook.ui.theme.ThemeMode
 import kotlin.math.roundToInt
@@ -35,7 +32,7 @@ import kotlin.math.roundToInt
 // 실제 그리기 화면(SketchbookCanvasScreen 등)엔 @Preview가 없어서, 버튼바 좌/우 도킹처럼 드래그로
 // 확인해야 하는 동작은 지금까지 Interactive Preview로 아예 테스트할 방법이 없었다(2026-08-29,
 // "프리뷰로 동작해봐도 안 붙어" — 사실 프리뷰 자체가 없었던 것). SketchbookCanvasScreen과 완전히
-// 같은 배선(barModifier, onDragBar/onDragBarEnd, nearestDock의 방향 기반 판정)을 그대로 옮겨와서,
+// 같은 배선(barModifier, onDragBar/onDragBarEnd, 최초 드래그 방향 잠금)을 그대로 옮겨와서,
 // BrushView(실제 캔버스)나 SketchbookRepository 없이도 손잡이 드래그 → 도킹 로직만 독립적으로 켜볼 수
 // 있게 했다. 드래그 중 실시간으로 순 이동량·최종 도킹 결과를 화면에 그대로 찍어준다.
 @Preview(name = "20 Brush toolbar drag-to-dock", showBackground = true, widthDp = 800, heightDp = 500)
@@ -53,7 +50,6 @@ private fun BrushToolbarDockPreview() {
         var lastResult by remember { mutableStateOf("아직 드래그 안 함") }
 
         BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            val density2 = LocalDensity.current
             fun barModifier(dock: ToolbarDock, collapsed: Boolean, dragPx: Offset) = Modifier
                 .align(if (dock == ToolbarDock.RIGHT && !collapsed) Alignment.TopEnd else dock.alignment())
                 .let {
@@ -71,10 +67,9 @@ private fun BrushToolbarDockPreview() {
                 onUndo = {}, onRedo = {}, onClear = {},
                 collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
                 onDragBar = { d -> toolbarDragPx += d },
-                onDragBarEnd = {
-                    val minDragPx = with(density2) { DockSwitchMinDrag.toPx() }
+                onDragBarEnd = { targetDock ->
                     val before = toolbarDock
-                    val after = nearestDock(before, toolbarDragPx, minDragPx)
+                    val after = targetDock
                     lastResult = "drag=(${toolbarDragPx.x.roundToInt()},${toolbarDragPx.y.roundToInt()})  $before → $after"
                     toolbarDock = after
                     toolbarDragPx = Offset.Zero

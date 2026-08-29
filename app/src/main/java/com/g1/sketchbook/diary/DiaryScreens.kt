@@ -234,7 +234,6 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             // 뺏길 수 있었다(2026-08-29).
             .excludeSystemGestureEdges(),
     ) {
-        val density2 = LocalDensity.current
         Box(Modifier.fillMaxSize().padding(if (fullscreen) 0.dp else Dimens.Canvas.outerPadding), contentAlignment = Alignment.Center) {
             BoxWithConstraints {
                 val ratio = cw.toFloat() / ch
@@ -338,9 +337,8 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             onToggleFill = { fillActive = !fillActive; if (fillActive) { erasing = false; lassoActive = false } },
             collapsed = toolbarCollapsed, onToggleCollapsed = { toolbarCollapsed = !toolbarCollapsed },
             onDragBar = { d -> toolbarDragPx += d },
-            onDragBarEnd = {
-                val minDragPx = with(density2) { com.g1.sketchbook.brush.DockSwitchMinDrag.toPx() }
-                toolbarDock = com.g1.sketchbook.brush.nearestDock(toolbarDock, toolbarDragPx, minDragPx)
+            onDragBarEnd = { targetDock ->
+                toolbarDock = targetDock
                 toolbarDragPx = androidx.compose.ui.geometry.Offset.Zero
             },
             dock = toolbarDock,

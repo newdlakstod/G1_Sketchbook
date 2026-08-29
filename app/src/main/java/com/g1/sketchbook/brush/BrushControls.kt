@@ -148,6 +148,22 @@ fun nearestDock(current: ToolbarDock, dragDelta: Offset, minDragPx: Float): Tool
     }
 }
 
+/** 한 번 임계값을 넘겨 드래그 의도가 확인되면 그 방향을 제스처가 끝날 때까지 유지한다.
+ *
+ * 가로 버튼바의 손잡이는 화면 왼쪽, 세로 버튼바의 손잡이는 화면 위쪽 가까이에서 시작하므로
+ * LEFT/TOP 방향 이동량은 화면 경계에서 일찍 멈춘다. 손을 뗄 때의 최종 이동량으로 다시 판정하면
+ * 그 뒤에 누적된 직교 방향 흔들림이 최초 의도를 덮어쓸 수 있으므로, 최초 판정만 잠근다. */
+fun lockDockOnceThresholdIsCrossed(
+    startDock: ToolbarDock,
+    lockedDock: ToolbarDock?,
+    dragDelta: Offset,
+    minDragPx: Float,
+): ToolbarDock? {
+    if (lockedDock != null) return lockedDock
+    if (dragDelta.getDistance() < minDragPx) return null
+    return nearestDock(startDock, dragDelta, minDragPx)
+}
+
 val BrushPalette = listOf(
     0xFF1E2D4CL, 0xFF2B4C9BL, 0xFF4DABF7L, 0xFF4ECDC4L, 0xFF6E9646L,
     0xFFE0A53CL, 0xFFE05454L, 0xFFCE7A7AL, 0xFF9775FAL, 0xFFFFFFFFL,
@@ -228,9 +244,10 @@ fun BrushControls(
     collapsed: Boolean = false,
     onToggleCollapsed: (() -> Unit)? = null,
     /** 버튼바를 길게 눌러 드래그로 옮기기 — 왼쪽 끝 손잡이 아이콘에서만 반응한다(다른 버튼들과
-     *  터치 영역이 겹치지 않도록). onDragBar/onDragBarEnd 둘 다 null이면 손잡이가 나타나지 않는다. */
+     *  터치 영역이 겹치지 않도록). onDragBar/onDragBarEnd 둘 다 null이면 손잡이가 나타나지 않는다.
+     *  onDragBarEnd에는 제스처 초기에 확정된 도킹 방향이 전달된다. */
     onDragBar: ((Offset) -> Unit)? = null,
-    onDragBarEnd: (() -> Unit)? = null,
+    onDragBarEnd: ((ToolbarDock) -> Unit)? = null,
     /** 버튼바가 지금 어느 가장자리에 붙어있는지 — 좌/우면 세로로 눕고(내부 배치·스크롤 방향 전환),
      *  팝업(브러시 패널·색상휠·즐겨찾기 편집)도 화면 밖으로 안 나가는 쪽으로 열린다. */
     dock: ToolbarDock = ToolbarDock.TOP,
@@ -323,7 +340,7 @@ fun BrushControls(
         ) {
         if (collapsed) {
             val collapsedContent: @Composable () -> Unit = {
-                if (onDragBar != null && onDragBarEnd != null) DragHandle(onDragBar, onDragBarEnd)
+                if (onDragBar != null && onDragBarEnd != null) DragHandle(dock, onDragBar, onDragBarEnd)
                 // 현재 브러시(또는 지우개) 아이콘 — 탭하면 4개(+지우개) 미니 팝업. 지우개일 때만
                 // 길게 눌러 경계 블러 패널(굵기/불투명도는 항상 보이는 상단 바에서 이미 조절 가능).
                 Box {
@@ -532,7 +549,7 @@ fun BrushControls(
                 verticalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
             ) {
                 if (onDragBar != null && onDragBarEnd != null) {
-                    DragHandle(onDragBar, onDragBarEnd)
+                    DragHandle(dock, onDragBar, onDragBarEnd)
                     ToolbarDivider(vertical)
                 }
                 Column(
@@ -553,7 +570,7 @@ fun BrushControls(
                 horizontalArrangement = Arrangement.spacedBy(18.dp), // 그룹-구분선 간격
             ) {
                 if (onDragBar != null && onDragBarEnd != null) {
-                    DragHandle(onDragBar, onDragBarEnd)
+                    DragHandle(dock, onDragBar, onDragBarEnd)
                     ToolbarDivider(vertical)
                 }
                 Row(
@@ -704,19 +721,41 @@ fun ScreenControls(
 /** 버튼바 길게 눌러 드래그로 옮길 때 잡는 손잡이 — 다른 버튼들과 터치 영역이 겹치지 않도록 전용
  *  자리 하나에만 반응한다. 짧게 눌러도 아무 동작 없음(탭 기능은 없고 드래그 전용). */
 @Composable
-private fun DragHandle(onDrag: (Offset) -> Unit, onDragEnd: () -> Unit) {
+private fun DragHandle(dock: ToolbarDock, onDrag: (Offset) -> Unit, onDragEnd: (ToolbarDock) -> Unit) {
     // pointerInput(Unit)은 이 손잡이가 조립되는 동안 딱 한 번만 시작되고 다시 안 켜진다 — 그 안에서
     // 그냥 onDrag/onDragEnd를 직접 참조하면 그 첫 프레임 이후 바뀐 최신 콜백을 못 본다 —
     // rememberUpdatedState로 항상 최신 콜백을 참조하게 한다.
     val currentOnDrag = rememberUpdatedState(onDrag)
     val currentOnDragEnd = rememberUpdatedState(onDragEnd)
+    val currentDock = rememberUpdatedState(dock)
+    val minDragPx = with(LocalDensity.current) { DockSwitchMinDrag.toPx() }
     Box(
         Modifier.size(32.dp, 48.dp)
             .pointerInput(Unit) {
+                var startDock = currentDock.value
+                var dragDelta = Offset.Zero
+                var lockedDock: ToolbarDock? = null
+
+                fun finishDrag() {
+                    currentOnDragEnd.value(lockedDock ?: startDock)
+                    dragDelta = Offset.Zero
+                    lockedDock = null
+                }
+
                 detectDragGesturesAfterLongPress(
-                    onDrag = { change, dragAmount -> change.consume(); currentOnDrag.value(dragAmount) },
-                    onDragEnd = { currentOnDragEnd.value() },
-                    onDragCancel = { currentOnDragEnd.value() },
+                    onDragStart = {
+                        startDock = currentDock.value
+                        dragDelta = Offset.Zero
+                        lockedDock = null
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        dragDelta += dragAmount
+                        lockedDock = lockDockOnceThresholdIsCrossed(startDock, lockedDock, dragDelta, minDragPx)
+                        currentOnDrag.value(dragAmount)
+                    },
+                    onDragEnd = { finishDrag() },
+                    onDragCancel = { finishDrag() },
                 )
             },
         contentAlignment = Alignment.Center,

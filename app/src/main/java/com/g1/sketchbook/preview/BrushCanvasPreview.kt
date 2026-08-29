@@ -41,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
@@ -57,7 +56,6 @@ import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.brush.ScreenControls
 import com.g1.sketchbook.brush.ToolbarDock
 import com.g1.sketchbook.brush.alignment
-import com.g1.sketchbook.brush.nearestDock
 import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.DaymoryTheme
@@ -103,7 +101,6 @@ private fun BrushCanvasPreview() {
         // (기존엔 Column으로 버튼바를 캔버스 아래 고정시켰는데, 그러면 dock/드래그 손잡이를
         // 미리보기에서 확인할 수 없어서 실제와 동일한 BoxWithConstraints 오버레이 구조로 바꿈).
         BoxWithConstraints(Modifier.fillMaxSize().background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
-            val density2 = LocalDensity.current
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
@@ -172,9 +169,8 @@ private fun BrushCanvasPreview() {
                 collapsed = collapsed,
                 onToggleCollapsed = { collapsed = !collapsed },
                 onDragBar = { d -> dragPx += d },
-                onDragBarEnd = {
-                    val minDragPx = with(density2) { com.g1.sketchbook.brush.DockSwitchMinDrag.toPx() }
-                    dock = nearestDock(dock, dragPx, minDragPx)
+                onDragBarEnd = { targetDock ->
+                    dock = targetDock
                     dragPx = Offset.Zero
                 },
                 dock = dock,
