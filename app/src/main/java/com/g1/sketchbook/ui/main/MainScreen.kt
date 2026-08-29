@@ -375,16 +375,15 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
             // Side padding sized so the focused cover gets its full spec width, with whatever room is
             // left over used to peek the neighbours (never negative, even on narrow phones).
             val peek = ((maxWidth - Dimens.Home.carouselCenterW) / 2).coerceAtLeast(20.dp)
-            // 그림자가 위아래로 잘려 보인다는 재현 리포트(2026-08-29) — fillMaxSize()를 쓰면 이 Row가
-            // weight(1f) 영역의 남는 세로 공간을 전부 차지하는데, 그 안의 각 아이템은 fillMaxHeight()로
-            // Row 높이에 딱 맞춰지고, Row 자체 높이가 표지+그림자 슬랙이 필요로 하는 실제 콘텐츠 높이보다
-            // 작으면(화면·기기마다 weight(1f) 영역 크기가 다름) 아이템이 그 부족한 높이에 눌려 위아래가
-            // 잘렸다. wrapContentHeight로 Row 높이를 콘텐츠(표지+슬랙)가 실제 필요로 하는 만큼만 갖게
-            // 하고, TopCenter로 붙여서 표지를 위로 올린다 — 남는 공간은 전부 아래(타이틀 쪽)로 가고,
-            // Row 자신의 높이가 콘텐츠와 항상 일치하니 더 이상 눌려서 잘릴 일이 없다.
+            // 그림자가 위아래로 잘려 보인다는 재현 리포트(2026-08-29) — Row 자신의 높이를 아이템에게
+            // (fillMaxHeight 등으로) 기대게 하면 부모 weight(1f) 영역·스크롤 타이밍에 따라 값이 흔들려
+            // 잘렸다. wrapContentHeight로 Row가 아이템의 진짜 콘텐츠 높이만큼만 갖게 하고, 아이템 쪽도
+            // 고정 크기로 만들어(아래 itemsIndexed 블록 참고) 그 콘텐츠 높이 자체를 흔들리지 않게
+            // 고정했다. TopCenter로 붙여서 표지를 위로 올린다 — 남는 공간은 전부 아래(타이틀 쪽)로 간다.
             LazyRow(
                 state = listState,
                 flingBehavior = snapFling,
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().wrapContentHeight().align(Alignment.TopCenter),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = peek),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -430,50 +429,50 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     // 마지막으로 골랐던(또는 기본) 색이 그대로 남아있는 필드라, 사진 표지에 그 색을
                     // 그대로 쓰면 "직전 표지 색"이 두께 부분에서만 새어나오는 것처럼 보였다.
                     val stackColor = if (cover != null) Color.Black else (book.coverColor?.let { Color(it) } ?: DefaultSketchbookCoverColor)
-                    Box(Modifier.fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        // scale()/alpha()는 graphicsLayer(오프스크린 레이어)를 만드는데, 그 레이어는 이
-                        // Box 자신의 레이아웃 크기로 딱 잘려서 그려진다 — 안쪽 SketchbookCover의 그림자가
-                        // w/h 밖으로 번져도 이 바깥 상자 크기(shadowSlack 없이는 겨우 +4dp) 밖으로는 못
-                        // 나가 잘렸다. shadowSlack만큼 여유를 주고, 원래 스택 겹침 비주얼은 안쪽 상자에
-                        // 그대로 둔 채 가운데 정렬해 넣는다(2026-08-20). 16dp로는 여전히 12dp elevation
-                        // 그림자가 살짝 잘려 보인다는 피드백(2026-08-29)으로 28dp까지 올림 — peek이
-                        // coerceAtLeast(20dp)라 (4dp+슬랙)/2가 그 밑으로 남게 값을 골랐다(28dp → 한쪽당
-                        // 16dp, 20dp 여유 안에 들어옴).
-                        val shadowSlack = 28.dp
-                        Box(
-                            Modifier.width(w + 4.dp + shadowSlack).height(h + 4.dp + shadowSlack)
-                                .scale(scale).alpha(fade)
-                                .bounceClick(onLongClick = { onLongPress(book) }) { onOpen(book.id) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Box(Modifier.width(w + 4.dp).height(h + 4.dp)) {
-                                // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
-                                Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape)
-                                    .background(stackColor.copy(alpha = 0.5f)))
-                                Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
-                                    .background(stackColor.copy(alpha = 0.75f)))
-                                // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
-                                // 그림자는 SketchbookCover 바깥의 별도 Box에 건다 — SketchbookCover가
-                                // 내부에서 자기 modifier에 .clip(SketchbookCoverShape)을 추가로 거는데,
-                                // shadow(clip=false)는 "이 레이어 안 내용물"만 안 잘리게 할 뿐이라, 그
-                                // 뒤에 곧바로 이어지는 별개의 clip 레이어(SketchbookCover 내부 Box)가
-                                // 그림자까지 표지 크기 그대로 잘라버렸다 — shadowSlack을 아무리 키워도
-                                // 안 고쳐졌던 이유(2026-08-29, 재발 리포트로 원인 특정). 그림자를 클립
-                                // 없는 바깥 Box에 걸면 안쪽 SketchbookCover의 클립은 표지 내용물만
-                                // 정상적으로 둥근 모서리로 잘라내고, 그림자는 그 밖으로 번져 보인다.
-                                Box(Modifier.width(w).height(h)
-                                    .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)) {
-                                SketchbookCover(
-                                    modifier = Modifier.fillMaxSize(),
-                                    coverColor = stackColor,
-                                    coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
-                                ) {
-                                    if (book.shared) {
-                                        Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
-                                            .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
-                                    }
+                    // scale()/alpha()는 graphicsLayer(오프스크린 레이어)를 만드는데, 그 레이어는 이 Box
+                    // 자신의 레이아웃 크기로 딱 잘려서 그려진다 — shadowSlack만큼 여유를 준다(2026-08-20).
+                    // 예전엔 이 Box를 fillMaxHeight()짜리 바깥 Box로 한 번 더 감쌌었는데, 그 바깥 Box의
+                    // 실제 높이는 LazyRow가 그 순간에 스스로에게 부여한 높이를 그대로 물려받는 값이라
+                    // (wrapContentHeight를 걸어도 Row 안 아이템이 fillMaxHeight를 쓰는 한 완전히
+                    // 고정되지 않는다) 스크롤 중 레이아웃이 다시 계산되는 타이밍에 따라 그 값이 흔들려서,
+                    // 처음 진입했을 때나 스크롤 도중엔 잘리다가 스크롤이 멈추고 나서야(재측정 후) 안
+                    // 잘린 것처럼 보이는 재발 리포트가 있었다(2026-08-29). 아이템 크기를 아예 w/h/
+                    // shadowSlack만으로 정해지는 고정값으로 만들어(부모 높이에 전혀 기대지 않음) 이
+                    // 흔들림 자체를 없앤다 — 세로 정렬은 LazyRow의 verticalAlignment가 맡는다.
+                    val shadowSlack = 28.dp
+                    Box(
+                        Modifier.width(w + 4.dp + shadowSlack).height(h + 4.dp + shadowSlack)
+                            .scale(scale).alpha(fade)
+                            .bounceClick(onLongClick = { onLongPress(book) }) { onOpen(book.id) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(Modifier.width(w + 4.dp).height(h + 4.dp)) {
+                            // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
+                            Box(Modifier.width(w).height(h).offset(x = 4.dp, y = 4.dp).clip(coverShape)
+                                .background(stackColor.copy(alpha = 0.5f)))
+                            Box(Modifier.width(w).height(h).offset(x = 2.dp, y = 2.dp).clip(coverShape)
+                                .background(stackColor.copy(alpha = 0.75f)))
+                            // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
+                            // 그림자는 SketchbookCover 바깥의 별도 Box에 건다 — SketchbookCover가
+                            // 내부에서 자기 modifier에 .clip(SketchbookCoverShape)을 추가로 거는데,
+                            // shadow(clip=false)는 "이 레이어 안 내용물"만 안 잘리게 할 뿐이라, 그
+                            // 뒤에 곧바로 이어지는 별개의 clip 레이어(SketchbookCover 내부 Box)가
+                            // 그림자까지 표지 크기 그대로 잘라버렸다 — shadowSlack을 아무리 키워도
+                            // 안 고쳐졌던 이유(2026-08-29, 재발 리포트로 원인 특정). 그림자를 클립
+                            // 없는 바깥 Box에 걸면 안쪽 SketchbookCover의 클립은 표지 내용물만
+                            // 정상적으로 둥근 모서리로 잘라내고, 그림자는 그 밖으로 번져 보인다.
+                            Box(Modifier.width(w).height(h)
+                                .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)) {
+                            SketchbookCover(
+                                modifier = Modifier.fillMaxSize(),
+                                coverColor = stackColor,
+                                coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
+                            ) {
+                                if (book.shared) {
+                                    Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
+                                        .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
                                 }
-                                }
+                            }
                             }
                         }
                     }
