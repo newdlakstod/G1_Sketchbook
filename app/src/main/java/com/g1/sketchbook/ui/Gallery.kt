@@ -6,6 +6,20 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 
 /** PNG 한 장을 기기 갤러리(Pictures/G1Sketchbook)에 저장 — 다이어리 다운로드, 스케치북 올가미 선택
  *  영역 저장 등 여러 화면이 공유해서 쓴다. 반환값은 그대로 Toast에 띄우는 사용자용 결과 문구. */
@@ -28,3 +42,21 @@ fun saveToGallery(ctx: Context, bmp: Bitmap, name: String): String = try {
         "저장됨: ${f.absolutePath}"
     }
 } catch (e: Exception) { "저장 실패: ${e.message}" }
+
+/** 다운로드 선택 다이얼로그의 원형 아이콘 버튼 — 다이어리/스케치북 둘 다 쓰는 공용 스타일
+ *  (2026-08-30, 스케치북용으로 옮기며 공용화). 텍스트 라벨 없이 아이콘만 보여주고 접근성 설명은
+ *  semantics로만 붙인다. */
+@Composable
+fun DownloadChoiceIcon(contentDescription: String, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
+    Box(
+        Modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .bounceClick(onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center,
+    ) {
+        icon(MaterialTheme.colorScheme.onSecondaryContainer)
+    }
+}

@@ -757,6 +757,9 @@ fun ScreenControls(
     /** 전체화면: hides the system status/nav bars for more drawing room. Icon reflects current state. */
     fullscreen: Boolean = false,
     onToggleFullscreen: (() -> Unit)? = null,
+    /** 지금 페이지를 이미지로 내보내기(스케치북 페이지 편집화면 전용, 2026-08-30 요청) — null이면
+     *  이 메뉴에 항목 자체가 안 뜬다. */
+    onDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -805,6 +808,7 @@ fun ScreenControls(
                             IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else IconFullscreenLine, if (fullscreen) "전체화면 종료" else "전체화면",
                                 tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) { toggle(); expanded = false }
                         }
+                        onDownload?.let { download -> IconBtn(Icons.Filled.Save, "이미지로 저장") { download(); expanded = false } }
                     }
                 }
             }

@@ -92,8 +92,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -121,6 +119,7 @@ import com.g1.sketchbook.brush.IconSliderRow
 import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.sketchbook.Catalog
 import com.g1.sketchbook.ui.bounceClick
+import com.g1.sketchbook.ui.DownloadChoiceIcon
 import com.g1.sketchbook.ui.excludeSystemGestureEdges
 import com.g1.sketchbook.ui.saveToGallery
 import com.g1.sketchbook.ui.theme.BodoniMTBlack
@@ -818,21 +817,6 @@ private fun DownloadOptionsDialog(
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
     )
-}
-
-@Composable
-private fun DownloadChoiceIcon(contentDescription: String, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
-    Box(
-        Modifier
-            .size(52.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .bounceClick(onClick = onClick)
-            .semantics { this.contentDescription = contentDescription },
-        contentAlignment = Alignment.Center,
-    ) {
-        icon(MaterialTheme.colorScheme.onSecondaryContainer)
-    }
 }
 
 /** 폴라로이드 사진 모양 아이콘(테두리 카드 + 위쪽 사진 영역, 아래쪽은 폴라로이드 특유의 여백) —

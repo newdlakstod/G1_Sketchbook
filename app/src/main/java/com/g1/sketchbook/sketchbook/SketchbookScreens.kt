@@ -55,7 +55,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HideImage
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -1057,6 +1059,9 @@ fun SketchbookCanvasScreen(
     var lassoActive by remember { mutableStateOf(false) }
     var fillActive by remember { mutableStateOf(false) }
     var lassoDeleteAt by remember { mutableStateOf<Offset?>(null) }
+    // 페이지를 이미지로 내보내기(2026-08-30 요청, 일기의 다운로드와 같은 개념을 스케치북 페이지
+    // 편집화면에도) — ScreenControls의 "이미지로 저장" 항목이 이 다이얼로그를 연다.
+    var showDownloadDialog by remember { mutableStateOf(false) }
     // 라소 켜기 직전 상태를 기억해뒀다가, 캔버스 바깥을 탭해 라소를 나갈 때 그대로 복원한다.
     var preLassoErasing by remember { mutableStateOf(false) }
     var preLassoFillActive by remember { mutableStateOf(false) }
@@ -1229,7 +1234,25 @@ fun SketchbookCanvasScreen(
             onRotate = { view?.rotate() },
             locked = locked, onToggleLock = { locked = !locked },
             fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+            onDownload = { showDownloadDialog = true },
             modifier = Modifier.align(Alignment.TopEnd),
+        )
+    }
+    if (showDownloadDialog) {
+        SketchbookDownloadDialog(
+            onDismiss = { showDownloadDialog = false },
+            onPlain = {
+                showDownloadDialog = false
+                val bmp = view?.exportBitmap()
+                val status = if (bmp != null) saveToGallery(context, bmp, "sketchbook_${book.id}_p${page}") else "저장 실패"
+                Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
+            },
+            onTransparent = {
+                showDownloadDialog = false
+                val content = view?.exportContent()
+                val status = if (content != null) saveToGallery(context, content, "sketchbook_${book.id}_p${page}_transparent") else "저장 실패"
+                Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
+            },
         )
     }
     if (pagesOpen) {
@@ -1251,4 +1274,26 @@ fun SketchbookCanvasScreen(
             onClose = { lastPage -> readModeOpen = false; goTo(lastPage) },
         )
     }
+}
+
+/** 페이지 편집화면의 "이미지로 저장" 선택 시트 — 종이+그림 그대로 / 투명 배경 PNG 두 가지만
+ *  지원한다(일기의 액자·달력 오버레이는 날짜 기반이라 스케치북엔 안 맞아 제외, 2026-08-30). */
+@Composable
+private fun SketchbookDownloadDialog(onDismiss: () -> Unit, onPlain: () -> Unit, onTransparent: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("이미지로 저장") },
+        text = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                com.g1.sketchbook.ui.DownloadChoiceIcon("종이+그림 그대로 다운로드", onPlain) { tint ->
+                    Icon(Icons.Filled.Image, null, tint = tint, modifier = Modifier.size(24.dp))
+                }
+                com.g1.sketchbook.ui.DownloadChoiceIcon("투명 배경 PNG로 다운로드", onTransparent) { tint ->
+                    Icon(Icons.Filled.Opacity, null, tint = tint, modifier = Modifier.size(24.dp))
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("취소") } },
+    )
 }
