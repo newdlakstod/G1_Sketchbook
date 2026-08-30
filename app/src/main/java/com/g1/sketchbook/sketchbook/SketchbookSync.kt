@@ -15,8 +15,13 @@ import kotlinx.coroutines.launch
  * SketchbookRepository mutators independently today. [uid] blank means "not signed in": the local
  * mutation still happens, the push is just skipped. Pushes run fire-and-forget on [scope].
  */
-fun createSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, name: String, sizeKey: String, bgKey: String, vector: Boolean = false): Sketchbook {
-    val book = repo.create(name, sizeKey, bgKey, vector = vector)
+fun createSynced(
+    scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String,
+    name: String, sizeKey: String, bgKey: String, vector: Boolean = false,
+    vectorInfinite: Boolean = false, vectorCanvasW: Int? = null, vectorCanvasH: Int? = null,
+): Sketchbook {
+    val book = repo.create(name, sizeKey, bgKey, vector = vector,
+        vectorInfinite = vectorInfinite, vectorCanvasW = vectorCanvasW, vectorCanvasH = vectorCanvasH)
     if (uid.isNotBlank()) scope.launch(Dispatchers.IO) { backup.pushSketchbookMeta(uid, book) }
     return book
 }
@@ -90,14 +95,14 @@ fun savePageSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: Ba
     }
 }
 
-/** 벡터 페이지판 [savePageSynced] — repo.saveVectorPage도 마찬가지로 1024² 비트맵 렌더+PNG 인코딩
- *  +JSON 디스크 쓰기라 매 붓질(onStrokeEnd)마다 메인 스레드에서 부르면 안 된다. 저장과 동시에
+/** 벡터 캔버스판 [savePageSynced] — repo.saveVectorCanvas도 마찬가지로 미리보기 비트맵 렌더+PNG
+ *  인코딩+JSON 디스크 쓰기라 매 붓질(onStrokeEnd)마다 메인 스레드에서 부르면 안 된다. 저장과 동시에
  *  바로 백업까지 밀어 올려서(다음 foreground 재동기화를 기다리지 않고) 그림이 곧장 클라우드에
  *  반영되게 한다. */
-fun saveVectorPageSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, bookId: String, index: Int, page: VectorPage) {
+fun saveVectorCanvasSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, bookId: String, page: VectorPage) {
     scope.launch(Dispatchers.IO) {
-        repo.saveVectorPage(bookId, index, page)
-        if (uid.isNotBlank()) backup.pushVectorPage(uid, bookId, index, page.toJson(), repo.vectorPageUpdatedAt(bookId, index))
+        repo.saveVectorCanvas(bookId, page)
+        if (uid.isNotBlank()) backup.pushVectorCanvas(uid, bookId, page.toJson(), repo.vectorCanvasUpdatedAt(bookId))
     }
 }
 
