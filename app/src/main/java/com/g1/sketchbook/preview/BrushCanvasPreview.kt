@@ -98,6 +98,9 @@ private fun BrushCanvasPreview() {
     var pagesOpen by remember { mutableStateOf(false) }
     var currentPage by remember { mutableIntStateOf(0) }
     var readModeOpen by remember { mutableStateOf(false) }
+    // 2026-08-30: SketchbookCanvasScreen에 추가된 두 기능(올가미 선택 저장, 페이지 다운로드)을
+    // 미리보기에도 같이 반영 — "실제 화면과 같은 구조" 원칙(위 BoxWithConstraints 주석 참고).
+    var showDownloadDialog by remember { mutableStateOf(false) }
 
     DaymoryTheme(mode = ThemeMode.LIGHT) {
         // 실제 화면과 같은 구조: 캔버스가 전체를 채우고, 버튼바는 그 위에 떠 있는 오버레이
@@ -145,6 +148,9 @@ private fun BrushCanvasPreview() {
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
             lassoDeleteAt?.let { p -> com.g1.sketchbook.brush.LassoDeleteButton(p.x, p.y, onDelete = { view?.deleteLassoSelection() }) }
+            // 실제 저장(saveToGallery)은 로컬 저장소를 건드리는 부작용이라 미리보기 규칙상 안 함 —
+            // 버튼이 뜨고 눌리는지만 확인하는 자리(MockPagePanel/MockReadModeOverlay와 같은 이유).
+            lassoDeleteAt?.let { p -> com.g1.sketchbook.brush.LassoSaveButton(p.x, p.y, onSave = {}) }
             fun barModifier(barDock: ToolbarDock, barCollapsed: Boolean, barDragPx: Offset) = Modifier
                 .align(barDock.alignment())
                 .let {
@@ -194,6 +200,7 @@ private fun BrushCanvasPreview() {
                 onRotate = { view?.rotate() },
                 locked = locked, onToggleLock = { locked = !locked },
                 fullscreen = fullscreen, onToggleFullscreen = { fullscreen = !fullscreen },
+                onDownload = { showDownloadDialog = true },
                 modifier = Modifier.align(Alignment.TopEnd),
             )
         }
@@ -202,6 +209,15 @@ private fun BrushCanvasPreview() {
         }
         if (readModeOpen) {
             MockReadModeOverlay(onClose = { readModeOpen = false })
+        }
+        if (showDownloadDialog) {
+            // 실제 다이얼로그(SketchbookScreens.kt)를 그대로 재사용 — onPlain/onTransparent는
+            // 실제 저장 대신 그냥 닫기만 한다(로컬 저장소 안 건드리는 미리보기 규칙).
+            com.g1.sketchbook.sketchbook.SketchbookDownloadDialog(
+                onDismiss = { showDownloadDialog = false },
+                onPlain = { showDownloadDialog = false },
+                onTransparent = { showDownloadDialog = false },
+            )
         }
     }
 }

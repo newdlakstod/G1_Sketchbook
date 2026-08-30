@@ -1277,9 +1277,11 @@ fun SketchbookCanvasScreen(
 }
 
 /** 페이지 편집화면의 "이미지로 저장" 선택 시트 — 종이+그림 그대로 / 투명 배경 PNG 두 가지만
- *  지원한다(일기의 액자·달력 오버레이는 날짜 기반이라 스케치북엔 안 맞아 제외, 2026-08-30). */
+ *  지원한다(일기의 액자·달력 오버레이는 날짜 기반이라 스케치북엔 안 맞아 제외, 2026-08-30).
+ *  internal — preview/BrushCanvasPreview.kt가 그대로 재사용한다(다이얼로그 UI만, 실제 저장은
+ *  거기서 onPlain/onTransparent를 no-op으로 넘겨 로컬 저장소를 안 건드리게 함). */
 @Composable
-private fun SketchbookDownloadDialog(onDismiss: () -> Unit, onPlain: () -> Unit, onTransparent: () -> Unit) {
+internal fun SketchbookDownloadDialog(onDismiss: () -> Unit, onPlain: () -> Unit, onTransparent: () -> Unit) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("이미지로 저장") },
