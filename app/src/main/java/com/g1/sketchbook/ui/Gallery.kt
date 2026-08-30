@@ -60,3 +60,26 @@ fun DownloadChoiceIcon(contentDescription: String, onClick: () -> Unit, icon: @C
         icon(MaterialTheme.colorScheme.onSecondaryContainer)
     }
 }
+
+/** .svg 텍스트 한 장을 기기에 저장 — MediaStore.Images가 아니라 Downloads 컬렉션을 쓴다(SVG는
+ *  "사진"이 아니라서 Images로 넣으면 갤러리 앱이 손상된 이미지로 취급한다). [saveToGallery]와
+ *  같은 함수 시그니처·반환 문구 패턴을 그대로 따른다. */
+fun saveSvgToGallery(ctx: Context, svg: String, name: String): String = try {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, "$name.svg")
+            put(MediaStore.Downloads.MIME_TYPE, "image/svg+xml")
+            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/G1Sketchbook")
+        }
+        val uri = ctx.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        if (uri != null) {
+            ctx.contentResolver.openOutputStream(uri)?.use { it.write(svg.toByteArray()) }
+            "다운로드에 저장했어요 ✨"
+        } else "저장 실패"
+    } else {
+        val dir = java.io.File(ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "G1Sketchbook").apply { mkdirs() }
+        val f = java.io.File(dir, "$name.svg")
+        f.writeText(svg)
+        "저장됨: ${f.absolutePath}"
+    }
+} catch (e: Exception) { "저장 실패: ${e.message}" }
