@@ -73,7 +73,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
@@ -384,10 +383,9 @@ fun DiaryCalendarScreen(
         title = "A piece of today",
         actions = {
             IconButton(onClick = { onOpenDiary(today) }) {
-                Image(
-                    painterResource(R.drawable.paint_palette_1),
-                    "오늘 일기 그리기",
-                    colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
+                Icon(
+                    com.g1.sketchbook.brush.IconDrawLine, "오늘 일기 그리기",
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(Dimens.Calendar.editIcon),
                 )
             }

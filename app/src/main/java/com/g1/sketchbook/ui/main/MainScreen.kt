@@ -71,7 +71,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -410,7 +409,6 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     val h = Dimens.Home.carouselCenterH
                     val sideScale = Dimens.Home.carouselSideW / Dimens.Home.carouselCenterW
                     val scale = androidx.compose.ui.util.lerp(1f, sideScale, distance)
-                    val fade = 1f - distance * 0.5f
                     // 예전엔 elevation을 distance로 매 프레임 다시 계산했다(가까울수록 진하게) — 그런데
                     // Android의 elevation 그림자는 RenderNode의 Z값이 바뀔 때마다 다시 그려지고, 스크롤 중
                     // 매 프레임 값이 바뀌면 그 다시-그리기가 프레임마다 못 따라가면서 스크롤이 멈추고 나서야
@@ -454,20 +452,11 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                             .bounceClick(onLongClick = { onLongPress(book) }) { onOpen(book.id) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        // 그림자 전용 레이어 — 표지 그림(아래 SketchbookCover에만 건 alpha(fade))과 완전히
-                        // 분리해서 항상 100% 밝기로 그린다. 예전엔 이 shadow가 표지 그림과 같은 alpha(fade)
-                        // 안에 있어서, 옆(비-중심)으로 갈수록 alpha가 최대 50%까지 떨어지며 그림자도 같이
-                        // 옅어져 크림색 배경 위에서 거의 안 보였다 — "옆 표지는 그림자가 잘려 보이다가
-                        // 가운데로 오면서 안 잘린 표지로 바뀐다"는 재현 리포트(2026-08-29, 스크린샷으로
-                        // 원인 확정)의 진짜 원인이었다. 잘린 게 아니라 흐려서 안 보인 것 — 그림자를 별도
-                        // 레이어로 떼어내 fade의 영향 밖에 두면 옆 표지도 가운데와 똑같은 밝기의 그림자를
-                        // 갖는다.
+                        // 그림자 전용 레이어 — 항상 100% 밝기로 그린다(2026-08-29, 예전엔 표지 그림과
+                        // 같은 alpha(fade) 안에 있어서 옆 표지로 갈수록 그림자도 같이 옅어져 안 보였던
+                        // 문제의 근본 수정).
                         Box(Modifier.width(scaledW).height(scaledH)
                             .shadow(elevation, coverShape, clip = false, ambientColor = Color.Black, spotColor = Color.Black))
-                        // 책 두께 스택(아래 두 겹)도 같은 이유로 옆 표지에서 옅어져 있다 없다 하는
-                        // 재현 리포트(2026-08-29) — 그림자와 똑같이 alpha(fade) 안에 있었던 게 원인이라,
-                        // 이 바깥 Box에서는 alpha를 떼고 표지 그림(SketchbookCover)에만 개별로 건다.
-                        // 두께 스택·그림자는 이제 항상 100% 밝기, 실제 표지 그림만 옆으로 갈수록 흐려진다.
                         Box(Modifier.width(scaledW + 4.dp).height(scaledH + 4.dp)) {
                             // 책처럼 두께감 있게 — 표지 뒤로 살짝 어긋난 종이 스택 2겹.
                             Box(Modifier.width(scaledW).height(scaledH).offset(x = 4.dp, y = 4.dp).clip(coverShape)
@@ -475,8 +464,10 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                             Box(Modifier.width(scaledW).height(scaledH).offset(x = 2.dp, y = 2.dp).clip(coverShape)
                                 .background(stackColor.copy(alpha = 0.75f)))
                             // 실제 앞표지는 공용 컴포넌트가 기본색과 어두운 책등을 함께 그립니다.
+                            // 옆 표지로 갈수록 표지 자체가 어두워지며 fade-out되던 것도 없앴다(2026-08-30
+                            // 요청) — 이제 표지·두께 스택·그림자 모두 옆이든 가운데든 항상 같은 밝기다.
                             SketchbookCover(
-                                modifier = Modifier.width(scaledW).height(scaledH).alpha(fade),
+                                modifier = Modifier.width(scaledW).height(scaledH),
                                 coverColor = stackColor,
                                 coverImage = cover?.let { androidx.compose.ui.graphics.painter.BitmapPainter(it.asImageBitmap()) },
                             ) {
