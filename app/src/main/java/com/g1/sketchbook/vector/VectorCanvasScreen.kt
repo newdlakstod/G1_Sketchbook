@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,22 +39,22 @@ import com.g1.sketchbook.data.SessionStore
 import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
+import com.g1.sketchbook.sketchbook.saveVectorPageSynced
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.saveSvgToGallery
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 /** 벡터 스케치북 편집화면 — 기존 `BrushControls`보다 훨씬 단순한 툴바(색상 스와치, 되돌리기,
  *  지우개) 하나만. 페이지 넘김 애니메이션(읽기모드)은 스펙에서 제외됐다 — 여기서 페이지 전환은
  *  그냥 이전/다음 화살표로 인덱스만 바꾼다. */
 @Composable
-fun VectorCanvasScreen(bookId: String, book: Sketchbook, onBack: () -> Unit) {
+fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, startPage: Int = 0, onBack: () -> Unit) {
     val context = LocalContext.current
     val repo = remember { SketchbookRepository(context) }
+    val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     val session = remember { SessionStore(context) }
     val scope = rememberCoroutineScope()
     var view by remember { mutableStateOf<VectorBrushView?>(null) }
-    var page by remember { mutableIntStateOf(0) }
+    var page by remember { mutableIntStateOf(startPage.coerceIn(0, MAX_PAGES - 1)) }
     var color by remember { mutableStateOf(session.brushColor) }
     var erasing by remember { mutableStateOf(false) }
     var canUndo by remember { mutableStateOf(false) }
@@ -61,7 +62,7 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, onBack: () -> Unit) {
 
     fun saveCurrent() {
         val v = view ?: return
-        repo.saveVectorPage(bookId, page, v.currentPage())
+        saveVectorPageSynced(scope, repo, backup, myUid, bookId, page, v.currentPage())
     }
     fun goTo(newPage: Int) {
         if (newPage == page || newPage !in 0 until MAX_PAGES) return
@@ -72,17 +73,24 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, onBack: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            factory = { ctx ->
-                VectorBrushView(ctx).also { v ->
-                    v.loadPage(repo.loadVectorPage(bookId, page) ?: VectorPage(emptyList()))
-                    v.onStrokeEnd = { canUndo = v.canUndo; saveCurrent() }
-                    view = v
-                }
-            },
-            update = { v -> v.color = color; v.erasing = erasing },
-        )
+        // 캔버스는 논리적으로 항상 정사각(스펙: 캔버스 비율 정사각 고정)이라, 화면에 보이는 View도
+        // 정사각이어야 VectorBrushView.scale()의 단일 비율이 y축에도 그대로 맞는다 — 안 그러면(예:
+        // 세로가 긴 폰에서 fillMaxSize) y 논리좌표가 1024를 훌쩍 넘겨 그려지는데, 썸네일/SVG export는
+        // 여전히 1024×1024만 캡처해서 그 아래로 그린 내용이 조용히 잘려나간다.
+        BoxWithConstraints(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            val squareSize = minOf(maxWidth, maxHeight)
+            AndroidView(
+                modifier = Modifier.size(squareSize),
+                factory = { ctx ->
+                    VectorBrushView(ctx).also { v ->
+                        v.loadPage(repo.loadVectorPage(bookId, page) ?: VectorPage(emptyList()))
+                        v.onStrokeEnd = { canUndo = v.canUndo; saveCurrent() }
+                        view = v
+                    }
+                },
+                update = { v -> v.color = color; v.erasing = erasing },
+            )
+        }
         Row(
             Modifier.align(Alignment.BottomCenter).padding(16.dp)
                 .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.large)
@@ -90,7 +98,7 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, onBack: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            favorites.forEach { swatch ->
+            favorites.take(5).forEach { swatch ->
                 val selected = swatch == color && !erasing
                 Box(
                     Modifier.size(28.dp).clip(CircleShape).background(Color(swatch))
@@ -108,10 +116,8 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, onBack: () -> Unit) {
             IconButton(onClick = {
                 val v = view ?: return@IconButton
                 val svg = vectorPageToSvg(v.currentPage(), VectorBrushView.CANVAS_SIZE.toInt())
-                scope.launch(Dispatchers.IO) {
-                    val status = saveSvgToGallery(context, svg, "${book.name}_p${page}")
-                    Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
-                }
+                val status = saveSvgToGallery(context, svg, "${book.name}_p${page}")
+                Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
             }) {
                 Icon(com.g1.sketchbook.brush.IconImageSaveLine, "이미지로 저장")
             }

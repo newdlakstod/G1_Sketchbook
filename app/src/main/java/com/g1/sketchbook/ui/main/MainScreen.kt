@@ -229,17 +229,34 @@ private fun HomeTab(
                     androidx.compose.foundation.layout.BoxWithConstraints(
                         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center,
                     ) {
-                        // 이 블록은 항상 landscape일 때만 그려지고, PageCurl은 landscape에서 항상
-                        // 좌우 두 쪽(TwoPageSpread)으로 그려서 실제 표시 비율이 페이지 하나의 2배로
-                        // 넓다 — 여기서 상자를 페이지 1장 비율로만 잡으면 PageCurl이 그 안에서 또
-                        // 한 번 축소해 레터박스가 이중으로 생겼다(2026-08-29, "두 쪽으로 보여야지").
-                        val ratio = book.size.ratio * 2f
-                        val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
-                        val h = w / ratio
-                        ReadingPane(
-                            repo, book, selectedReadPage, onPageChanged = { selectedReadPage = it },
-                            modifier = Modifier.width(w).height(h).clip(RoundedCornerShape(16.dp)),
-                        )
+                        if (book.vector) {
+                            // 벡터 스케치북은 페이지 넘김 애니메이션(읽기모드) 자체가 스펙에서
+                            // 제외돼서(전용 캔버스 화면의 읽기모드 버튼도 같은 이유로 없음) 여기서도
+                            // PageCurl 대신 선택된 페이지를 그냥 정지 이미지로 보여준다 — 페이지 넘김
+                            // 제스처 없음.
+                            val side = minOf(maxWidth, maxHeight)
+                            val pageBmp = remember(book.id, selectedReadPage) { repo?.loadPage(book.id, selectedReadPage) }
+                            if (pageBmp != null) {
+                                Image(
+                                    bitmap = pageBmp.asImageBitmap(), contentDescription = null,
+                                    modifier = Modifier.size(side).clip(RoundedCornerShape(16.dp)),
+                                )
+                            } else {
+                                Box(Modifier.size(side).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant))
+                            }
+                        } else {
+                            // 이 블록은 항상 landscape일 때만 그려지고, PageCurl은 landscape에서 항상
+                            // 좌우 두 쪽(TwoPageSpread)으로 그려서 실제 표시 비율이 페이지 하나의 2배로
+                            // 넓다 — 여기서 상자를 페이지 1장 비율로만 잡으면 PageCurl이 그 안에서 또
+                            // 한 번 축소해 레터박스가 이중으로 생겼다(2026-08-29, "두 쪽으로 보여야지").
+                            val ratio = book.size.ratio * 2f
+                            val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
+                            val h = w / ratio
+                            ReadingPane(
+                                repo, book, selectedReadPage, onPageChanged = { selectedReadPage = it },
+                                modifier = Modifier.width(w).height(h).clip(RoundedCornerShape(16.dp)),
+                            )
+                        }
                     }
                     // 3열 표지리스트를 탭하면 여기서 읽을 뿐 — 그리기는 이 별도 버튼으로만 들어간다
                     // (탭=읽기, 그리기 진입은 명시적 버튼으로 분리하기로 결정, 2026-08-29). 텍스트 없이

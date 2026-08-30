@@ -26,19 +26,33 @@ class VectorBrushView(context: Context) : View(context) {
     private var lx = 0f; private var ly = 0f; private var lt = 0L
     private var smoothedSpeed = 0f
 
-    val canUndo: Boolean get() = committed.isNotEmpty()
+    /** undo는 committed의 마지막 원소를 그냥 지우는 것만으론 안 된다 — eraseAt()도 committed에서
+     *  직접 지우기 때문에, 지우개로 획 A를 지운 뒤 undo하면 "지금 committed의 마지막 원소"인 전혀
+     *  다른 획 B가 대신 지워져 버린다(A는 영영 사라짐). 그리기/지우기 각각을 별도 이력으로 남겨서
+     *  undo가 항상 "가장 최근에 일어난 단일 동작"만 정확히 되돌리게 한다. */
+    private sealed class UndoOp {
+        data class Drew(val stroke: VectorStroke) : UndoOp()
+        data class Erased(val stroke: VectorStroke) : UndoOp()
+    }
+    private val history = mutableListOf<UndoOp>()
+
+    val canUndo: Boolean get() = history.isNotEmpty()
 
     fun currentPage(): VectorPage = VectorPage(committed.toList())
 
     fun loadPage(page: VectorPage) {
         committed.clear(); committed.addAll(page.strokes)
+        history.clear()
         current = null
         invalidate()
     }
 
     fun undo() {
-        if (committed.isEmpty()) return
-        committed.removeAt(committed.size - 1)
+        val op = history.removeLastOrNull() ?: return
+        when (op) {
+            is UndoOp.Drew -> committed.remove(op.stroke)
+            is UndoOp.Erased -> committed.add(op.stroke)
+        }
         invalidate()
         onStrokeEnd?.invoke()
     }
@@ -76,7 +90,9 @@ class VectorBrushView(context: Context) : View(context) {
                 val cur = current
                 current = null
                 if (cur != null && cur.size >= 2) {
-                    committed.add(VectorStroke(color, cur))
+                    val stroke = VectorStroke(color, cur)
+                    committed.add(stroke)
+                    history.add(UndoOp.Drew(stroke))
                     onStrokeEnd?.invoke()
                 }
                 invalidate()
@@ -96,7 +112,9 @@ class VectorBrushView(context: Context) : View(context) {
         for (i in committed.indices.reversed()) {
             val outline = strokeOutline(committed[i].points)
             if (outline.isNotEmpty() && pointInPolygon(x, y, outline)) {
+                val erased = committed[i]
                 committed.removeAt(i)
+                history.add(UndoOp.Erased(erased))
                 invalidate()
                 onStrokeEnd?.invoke()
                 return

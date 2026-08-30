@@ -2,6 +2,8 @@ package com.g1.sketchbook.sketchbook
 
 import android.graphics.Bitmap
 import com.g1.sketchbook.backup.BackupRepository
+import com.g1.sketchbook.vector.VectorPage
+import com.g1.sketchbook.vector.toJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -85,6 +87,17 @@ fun savePageSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: Ba
     scope.launch(Dispatchers.IO) {
         repo.savePage(bookId, index, bmp)
         if (uid.isNotBlank()) backup.pushSketchbookPage(uid, bookId, index, bmp, repo.pageUpdatedAt(bookId, index))
+    }
+}
+
+/** 벡터 페이지판 [savePageSynced] — repo.saveVectorPage도 마찬가지로 1024² 비트맵 렌더+PNG 인코딩
+ *  +JSON 디스크 쓰기라 매 붓질(onStrokeEnd)마다 메인 스레드에서 부르면 안 된다. 저장과 동시에
+ *  바로 백업까지 밀어 올려서(다음 foreground 재동기화를 기다리지 않고) 그림이 곧장 클라우드에
+ *  반영되게 한다. */
+fun saveVectorPageSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, bookId: String, index: Int, page: VectorPage) {
+    scope.launch(Dispatchers.IO) {
+        repo.saveVectorPage(bookId, index, page)
+        if (uid.isNotBlank()) backup.pushVectorPage(uid, bookId, index, page.toJson(), repo.vectorPageUpdatedAt(bookId, index))
     }
 }
 
