@@ -365,6 +365,41 @@ val IconDrawLine: ImageVector by lazy {
     }.build()
 }
 
+/** 벡터 스케치북 만들기 — Lucide "spline-pointer"(펜/포인터 + 곡선 + 앵커점 2개), 2026-08-30
+ *  사용자가 넘겨준 image/icon/vector.svg로 기존 IconImageSaveLine 임시 사용을 교체. */
+val IconVectorLine: ImageVector by lazy {
+    ImageVector.Builder(name = "VectorLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+        path(
+            fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = LineStrokeWidth,
+            strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z
+            moveTo(12.034f, 12.681f)
+            arcToRelative(0.498f, 0.498f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.647f, dy1 = -0.647f)
+            lineToRelative(9f, 3.5f)
+            arcToRelative(0.5f, 0.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -0.033f, dy1 = 0.943f)
+            lineToRelative(-3.444f, 1.068f)
+            arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -0.66f, dy1 = 0.66f)
+            lineToRelative(-1.067f, 3.443f)
+            arcToRelative(0.5f, 0.5f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -0.943f, dy1 = 0.033f)
+            close()
+            // M5 17A12 12 0 0 1 17 5
+            moveTo(5f, 17f)
+            arcTo(12f, 12f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 17f, y1 = 5f)
+            // circle cx=19 cy=5 r=2
+            moveTo(21f, 5f)
+            arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 17f, y1 = 5f)
+            arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 21f, y1 = 5f)
+            close()
+            // circle cx=5 cy=19 r=2
+            moveTo(7f, 19f)
+            arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 3f, y1 = 19f)
+            arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 7f, y1 = 19f)
+            close()
+        }
+    }.build()
+}
+
 /** 선생님모드 꺼짐 — Lucide "screen-share-off"(모니터 + 모서리 X 표시). */
 val IconScreenUnsharedLine: ImageVector by lazy {
     ImageVector.Builder(name = "ScreenUnsharedLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {

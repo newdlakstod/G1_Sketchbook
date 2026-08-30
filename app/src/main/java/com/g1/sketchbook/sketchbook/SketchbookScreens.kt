@@ -533,7 +533,7 @@ private fun SketchbookListScreen(
                 IconButton(onClick = onNewShared) { Icon(IconNewNoteLine, "공유 스케치북 만들기") }
                 IconButton(onClick = onJoinShared) { Icon(IconKeyLine, "참여코드로 입장하기") }
             } else {
-                IconButton(onClick = onNewVector) { Icon(com.g1.sketchbook.brush.IconImageSaveLine, "벡터 스케치북 만들기") }
+                IconButton(onClick = onNewVector) { Icon(com.g1.sketchbook.brush.IconVectorLine, "벡터 스케치북 만들기") }
                 IconButton(onClick = onNewPersonal) { Icon(Icons.Filled.Add, "스케치북 추가") }
             }
             // 표지 크기(크게/작게) 설정 — 실제 한 줄에 몇 개가 들어가는지는 화면 폭에 맞춰 자동
