@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Icon
@@ -23,7 +21,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,61 +36,54 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.g1.sketchbook.R
 import com.g1.sketchbook.data.SessionStore
-import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
-import com.g1.sketchbook.sketchbook.saveVectorPageSynced
+import com.g1.sketchbook.sketchbook.saveVectorCanvasSynced
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.saveSvgToGallery
 
-/** 벡터 스케치북 편집화면 — 기존 `BrushControls`보다 훨씬 단순한 툴바(색상 스와치, 되돌리기,
- *  지우개) 하나만. 페이지 넘김 애니메이션(읽기모드)은 스펙에서 제외됐다 — 여기서 페이지 전환은
- *  그냥 이전/다음 화살표로 인덱스만 바꾼다. */
+/** 벡터 스케치북 전용 캔버스 화면 — 책 한 권 = 캔버스 한 장(페이지 없음). 도구는 펜/지우개/
+ *  내보내기용 라쏘 셋. 두 손가락 핀치로 확대·이동. */
 @Composable
-fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, startPage: Int = 0, onBack: () -> Unit) {
+fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val repo = remember { SketchbookRepository(context) }
-    val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     val session = remember { SessionStore(context) }
     val scope = rememberCoroutineScope()
+    val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
     var view by remember { mutableStateOf<VectorBrushView?>(null) }
-    var page by remember { mutableIntStateOf(startPage.coerceIn(0, MAX_PAGES - 1)) }
     var color by remember { mutableStateOf(session.brushColor) }
-    var erasing by remember { mutableStateOf(false) }
+    var tool by remember { mutableStateOf(VectorBrushView.Tool.DRAW) }
     var canUndo by remember { mutableStateOf(false) }
     val favorites = session.favoriteColors
 
     fun saveCurrent() {
         val v = view ?: return
-        saveVectorPageSynced(scope, repo, backup, myUid, bookId, page, v.currentPage())
-    }
-    fun goTo(newPage: Int) {
-        if (newPage == page || newPage !in 0 until MAX_PAGES) return
-        saveCurrent()
-        page = newPage
-        view?.loadPage(repo.loadVectorPage(bookId, newPage) ?: VectorPage(emptyList()))
-        canUndo = view?.canUndo ?: false
+        saveVectorCanvasSynced(scope, repo, backup, myUid, bookId, v.currentPage())
     }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // 캔버스는 논리적으로 항상 정사각(스펙: 캔버스 비율 정사각 고정)이라, 화면에 보이는 View도
-        // 정사각이어야 VectorBrushView.scale()의 단일 비율이 y축에도 그대로 맞는다 — 안 그러면(예:
-        // 세로가 긴 폰에서 fillMaxSize) y 논리좌표가 1024를 훌쩍 넘겨 그려지는데, 썸네일/SVG export는
-        // 여전히 1024×1024만 캡처해서 그 아래로 그린 내용이 조용히 잘려나간다.
-        BoxWithConstraints(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            val squareSize = minOf(maxWidth, maxHeight)
-            AndroidView(
-                modifier = Modifier.size(squareSize),
-                factory = { ctx ->
-                    VectorBrushView(ctx).also { v ->
-                        v.loadPage(repo.loadVectorPage(bookId, page) ?: VectorPage(emptyList()))
-                        v.onStrokeEnd = { canUndo = v.canUndo; saveCurrent() }
-                        view = v
-                    }
-                },
-                update = { v -> v.color = color; v.erasing = erasing },
-            )
-        }
+    fun exportRegion(region: Bounds) {
+        val v = view ?: return
+        val svg = vectorPageToSvg(v.currentPage(), region)
+        val status = saveSvgToGallery(context, svg, book.name)
+        Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { ctx ->
+                VectorBrushView(ctx).also {
+                    it.color = color
+                    it.infinite = book.vectorInfinite
+                    it.canvasW = (book.vectorCanvasW ?: 1024).toFloat()
+                    it.canvasH = (book.vectorCanvasH ?: 1024).toFloat()
+                    it.loadPage(repo.loadVectorCanvas(bookId) ?: VectorPage(emptyList()))
+                    it.onStrokeEnd = { saveCurrent(); canUndo = it.canUndo }
+                    view = it
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
         Row(
             Modifier.align(Alignment.BottomCenter).padding(16.dp)
                 .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.large)
@@ -102,36 +92,51 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, startPag
             verticalAlignment = Alignment.CenterVertically,
         ) {
             favorites.take(5).forEach { swatch ->
-                val selected = swatch == color && !erasing
+                val selected = swatch == color && tool == VectorBrushView.Tool.DRAW
                 Box(
                     Modifier.size(28.dp).clip(CircleShape).background(Color(swatch))
                         .border(if (selected) 3.dp else 1.dp,
                             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape)
-                        .bounceClick { color = swatch; erasing = false },
+                        .bounceClick { color = swatch; view?.color = swatch; tool = VectorBrushView.Tool.DRAW; view?.tool = tool },
                 )
             }
             IconButton(enabled = canUndo, onClick = { view?.undo(); canUndo = view?.canUndo ?: false }) {
                 Icon(Icons.Filled.Undo, "되돌리기")
             }
-            IconButton(onClick = { erasing = !erasing }) {
+            IconButton(onClick = {
+                tool = if (tool == VectorBrushView.Tool.ERASE) VectorBrushView.Tool.DRAW else VectorBrushView.Tool.ERASE
+                view?.tool = tool
+            }) {
                 Image(
                     painterResource(R.drawable.brush_eraser), "지우개(획 삭제)",
-                    colorFilter = ColorFilter.tint(if (erasing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface),
+                    colorFilter = ColorFilter.tint(if (tool == VectorBrushView.Tool.ERASE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface),
                 )
             }
             IconButton(onClick = {
-                val v = view ?: return@IconButton
-                val size = VectorBrushView.CANVAS_SIZE
-                val svg = vectorPageToSvg(v.currentPage(), Bounds(0f, 0f, size, size))
-                val status = saveSvgToGallery(context, svg, "${book.name}_p${page}")
-                Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
+                tool = if (tool == VectorBrushView.Tool.LASSO_EXPORT) VectorBrushView.Tool.DRAW else VectorBrushView.Tool.LASSO_EXPORT
+                view?.tool = tool
+                view?.onLassoComplete = { _, lasso ->
+                    pointsBounds(lasso)?.let { exportRegion(it) }
+                    tool = VectorBrushView.Tool.DRAW; view?.tool = tool
+                }
             }) {
-                Icon(com.g1.sketchbook.brush.IconImageSaveLine, "이미지로 저장")
+                Icon(com.g1.sketchbook.brush.IconLassoLine, "라쏘로 영역 선택해 내보내기",
+                    tint = if (tool == VectorBrushView.Tool.LASSO_EXPORT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
             }
-        }
-        Row(Modifier.align(Alignment.TopCenter).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IconButton(enabled = page > 0, onClick = { goTo(page - 1) }) { Icon(Icons.Filled.ChevronLeft, "이전 페이지") }
-            IconButton(enabled = page < MAX_PAGES - 1, onClick = { goTo(page + 1) }) { Icon(Icons.Filled.ChevronRight, "다음 페이지") }
+            IconButton(onClick = {
+                val v = view ?: return@IconButton
+                val whole = if (book.vectorInfinite) {
+                    contentBounds(v.currentPage().strokes)?.let {
+                        val padX = it.width * 0.05f; val padY = it.height * 0.05f
+                        Bounds(it.minX - padX, it.minY - padY, it.maxX + padX, it.maxY + padY)
+                    } ?: Bounds(0f, 0f, 64f, 64f)
+                } else {
+                    Bounds(0f, 0f, book.vectorCanvasW?.toFloat() ?: 1024f, book.vectorCanvasH?.toFloat() ?: 1024f)
+                }
+                exportRegion(whole)
+            }) {
+                Icon(com.g1.sketchbook.brush.IconImageSaveLine, "전체 내보내기")
+            }
         }
         IconButton(onClick = { saveCurrent(); onBack() }, modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
             Icon(Icons.Filled.Close, "닫기")
