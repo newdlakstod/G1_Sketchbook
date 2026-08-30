@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -182,6 +183,8 @@ fun SharedBookScreen(
     // it points to has left the session or is now the same as whoever's maximized.
     var maximizedUid by remember { mutableStateOf<String?>(null) }
     var popupUid by remember { mutableStateOf<String?>(null) }
+    // host가 게스트 패널을 길게 눌러 호스트를 넘길 대상(확인 다이얼로그 표시용, 2026-08-30 요청).
+    var transferHostTarget by remember { mutableStateOf<ShareRepository.Slot?>(null) }
 
     LaunchedEffect(code) {
         share.observeSession(code).collect { st ->
@@ -311,12 +314,12 @@ fun SharedBookScreen(
                         val other = others.getOrNull(0)
                         if (landscape) {
                             Row(Modifier.fillMaxSize()) {
-                                OtherPane(other, code, Modifier.weight(1f).fillMaxSize())
+                                OtherPane(other, code, Modifier.weight(1f).fillMaxSize(), isHost) { transferHostTarget = it }
                                 mine(Modifier.weight(1f).fillMaxSize())
                             }
                         } else {
                             Column(Modifier.fillMaxSize()) {
-                                OtherPane(other, code, Modifier.weight(1f).fillMaxWidth())
+                                OtherPane(other, code, Modifier.weight(1f).fillMaxWidth(), isHost) { transferHostTarget = it }
                                 mine(Modifier.weight(1f).fillMaxWidth())
                             }
                         }
@@ -327,11 +330,11 @@ fun SharedBookScreen(
                         val cellSlots = (others.take(3) + listOf(null, null, null)).take(3)
                         Column(Modifier.fillMaxSize()) {
                             Row(Modifier.weight(1f).fillMaxWidth()) {
-                                GridCell(cellSlots[0], code, Modifier.weight(1f).fillMaxHeight())
-                                GridCell(cellSlots[1], code, Modifier.weight(1f).fillMaxHeight())
+                                GridCell(cellSlots[0], code, Modifier.weight(1f).fillMaxHeight(), isHost) { transferHostTarget = it }
+                                GridCell(cellSlots[1], code, Modifier.weight(1f).fillMaxHeight(), isHost) { transferHostTarget = it }
                             }
                             Row(Modifier.weight(1f).fillMaxWidth()) {
-                                GridCell(cellSlots[2], code, Modifier.weight(1f).fillMaxHeight())
+                                GridCell(cellSlots[2], code, Modifier.weight(1f).fillMaxHeight(), isHost) { transferHostTarget = it }
                                 mine(Modifier.weight(1f).fillMaxHeight())
                             }
                         }
@@ -350,7 +353,7 @@ fun SharedBookScreen(
                     var pickerOpen by remember { mutableStateOf(false) }
                     Box(Modifier.fillMaxSize()) {
                         if (bigUid == null) mine(Modifier.fillMaxSize())
-                        else OtherPane(others.first { it.uid == bigUid }, code, Modifier.fillMaxSize())
+                        else OtherPane(others.first { it.uid == bigUid }, code, Modifier.fillMaxSize(), isHost) { transferHostTarget = it }
 
                         // popupCandidates is only empty when bigUid==null AND there's nobody else —
                         // in that case there's nothing left to show in the popup (calling mine() again
@@ -362,7 +365,7 @@ fun SharedBookScreen(
                                     .background(MaterialTheme.colorScheme.background, RectangleShape),
                             ) {
                                 if (popupDisplay == null) mine(Modifier.fillMaxSize())
-                                else OtherPane(others.first { it.uid == popupDisplay }, code, Modifier.fillMaxSize())
+                                else OtherPane(others.first { it.uid == popupDisplay }, code, Modifier.fillMaxSize(), isHost) { transferHostTarget = it }
                             }
                         }
 
@@ -475,6 +478,28 @@ fun SharedBookScreen(
             },
             onDismiss = { pagesOpen = false },
         )
+    }
+    // 게스트 패널 길게눌러 호스트 넘기기 — 내 권한을 잃는 중요한 결정이라 확인 다이얼로그를 거친다
+    // (2026-08-30 요청). transferHostTarget이 세션에서 이미 나갔다면(관측 갱신으로 others에서
+    // 사라짐) 확인 문구가 낡은 이름을 보여줄 수 있으니, 뜨는 동안 최신 슬롯으로 다시 맞춘다.
+    transferHostTarget?.let { staleTarget ->
+        val target = others.firstOrNull { it.uid == staleTarget.uid }
+        if (target == null) {
+            transferHostTarget = null
+        } else {
+            AlertDialog(
+                onDismissRequest = { transferHostTarget = null },
+                title = { Text("호스트 넘기기") },
+                text = { Text("${target.name} 님에게 호스트를 넘길까요? 넘긴 뒤엔 참가자로 바뀌어요.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        share.transferHost(code, myUid, target.uid)
+                        transferHostTarget = null
+                    }) { Text("넘기기") }
+                },
+                dismissButton = { TextButton(onClick = { transferHostTarget = null }) { Text("취소") } },
+            )
+        }
     }
 }
 
@@ -615,14 +640,17 @@ private fun participantBitmap(slot: ShareRepository.Slot?, page: Int): Bitmap? {
  *  blank-canvas message. [slot] null means "nobody's joined yet" (only meaningful in the 2-pane
  *  branch — [GridCell] renders a plain empty box instead once there's already at least one other
  *  participant). Defaults to their "live" page ([ShareRepository.Slot.currentPage]) — tapping the
- *  page badge lets me pin a look at any of their [MAX_PAGES] pages via [PartnerPagePicker]. */
+ *  page badge lets me pin a look at any of their [MAX_PAGES] pages via [PartnerPagePicker].
+ *  [isHost]일 때만 이 패널을 길게 눌러 [onTransferHost]로 호스트 권한을 넘길 수 있다(2026-08-30
+ *  요청) — 빈 슬롯([slot]이 null)은 넘길 대상이 없으니 길게눌러도 아무 일 없다. */
 @Composable
-private fun OtherPane(slot: ShareRepository.Slot?, code: String, modifier: Modifier) {
+private fun OtherPane(slot: ShareRepository.Slot?, code: String, modifier: Modifier, isHost: Boolean = false, onTransferHost: (ShareRepository.Slot) -> Unit = {}) {
     var viewedPage by remember(slot?.uid) { mutableStateOf<Int?>(null) }
     var pagePickerOpen by remember { mutableStateOf(false) }
     val effectivePage = viewedPage ?: slot?.currentPage ?: 0
     val bmp = participantBitmap(slot, effectivePage)
-    PaneFrame(modifier, slot?.name ?: "상대", accent = false) {
+    val paneModifier = if (isHost && slot != null) modifier.bounceClick(onLongClick = { onTransferHost(slot) }) {} else modifier
+    PaneFrame(paneModifier, slot?.name ?: "상대", accent = false) {
         if (bmp != null) {
             Image(bmp.asImageBitmap(), "${slot?.name ?: "상대"} 그림", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         } else {
@@ -742,8 +770,8 @@ private fun PartnerPageCell(index: Int, base64: String?, isLive: Boolean, isSele
 
 /** A 2x2 grid cell — a participant pane, or a plain blank cell (3-person grid's empty 4th slot). */
 @Composable
-private fun GridCell(slot: ShareRepository.Slot?, code: String, modifier: Modifier) {
-    if (slot != null) OtherPane(slot, code, modifier)
+private fun GridCell(slot: ShareRepository.Slot?, code: String, modifier: Modifier, isHost: Boolean = false, onTransferHost: (ShareRepository.Slot) -> Unit = {}) {
+    if (slot != null) OtherPane(slot, code, modifier, isHost, onTransferHost)
     else Box(modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RectangleShape))
 }
 

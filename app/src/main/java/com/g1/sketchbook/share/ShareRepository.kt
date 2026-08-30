@@ -89,6 +89,17 @@ class ShareRepository {
         root.child(code).child("teacherMode").setValue(enabled)
     }
 
+    /** host가 게스트에게 호스트 권한을 넘긴다(2026-08-30 요청) — host만 부르는 게 맞다(다른 write들과
+     *  같은 신뢰 수준, [setTeacherMode]와 동일). session의 host 필드와 두 슬롯의 role을 한 번에
+     *  갱신해서 중간 상태(둘 다 host, 또는 둘 다 guest)가 관측되지 않게 한다. */
+    fun transferHost(code: String, fromUid: String, toUid: String) {
+        root.child(code).updateChildren(mapOf(
+            "host" to toUid,
+            "slots/$fromUid/role" to "guest",
+            "slots/$toUid/role" to "host",
+        ))
+    }
+
     /** Emits the session's participants whenever anything changes. */
     fun observeSession(code: String): Flow<SessionState> = callbackFlow {
         val ref = root.child(code)
