@@ -66,7 +66,8 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
             SyncAction.DELETE_LOCAL -> repo.delete(id)
             SyncAction.PULL -> if (r != null) {
                 repo.upsert(Sketchbook(id, r.name, r.sizeKey, r.bgKey, r.createdAt, r.pageCount, r.fav,
-                    coverColor = r.coverColor, vector = r.vector, updatedAt = r.updatedAt))
+                    coverColor = r.coverColor, vector = r.vector, vectorInfinite = r.vectorInfinite,
+                    vectorCanvasW = r.vectorCanvasW, vectorCanvasH = r.vectorCanvasH, updatedAt = r.updatedAt))
             }
             SyncAction.PUSH -> if (l != null) backup.pushSketchbookMeta(uid, l)
             SyncAction.NOOP -> {}
@@ -87,25 +88,20 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
             SyncAction.NOOP -> {}
         }
 
-        val isVector = l?.vector == true || r?.vector == true
-        val pageCount = maxOf(l?.pageCount ?: 0, r?.pageCount ?: MAX_PAGES)
-        for (index in 0 until pageCount) {
-            if (isVector) {
-                val localAt = repo.vectorPageUpdatedAt(id, index).takeIf { it > 0L }
-                val remotePage = r?.vectorPages?.get(index)
-                when (decideSyncAction(localAt, remotePage?.first)) {
-                    SyncAction.PULL -> if (remotePage != null) {
-                        vectorPageFromJson(remotePage.second)?.let {
-                            repo.saveVectorPage(id, index, it)
-                            repo.setVectorPageUpdatedAt(id, index, remotePage.first)
-                        }
-                    }
-                    SyncAction.PUSH -> repo.loadVectorPage(id, index)?.let {
-                        backup.pushVectorPage(uid, id, index, it.toJson(), repo.vectorPageUpdatedAt(id, index))
-                    }
-                    else -> {}
+        if (l?.vector == true || r?.vector == true) {
+            val localAt = repo.vectorCanvasUpdatedAt(id).takeIf { it > 0L }
+            when (decideSyncAction(localAt, r?.vectorCanvas?.first)) {
+                SyncAction.PULL -> r?.vectorCanvas?.let { (remoteAt, strokesJson) ->
+                    vectorPageFromJson(strokesJson)?.let { repo.saveVectorCanvas(id, it); repo.setVectorCanvasUpdatedAt(id, remoteAt) }
                 }
-            } else {
+                SyncAction.PUSH -> repo.loadVectorCanvas(id)?.let {
+                    backup.pushVectorCanvas(uid, id, it.toJson(), repo.vectorCanvasUpdatedAt(id))
+                }
+                else -> {}
+            }
+        } else {
+            val pageCount = maxOf(l?.pageCount ?: 0, r?.pageCount ?: MAX_PAGES)
+            for (index in 0 until pageCount) {
                 val localPageAt = repo.pageUpdatedAt(id, index).takeIf { it > 0L }
                 val remotePage = r?.pages?.get(index)
                 when (decideSyncAction(localPageAt, remotePage?.first)) {

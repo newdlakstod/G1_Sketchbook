@@ -13,7 +13,11 @@ data class RemoteSketchbook(
     /** 벡터 스케치북 여부·페이지(텍스트 그대로, base64 인코딩 없음) — [pages]와 상호 배타적으로
      *  쓰인다: vector=true인 책은 항상 pages가 비어 있고 vectorPages만 쓴다. */
     val vector: Boolean = false,
-    val vectorPages: Map<Int, Pair<Long, String>> = emptyMap(), // index -> (updatedAt, strokes json)
+    val vectorInfinite: Boolean = false,
+    val vectorCanvasW: Int? = null,
+    val vectorCanvasH: Int? = null,
+    /** 벡터 책 하나 = 캔버스 하나이므로 더 이상 페이지 인덱스가 없다. */
+    val vectorCanvas: Pair<Long, String>? = null, // (updatedAt, strokes json)
 )
 
 /** 공유 스케치북은 실제 그림이 아니라 "이 계정이 이 코드에 참여 중"이라는 사실만 계정 전체에

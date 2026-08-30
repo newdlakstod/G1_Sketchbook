@@ -44,7 +44,8 @@ class BackupRepository {
                 "name" to book.name, "sizeKey" to book.sizeKey, "bgKey" to book.bgKey,
                 "createdAt" to book.createdAt, "pageCount" to book.pageCount, "fav" to book.fav,
                 "coverColor" to (book.coverColor ?: Long.MIN_VALUE), "updatedAt" to book.updatedAt,
-                "vector" to book.vector,
+                "vector" to book.vector, "vectorInfinite" to book.vectorInfinite,
+                "vectorCanvasW" to (book.vectorCanvasW ?: -1), "vectorCanvasH" to (book.vectorCanvasH ?: -1),
             ),
         )
     }
@@ -67,10 +68,10 @@ class BackupRepository {
             .setValue(mapOf("updatedAt" to updatedAt, "image" to encode(bmp, preserveAlpha = true)))
     }
 
-    /** 벡터 페이지는 이미 텍스트(JSON)라 base64 인코딩 없이 그대로 올린다 — 이미지보다 훨씬
-     *  가볍다. [pushSketchbookPage]와 나란한 벡터 전용 경로. */
-    fun pushVectorPage(uid: String, bookId: String, index: Int, strokesJson: String, updatedAt: Long) {
-        root.child(uid).child("sketchbooks").child(bookId).child("vectorPages").child(index.toString())
+    /** 벡터 캔버스는 이미 텍스트(JSON)라 base64 인코딩 없이 그대로 올린다 — 이미지보다 훨씬
+     *  가볍다. [pushSketchbookPage]와 나란한 벡터 전용 경로. 책 하나당 캔버스 하나라 인덱스가 없다. */
+    fun pushVectorCanvas(uid: String, bookId: String, strokesJson: String, updatedAt: Long) {
+        root.child(uid).child("sketchbooks").child(bookId).child("vectorCanvas")
             .setValue(mapOf("updatedAt" to updatedAt, "strokes" to strokesJson))
     }
 
@@ -141,12 +142,11 @@ class BackupRepository {
                 val image = pc.child("image").getValue(String::class.java) ?: return@mapNotNull null
                 idx to (updatedAt to image)
             }.toMap()
-            val vectorPages = c.child("vectorPages").children.mapNotNull { pc ->
-                val idx = pc.key?.toIntOrNull() ?: return@mapNotNull null
-                val updatedAt = pc.child("updatedAt").getValue(Long::class.java) ?: return@mapNotNull null
-                val strokes = pc.child("strokes").getValue(String::class.java) ?: return@mapNotNull null
-                idx to (updatedAt to strokes)
-            }.toMap()
+            val vectorCanvas = c.child("vectorCanvas").let { vc ->
+                val updatedAt = vc.child("updatedAt").getValue(Long::class.java)
+                val strokes = vc.child("strokes").getValue(String::class.java)
+                if (updatedAt != null && strokes != null) updatedAt to strokes else null
+            }
             RemoteSketchbook(
                 id = id,
                 name = meta.child("name").getValue(String::class.java) ?: "",
@@ -163,7 +163,10 @@ class BackupRepository {
                 coverRemoved = c.child("cover").child("removed").getValue(Boolean::class.java) ?: false,
                 pages = pages,
                 vector = meta.child("vector").getValue(Boolean::class.java) ?: false,
-                vectorPages = vectorPages,
+                vectorInfinite = meta.child("vectorInfinite").getValue(Boolean::class.java) ?: false,
+                vectorCanvasW = meta.child("vectorCanvasW").getValue(Int::class.java)?.takeIf { it > 0 },
+                vectorCanvasH = meta.child("vectorCanvasH").getValue(Int::class.java)?.takeIf { it > 0 },
+                vectorCanvas = vectorCanvas,
             )
         }
 
