@@ -13,8 +13,8 @@ import kotlinx.coroutines.launch
  * SketchbookRepository mutators independently today. [uid] blank means "not signed in": the local
  * mutation still happens, the push is just skipped. Pushes run fire-and-forget on [scope].
  */
-fun createSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, name: String, sizeKey: String, bgKey: String): Sketchbook {
-    val book = repo.create(name, sizeKey, bgKey)
+fun createSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, name: String, sizeKey: String, bgKey: String, vector: Boolean = false): Sketchbook {
+    val book = repo.create(name, sizeKey, bgKey, vector = vector)
     if (uid.isNotBlank()) scope.launch(Dispatchers.IO) { backup.pushSketchbookMeta(uid, book) }
     return book
 }

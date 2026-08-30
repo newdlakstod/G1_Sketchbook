@@ -474,6 +474,9 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                                 if (book.shared) {
                                     Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
                                         .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
+                                } else if (book.vector) {
+                                    Text("✏️", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
+                                        .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
                                 }
                             }
                         }
