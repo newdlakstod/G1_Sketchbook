@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -881,6 +882,29 @@ fun LassoDeleteButton(xPx: Float, yPx: Float, onDelete: () -> Unit, modifier: Mo
         contentAlignment = Alignment.Center,
     ) {
         Icon(Icons.Filled.Delete, "선택 영역 지우기", tint = Color(0xFFE85555))
+    }
+}
+
+/** 라소 선택 영역 바로 위, [LassoDeleteButton] 왼쪽에 뜨는 "선택 영역 저장" 버튼 — 선택한 부분만
+ *  bounding box 크기로 잘라 투명 배경 PNG로 갤러리에 저장한다(스케치북 페이지 편집화면 전용,
+ *  2026-08-30 요청). 삭제 버튼과 짝을 맞춰 간격(48dp)만큼 왼쪽에 둔다. */
+@Composable
+fun LassoSaveButton(xPx: Float, yPx: Float, onSave: () -> Unit, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current.density
+    val sizePx = 40f * density
+    val liftPx = 46f * density
+    val gapPx = 48f * density
+    Box(
+        modifier
+            .offset { IntOffset((xPx - sizePx / 2f - gapPx).roundToInt(), (yPx - liftPx).roundToInt()) }
+            .size(40.dp)
+            .shadow(6.dp, CircleShape, clip = false)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surface)
+            .bounceClick(onClick = onSave),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Filled.Save, "선택 영역 저장", tint = MaterialTheme.colorScheme.primary)
     }
 }
 

@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -135,6 +136,7 @@ import com.g1.sketchbook.brush.BrushView
 import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.excludeSystemGestureEdges
+import com.g1.sketchbook.ui.saveToGallery
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -1155,6 +1157,15 @@ fun SketchbookCanvasScreen(
             )
             eyedropPreview?.let { (c, x, y) -> com.g1.sketchbook.brush.EyedropFloatingPreview(c, x, y) }
             lassoDeleteAt?.let { p -> com.g1.sketchbook.brush.LassoDeleteButton(p.x, p.y, onDelete = { view?.deleteLassoSelection() }) }
+            // 올가미로 선택한 영역만 투명 배경 PNG로 갤러리에 저장(2026-08-30 요청) — 원본 캔버스는
+            // 그대로 두는 비파괴 내보내기라 저장 후에도 선택이 계속 유지된다.
+            lassoDeleteAt?.let { p ->
+                com.g1.sketchbook.brush.LassoSaveButton(p.x, p.y, onSave = {
+                    val sel = view?.exportSelection()
+                    val status = if (sel != null) saveToGallery(context, sel, "sketchbook_${book.id}_p${page}_selection") else "선택 영역이 없어요"
+                    Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
+                })
+            }
             // 현재 페이지 표기 — 페이지 우측 하단에 작게 떠 있는 배지(다른 화면들의 반투명 라벨과
             // 같은 스타일: 검정 60% 배경 + 흰 글자).
             Box(

@@ -1,13 +1,9 @@
 package com.g1.sketchbook.diary
 
-import android.content.ContentValues
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -126,6 +122,7 @@ import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.sketchbook.Catalog
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.excludeSystemGestureEdges
+import com.g1.sketchbook.ui.saveToGallery
 import com.g1.sketchbook.ui.theme.BodoniMTBlack
 import com.g1.sketchbook.ui.theme.Cavorting
 import com.g1.sketchbook.ui.theme.Dimens
@@ -1423,22 +1420,3 @@ private fun buildThumbs(repo: DiaryRepository, year: Int, month: Int): Map<Strin
     return map
 }
 
-private fun saveToGallery(ctx: Context, bmp: Bitmap, name: String): String = try {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/G1Sketchbook")
-        }
-        val uri = ctx.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri != null) {
-            ctx.contentResolver.openOutputStream(uri)?.use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            "갤러리에 저장했어요 ✨"
-        } else "저장 실패"
-    } else {
-        val dir = java.io.File(ctx.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "G1Sketchbook").apply { mkdirs() }
-        val f = java.io.File(dir, "$name.png")
-        java.io.FileOutputStream(f).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        "저장됨: ${f.absolutePath}"
-    }
-} catch (e: Exception) { "저장 실패: ${e.message}" }

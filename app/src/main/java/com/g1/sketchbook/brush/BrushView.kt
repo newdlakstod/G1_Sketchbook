@@ -718,6 +718,22 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val tmp = FloatArray(2)
     private fun mapPoint(x: Float, y: Float): FloatArray { tmp[0] = x; tmp[1] = y; inv.mapPoints(tmp); return tmp }
 
+    /** 라소 선택 영역만 선택 bounding box 크기로 잘라 내보낸다(투명 배경, 종이 없이 필기만 —
+     *  exportContent()와 같은 소스인 contentBmp를 쓴다). [liftSelection]과 달리 원본 캔버스는 건드리지
+     *  않는 non-destructive 내보내기라 "선택 영역 저장" 버튼에서 캔버스를 비우지 않고 그대로 쓸 수
+     *  있다. 선택이 없으면 null. */
+    fun exportSelection(): Bitmap? {
+        val sp = selectionPath ?: return null
+        val cb = contentBmp ?: return null
+        val bounds = selectionRegion?.bounds ?: return null
+        if (bounds.isEmpty) return null
+        val out = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
+        val oc = Canvas(out)
+        oc.translate(-bounds.left.toFloat(), -bounds.top.toFloat())
+        oc.save(); oc.clipPath(sp); oc.drawBitmap(cb, 0f, 0f, null); oc.restore()
+        return out
+    }
+
     /** 선택 경로 안쪽 픽셀만 복사해 새 비트맵으로 떼어내고, 원본 캔버스에서는 그 자리를 지운다
      *  (드래그 중엔 이 떼어낸 비트맵을 화면 오프셋만큼 옮겨 그리다가, 손을 떼면 실제 위치에 합성). */
     private fun liftSelection(path: Path): Bitmap {
