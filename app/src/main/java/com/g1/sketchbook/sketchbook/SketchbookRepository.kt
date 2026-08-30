@@ -5,6 +5,10 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import org.json.JSONArray
 import org.json.JSONObject
+import com.g1.sketchbook.vector.VectorPage
+import com.g1.sketchbook.vector.renderVectorPage
+import com.g1.sketchbook.vector.toJson
+import com.g1.sketchbook.vector.vectorPageFromJson
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.random.Random
@@ -29,6 +33,7 @@ object Catalog {
         CanvasSize("desktop", "데스크톱", 1920, 1080),
         CanvasSize("mobile", "모바일", 390, 844),
         CanvasSize("tablet", "태블릿", 810, 1080),
+        CanvasSize("vector", "벡터", 1024, 1024),
     )
     val backgrounds = listOf(
         Background("watercolor", "수채화용지"),
@@ -54,6 +59,10 @@ data class Sketchbook(
     /** 표지 이미지 파일이 바뀔 때마다 올라간다 — id는 그대로라 LaunchedEffect(book.id)만으론 새
      *  파일을 다시 읽어오지 않으므로, 이 값을 키에 함께 넣어 캐시를 무효화한다. */
     val coverVersion: Int = 0,
+    /** 처음부터 벡터(획 점 목록)로 그리는 스케치북 — [shared]와 동시에 켜지지 않는다(생성 마법사가
+     *  그 조합을 만들지 않음). true면 페이지는 `page_{i}.png`가 아니라 `page_{i}.json`에 저장되고,
+     *  [SketchbookRepository.loadVectorPage]/[saveVectorPage]로 읽고 쓴다. */
+    val vector: Boolean = false,
     /** 메타(이름/즐겨찾기/표지색/표지버전)가 마지막으로 바뀐 시각 — 구글 계정 백업 동기화의
      *  last-write-wins 비교에 쓰인다. 새로 만들 때(create)는 기본값(호출 시점)이 곧 맞는 값이라
      *  따로 안 넘겨도 된다. */
@@ -87,6 +96,7 @@ class SketchbookRepository(private val context: Context) {
                     o.getString("bg"), o.optLong("createdAt"), o.optInt("pages", 1), o.optBoolean("fav", false),
                     o.optBoolean("shared", false), o.optString("code", "").ifBlank { null },
                     o.optLong("coverColor", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }, o.optInt("coverVer", 0),
+                    o.optBoolean("vector", false),
                     o.optLong("updatedAt", o.optLong("createdAt")))
             }.sortedWith(compareByDescending<Sketchbook> { it.fav }.thenByDescending { it.createdAt })
         }.getOrDefault(emptyList())
@@ -94,12 +104,12 @@ class SketchbookRepository(private val context: Context) {
 
     fun get(id: String) = list().firstOrNull { it.id == id }
 
-    fun create(name: String, sizeKey: String, bgKey: String, shared: Boolean = false, code: String? = null): Sketchbook {
-        val fallback = if (shared) "공유 스케치북" else "우리 스케치북"
+    fun create(name: String, sizeKey: String, bgKey: String, shared: Boolean = false, code: String? = null, vector: Boolean = false): Sketchbook {
+        val fallback = if (shared) "공유 스케치북" else if (vector) "벡터 스케치북" else "우리 스케치북"
         // A sketchbook is a fixed MAX_PAGES-page notebook from the start (like a physical one) —
         // pages aren't added/removed later, just navigated. Blank pages are lazy (no file until drawn on).
         val sb = Sketchbook(newId(), name.ifBlank { fallback }, sizeKey, bgKey, System.currentTimeMillis(), MAX_PAGES,
-            fav = false, shared = shared, code = code)
+            fav = false, shared = shared, code = code, vector = vector)
         save(list() + sb)
         File(root, sb.id).mkdirs()
         return sb
@@ -160,6 +170,32 @@ class SketchbookRepository(private val context: Context) {
     /** PULL로 받아 저장한 페이지에 **원격 타임스탬프**를 다시 찍는다 — 안 그러면 방금 저장한 mtime이
      *  "지금"이라 항상 원격보다 최신으로 보여서, 다음 동기화가 곧바로 그걸 되밀어 올린다(핑퐁). */
     fun setPageUpdatedAt(id: String, index: Int, timestamp: Long) { pageFile(id, index).setLastModified(timestamp) }
+
+    private fun vectorPageFile(id: String, index: Int): File {
+        val dir = File(root, id).apply { mkdirs() }
+        return File(dir, "page_$index.json")
+    }
+
+    fun loadVectorPage(id: String, index: Int): VectorPage? {
+        val f = vectorPageFile(id, index)
+        if (!f.exists()) return null
+        return vectorPageFromJson(f.readText())
+    }
+
+    /** JSON(진짜 저장 데이터)과 함께, 같은 인덱스의 `page_{i}.png`에 렌더링한 비트맵도 같이 써서
+     *  [loadPageThumb]/[loadPage] 등 기존 PNG 전용 썸네일 경로가 벡터 페이지에도 그대로 통한다 —
+     *  `PagePanel`(3열 페이지 목록) 등 다른 화면을 벡터 인지하게 고칠 필요가 없다. PNG는 순수
+     *  캐시라 JSON만 진짜 상태다. */
+    fun saveVectorPage(id: String, index: Int, page: VectorPage) {
+        vectorPageFile(id, index).writeText(page.toJson())
+        FileOutputStream(pageFile(id, index)).use {
+            renderVectorPage(page, Catalog.size("vector").pxW()).compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+    }
+
+    fun vectorPageUpdatedAt(id: String, index: Int): Long = vectorPageFile(id, index).lastModified()
+
+    fun setVectorPageUpdatedAt(id: String, index: Int, timestamp: Long) { vectorPageFile(id, index).setLastModified(timestamp) }
 
     /** 페이지 순서 바꾸기(길게 눌러 드래그) — [order]\[새 위치\] = 그 자리에 와야 할 예전 인덱스.
      *  파일을 직접 맞바꿔서 반영하므로 다른 코드는 그대로 인덱스로 읽기만 하면 된다. 중간에 원본을
@@ -230,6 +266,7 @@ class SketchbookRepository(private val context: Context) {
                 .put("bg", it.bgKey).put("createdAt", it.createdAt).put("pages", it.pageCount).put("fav", it.fav)
                 .put("shared", it.shared).put("code", it.code ?: "")
                 .put("coverColor", it.coverColor ?: Long.MIN_VALUE).put("coverVer", it.coverVersion)
+                .put("vector", it.vector)
                 .put("updatedAt", it.updatedAt))
         }
         prefs.edit().putString(KEY, arr.toString()).apply()
