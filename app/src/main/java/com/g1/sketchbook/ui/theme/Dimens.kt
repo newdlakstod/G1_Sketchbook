@@ -53,7 +53,10 @@ object Dimens {
     object Home {
         val carouselCenterW = 182.dp    // 캐러셀 가운데(포커스) 노트 너비
         val carouselCenterH = 275.dp    // 캐러셀 가운데(포커스) 노트 높이
-        val carouselSideW = 145.dp      // 캐러셀 옆(비포커스) 노트 너비
+        // 옆(비포커스) 노트 너비 — 그림자·표지 밝기가 가운데와 옆이 이제 완전히 같아져서(2026-08-30,
+        // fade 제거) 크기 차이가 사실상 유일한 "가운데가 포커스"라는 신호가 됐다. 기존 145dp(가운데
+        // 대비 80%)는 그 신호가 잘 안 느껴진다는 피드백으로 120dp(약 66%)까지 줄였다.
+        val carouselSideW = 120.dp
         val carouselSideH = 218.dp      // 캐러셀 옆(비포커스) 노트 높이
         /** 표지 가로세로 비율(가운데 노트 기준) — 스케치북 리스트 썸네일도 이 비율을 그대로 씀(고정 비율). */
         val coverRatio = (carouselCenterW / carouselCenterH)
