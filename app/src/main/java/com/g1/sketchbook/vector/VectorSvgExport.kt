@@ -1,21 +1,27 @@
 package com.g1.sketchbook.vector
 
-/** [page]를 아이콘용 SVG 문서 텍스트로 직렬화한다 — 획 하나 = `<path>` 하나(채워진 다각형,
- *  `stroke-width` 아님), 그린 순서 그대로 뒤에 쓰여서 겹친 획의 z-order도 그대로 유지된다. 색은
- *  [VectorStroke.color]의 ARGB Long에서 알파를 버리고 RGB만 "#rrggbb"로 쓴다 — 펜은 항상 불투명
- *  잉크라(기존 래스터 펜과 동일 전제) 알파 채널을 SVG로 따로 표현할 필요가 없다. */
-fun vectorPageToSvg(page: VectorPage, sizePx: Int): String {
+/** [page]에서 [region]에 해당하는 부분만 아이콘용 SVG 문서 텍스트로 직렬화한다 — 획 하나 =
+ *  `<path>` 하나(채워진 다각형, `stroke-width` 아님), 그린 순서 그대로 유지. viewBox는 항상
+ *  "0 0 width height"로 시작하도록 [region]만큼 좌표를 평행이동한다(내보낸 SVG가 원본 캔버스
+ *  좌표계를 몰라도 되게). 점이 하나도 [region] 안에 없는 획은 통째로 건너뛴다 — 부분적으로만
+ *  겹치는 획은 지금은 잘라내지 않고 그대로 포함한다(잘라내기는 이 스펙 범위 밖). 색은
+ *  [VectorStroke.color]의 ARGB Long에서 알파를 버리고 RGB만 "#rrggbb"로 쓴다(펜은 항상 불투명). */
+fun vectorPageToSvg(page: VectorPage, region: Bounds): String {
+    val w = region.width; val h = region.height
     val sb = StringBuilder()
-    sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"").append(sizePx)
-        .append("\" height=\"").append(sizePx)
-        .append("\" viewBox=\"0 0 ").append(sizePx).append(' ').append(sizePx).append("\">")
+    sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"").append(w)
+        .append("\" height=\"").append(h)
+        .append("\" viewBox=\"0 0 ").append(w).append(' ').append(h).append("\">")
     for (stroke in page.strokes) {
         val outline = strokeOutline(stroke.points)
         if (outline.isEmpty()) continue
+        val touchesRegion = outline.any { it.x >= region.minX && it.x <= region.maxX && it.y >= region.minY && it.y <= region.maxY }
+        if (!touchesRegion) continue
         sb.append("<path d=\"M")
         outline.forEachIndexed { i, p ->
-            if (i == 0) sb.append(p.x).append(',').append(p.y)
-            else sb.append(" L").append(p.x).append(',').append(p.y)
+            val x = p.x - region.minX; val y = p.y - region.minY
+            if (i == 0) sb.append(x).append(',').append(y)
+            else sb.append(" L").append(x).append(',').append(y)
         }
         sb.append(" Z\" fill=\"").append(colorHex(stroke.color)).append("\"/>")
     }

@@ -6,17 +6,17 @@ import kotlin.test.assertEquals
 
 class VectorSvgExportTest {
     @Test fun emptyPageIsAnEmptySvgCanvas() {
-        val svg = vectorPageToSvg(VectorPage(emptyList()), 1024)
+        val svg = vectorPageToSvg(VectorPage(emptyList()), Bounds(0f, 0f, 1024f, 1024f))
         assertTrue(svg.startsWith("<svg"))
-        assertTrue(svg.contains("width=\"1024\""))
-        assertTrue(svg.contains("viewBox=\"0 0 1024 1024\""))
+        assertTrue(svg.contains("width=\"1024.0\""))
+        assertTrue(svg.contains("viewBox=\"0 0 1024.0 1024.0\""))
         assertTrue(svg.contains("</svg>"))
         assertTrue(svg.contains("<path").not())
     }
 
     @Test fun oneStrokeBecomesOneFilledPath() {
         val page = VectorPage(listOf(VectorStroke(-65536L /* opaque red */, listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f)))))
-        val svg = vectorPageToSvg(page, 100)
+        val svg = vectorPageToSvg(page, Bounds(0f, 0f, 100f, 100f))
         assertEquals(1, Regex("<path").findAll(svg).count())
         assertTrue(svg.contains("fill=\"#ff0000\""))
         assertTrue(svg.contains("d=\"M0.0,2.0 L10.0,2.0 L10.0,-2.0 L0.0,-2.0 Z\""))
@@ -24,7 +24,20 @@ class VectorSvgExportTest {
 
     @Test fun strokeWithFewerThanTwoPointsIsSkipped() {
         val page = VectorPage(listOf(VectorStroke(-65536L, listOf(VectorPoint(5f, 5f, 4f)))))
-        val svg = vectorPageToSvg(page, 100)
+        val svg = vectorPageToSvg(page, Bounds(0f, 0f, 100f, 100f))
+        assertTrue(svg.contains("<path").not())
+    }
+
+    @Test fun regionOffsetTranslatesCoordinatesToStartAtZero() {
+        val page = VectorPage(listOf(VectorStroke(-65536L, listOf(VectorPoint(10f, 10f, 4f), VectorPoint(20f, 10f, 4f)))))
+        val svg = vectorPageToSvg(page, Bounds(10f, 8f, 30f, 20f))
+        assertTrue(svg.contains("viewBox=\"0 0 20.0 12.0\""))
+        assertTrue(svg.contains("d=\"M0.0,4.0 L10.0,4.0 L10.0,0.0 L0.0,0.0 Z\""))
+    }
+
+    @Test fun strokeFullyOutsideRegionIsExcluded() {
+        val page = VectorPage(listOf(VectorStroke(-65536L, listOf(VectorPoint(500f, 500f, 4f), VectorPoint(510f, 500f, 4f)))))
+        val svg = vectorPageToSvg(page, Bounds(0f, 0f, 100f, 100f))
         assertTrue(svg.contains("<path").not())
     }
 }
