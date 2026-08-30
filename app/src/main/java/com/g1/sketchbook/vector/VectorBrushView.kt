@@ -88,8 +88,8 @@ class VectorBrushView(context: Context) : View(context) {
     /** 기존 래스터 펜(`BrushView.penSeg`)과 같은 느낌의 속도-굵기 곡선 — 빠를수록 가늘게, 최대
      *  65%까지 얇아진다. */
     private fun widthFor(speed: Float): Float {
-        val dp = strokeWidthDp * (1f - min(0.65f, speed * 0.2f))
-        return max(1f, dp) * resources.displayMetrics.density
+        val w = strokeWidthDp * (1f - min(0.65f, speed * 0.2f))
+        return max(1f, w)
     }
 
     private fun eraseAt(x: Float, y: Float) {
