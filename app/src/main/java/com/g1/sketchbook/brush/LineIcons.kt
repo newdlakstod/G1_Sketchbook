@@ -223,6 +223,50 @@ val IconImageSaveLine: ImageVector by lazy {
     }.build()
 }
 
+/** 개인(홈 탭 상단) — Lucide "user"(원 머리 + 어깨선), 2026-08-30 사용자가 넘겨준 SVG로 기존
+ *  Material Person 아이콘을 교체. */
+val IconUserLine: ImageVector by lazy {
+    ImageVector.Builder(name = "UserLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+        path(
+            fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = LineStrokeWidth,
+            strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // circle cx=12 cy=8 r=5
+            moveTo(17f, 8f)
+            arcTo(5f, 5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 7f, y1 = 8f)
+            arcTo(5f, 5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 17f, y1 = 8f)
+            close()
+            // M20 21a8 8 0 0 0-16 0
+            moveTo(20f, 21f)
+            arcToRelative(8f, 8f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -16f, dy1 = 0f)
+        }
+    }.build()
+}
+
+/** 공유(홈 탭 상단) — Lucide "users"(사람 둘), 2026-08-30 사용자가 넘겨준 SVG로 기존 Material
+ *  Groups 아이콘을 교체. */
+val IconPeopleLine: ImageVector by lazy {
+    ImageVector.Builder(name = "PeopleLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+        path(
+            fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = LineStrokeWidth,
+            strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // M18 21a8 8 0 0 0-16 0
+            moveTo(18f, 21f)
+            arcToRelative(8f, 8f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -16f, dy1 = 0f)
+            // circle cx=10 cy=8 r=5
+            moveTo(15f, 8f)
+            arcTo(5f, 5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 5f, y1 = 8f)
+            arcTo(5f, 5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 15f, y1 = 8f)
+            close()
+            // M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3
+            moveTo(22f, 20f)
+            curveToRelative(0f, -3.37f, -2f, -6.5f, -4f, -8f)
+            arcToRelative(5f, 5f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -0.45f, dy1 = -8.3f)
+        }
+    }.build()
+}
+
 /** 선생님모드 꺼짐 — Lucide "screen-share-off"(모니터 + 모서리 X 표시). */
 val IconScreenUnsharedLine: ImageVector by lazy {
     ImageVector.Builder(name = "ScreenUnsharedLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {

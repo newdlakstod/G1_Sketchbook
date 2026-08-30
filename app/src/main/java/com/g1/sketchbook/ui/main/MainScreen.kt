@@ -44,7 +44,6 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Person
@@ -189,11 +188,11 @@ private fun HomeTab(
         contentSidePadding = 0.dp,
         actions = {
             IconButton(onClick = { showShared = false }) {
-                Icon(Icons.Filled.Person, "개인",
+                Icon(com.g1.sketchbook.brush.IconUserLine, "개인",
                     tint = if (!showShared) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { showShared = true }) {
-                Icon(Icons.Filled.Groups, "공유",
+                Icon(com.g1.sketchbook.brush.IconPeopleLine, "공유",
                     tint = if (showShared) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
