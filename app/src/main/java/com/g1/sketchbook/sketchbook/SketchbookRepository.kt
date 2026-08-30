@@ -33,7 +33,6 @@ object Catalog {
         CanvasSize("desktop", "데스크톱", 1920, 1080),
         CanvasSize("mobile", "모바일", 390, 844),
         CanvasSize("tablet", "태블릿", 810, 1080),
-        CanvasSize("vector", "벡터", 1024, 1024),
     )
     val backgrounds = listOf(
         Background("watercolor", "수채화용지"),
@@ -63,6 +62,12 @@ data class Sketchbook(
      *  그 조합을 만들지 않음). true면 페이지는 `page_{i}.png`가 아니라 `page_{i}.json`에 저장되고,
      *  [SketchbookRepository.loadVectorPage]/[saveVectorPage]로 읽고 쓴다. */
     val vector: Boolean = false,
+    /** 무한 캔버스 여부(벡터 책 전용, [vector]=true일 때만 의미 있음) — true면 [vectorCanvasW]/
+     *  [vectorCanvasH]는 항상 null. 페이지 개념이 없는 벡터 책 하나가 곧 캔버스 한 장이다. */
+    val vectorInfinite: Boolean = false,
+    /** 커스텀(고정) 캔버스의 논리 가로·세로 — [vectorInfinite]=false일 때만 값이 있음. */
+    val vectorCanvasW: Int? = null,
+    val vectorCanvasH: Int? = null,
     /** 메타(이름/즐겨찾기/표지색/표지버전)가 마지막으로 바뀐 시각 — 구글 계정 백업 동기화의
      *  last-write-wins 비교에 쓰인다. 새로 만들 때(create)는 기본값(호출 시점)이 곧 맞는 값이라
      *  따로 안 넘겨도 된다. */
@@ -97,19 +102,27 @@ class SketchbookRepository(private val context: Context) {
                     o.optBoolean("shared", false), o.optString("code", "").ifBlank { null },
                     o.optLong("coverColor", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }, o.optInt("coverVer", 0),
                     o.optBoolean("vector", false),
-                    o.optLong("updatedAt", o.optLong("createdAt")))
+                    vectorInfinite = o.optBoolean("vectorInfinite", false),
+                    vectorCanvasW = o.optInt("vectorCanvasW", -1).takeIf { it > 0 },
+                    vectorCanvasH = o.optInt("vectorCanvasH", -1).takeIf { it > 0 },
+                    updatedAt = o.optLong("updatedAt", o.optLong("createdAt")))
             }.sortedWith(compareByDescending<Sketchbook> { it.fav }.thenByDescending { it.createdAt })
         }.getOrDefault(emptyList())
     }
 
     fun get(id: String) = list().firstOrNull { it.id == id }
 
-    fun create(name: String, sizeKey: String, bgKey: String, shared: Boolean = false, code: String? = null, vector: Boolean = false): Sketchbook {
+    fun create(
+        name: String, sizeKey: String, bgKey: String, shared: Boolean = false, code: String? = null,
+        vector: Boolean = false, vectorInfinite: Boolean = false, vectorCanvasW: Int? = null, vectorCanvasH: Int? = null,
+    ): Sketchbook {
         val fallback = if (shared) "공유 스케치북" else if (vector) "벡터 스케치북" else "우리 스케치북"
         // A sketchbook is a fixed MAX_PAGES-page notebook from the start (like a physical one) —
         // pages aren't added/removed later, just navigated. Blank pages are lazy (no file until drawn on).
+        // (벡터 책은 pageCount를 안 쓰지만, 필드 자체는 다른 책들과 공유하는 구조라 그대로 채워 넣는다.)
         val sb = Sketchbook(newId(), name.ifBlank { fallback }, sizeKey, bgKey, System.currentTimeMillis(), MAX_PAGES,
-            fav = false, shared = shared, code = code, vector = vector)
+            fav = false, shared = shared, code = code, vector = vector,
+            vectorInfinite = vectorInfinite, vectorCanvasW = vectorCanvasW, vectorCanvasH = vectorCanvasH)
         save(list() + sb)
         File(root, sb.id).mkdirs()
         return sb
@@ -267,6 +280,8 @@ class SketchbookRepository(private val context: Context) {
                 .put("shared", it.shared).put("code", it.code ?: "")
                 .put("coverColor", it.coverColor ?: Long.MIN_VALUE).put("coverVer", it.coverVersion)
                 .put("vector", it.vector)
+                .put("vectorInfinite", it.vectorInfinite)
+                .put("vectorCanvasW", it.vectorCanvasW ?: -1).put("vectorCanvasH", it.vectorCanvasH ?: -1)
                 .put("updatedAt", it.updatedAt))
         }
         prefs.edit().putString(KEY, arr.toString()).apply()
