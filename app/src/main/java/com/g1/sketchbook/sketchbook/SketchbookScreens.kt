@@ -67,6 +67,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -275,6 +276,10 @@ fun SketchbookTab(
 private enum class WStep { TYPE, NAME, SIZE, BG, CODE }
 enum class WType { PERSONAL, SHARED_NEW, SHARED_JOIN, VECTOR }
 
+private val VectorCanvasPresets = listOf(
+    Triple("1:1", 1024, 1024), Triple("4:3", 1024, 768), Triple("3:4", 768, 1024), Triple("16:9", 1280, 720),
+)
+
 /** Step-by-step popup: pick type → (name → size → bg) for creation, or (code) for joining a shared book. */
 @Composable
 private fun CreateWizard(
@@ -293,6 +298,9 @@ private fun CreateWizard(
     var type by remember { mutableStateOf(initialType ?: WType.PERSONAL) }
     var name by remember { mutableStateOf("") }
     var sizeKey by remember { mutableStateOf("a4") }
+    var vectorInfinite by remember { mutableStateOf(true) }
+    var vectorWStr by remember { mutableStateOf("1024") }
+    var vectorHStr by remember { mutableStateOf("1024") }
     var bgKey by remember { mutableStateOf("watercolor") }
     var code by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -300,7 +308,15 @@ private fun CreateWizard(
 
     fun finishPersonal() { repo?.let { createSynced(scope, it, backup, myUid, name, sizeKey, bgKey) }?.let(onCreated) }
     fun finishVector() {
-        repo?.let { createSynced(scope, it, backup, myUid, name.ifBlank { "벡터 스케치북" }, "vector", "watercolor", vector = true) }?.let(onCreated)
+        val w = vectorWStr.toIntOrNull()?.coerceIn(64, 4096) ?: 1024
+        val h = vectorHStr.toIntOrNull()?.coerceIn(64, 4096) ?: 1024
+        repo?.let {
+            // sizeKey="a4"는 벡터 책에서 안 쓰이는 값이다(Catalog엔 "vector" 항목이 더 이상 없음) —
+            // 실제 캔버스 크기는 vectorInfinite/vectorCanvasW/vectorCanvasH가 대신 결정한다.
+            createSynced(scope, it, backup, myUid, name.ifBlank { "벡터 스케치북" }, "a4", "watercolor",
+                vector = true, vectorInfinite = vectorInfinite,
+                vectorCanvasW = if (vectorInfinite) null else w, vectorCanvasH = if (vectorInfinite) null else h)
+        }?.let(onCreated)
     }
     // 그림 자체가 아니라 "이 계정이 이 코드에 참여 중"이라는 사실만 백업에 올려서, 같은 계정의
     // 다른 기기가 다음 동기화 때 이 카드를 자동으로 만들어 보게 한다(그림은 이미 ShareRepository
@@ -399,10 +415,36 @@ private fun CreateWizard(
                 onDismissRequest = onDismiss,
                 containerColor = MaterialTheme.colorScheme.background,
                 shape = RoundedCornerShape(Dimens.Wizard.cardRadius),
-                title = { Text("벡터 스케치북 이름") },
+                title = { Text("벡터 스케치북") },
                 text = {
-                    OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
-                        placeholder = { Text("스케치북 이름") }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth())
+                    Column {
+                        OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
+                            placeholder = { Text("스케치북 이름") }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth())
+                        Spacer(Modifier.height(14.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = vectorInfinite, onClick = { vectorInfinite = true }, label = { Text("무한") })
+                            FilterChip(selected = !vectorInfinite, onClick = { vectorInfinite = false }, label = { Text("커스텀 크기") })
+                        }
+                        if (!vectorInfinite) {
+                            Spacer(Modifier.height(10.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                VectorCanvasPresets.forEach { (label, w, h) ->
+                                    FilterChip(
+                                        selected = vectorWStr == w.toString() && vectorHStr == h.toString(),
+                                        onClick = { vectorWStr = w.toString(); vectorHStr = h.toString() },
+                                        label = { Text(label) },
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(vectorWStr, { vectorWStr = it.filter(Char::isDigit).take(4) },
+                                    singleLine = true, label = { Text("가로") }, modifier = Modifier.weight(1f))
+                                OutlinedTextField(vectorHStr, { vectorHStr = it.filter(Char::isDigit).take(4) },
+                                    singleLine = true, label = { Text("세로") }, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
                 },
                 confirmButton = { TextButton(onClick = { finishVector() }) { Text("만들기") } },
                 dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
