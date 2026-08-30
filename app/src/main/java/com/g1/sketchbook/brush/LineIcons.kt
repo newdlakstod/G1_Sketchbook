@@ -340,6 +340,31 @@ val IconKeyLine: ImageVector by lazy {
     }.build()
 }
 
+/** 그리기(오늘 일기 탭) — Lucide "pen-line", 2026-08-30 사용자가 넘겨준 SVG로 기존 Material Edit
+ *  아이콘을 교체. */
+val IconDrawLine: ImageVector by lazy {
+    ImageVector.Builder(name = "DrawLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+        path(
+            fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = LineStrokeWidth,
+            strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z
+            moveTo(21.174f, 6.812f)
+            arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -3.986f, dy1 = -3.987f)
+            lineTo(3.842f, 16.174f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -0.5f, dy1 = 0.83f)
+            lineToRelative(-1.321f, 4.352f)
+            arcToRelative(0.5f, 0.5f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.623f, dy1 = 0.622f)
+            lineToRelative(4.353f, -1.32f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.83f, dy1 = -0.497f)
+            close()
+            // m15 5 4 4
+            moveTo(15f, 5f)
+            lineToRelative(4f, 4f)
+        }
+    }.build()
+}
+
 /** 선생님모드 꺼짐 — Lucide "screen-share-off"(모니터 + 모서리 X 표시). */
 val IconScreenUnsharedLine: ImageVector by lazy {
     ImageVector.Builder(name = "ScreenUnsharedLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {

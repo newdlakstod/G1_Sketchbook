@@ -41,7 +41,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Opacity
@@ -693,7 +692,7 @@ private fun CleanDetailBody(
                             onClick = { onOpenDiary(date) },
                             modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0x66000000)),
                         ) {
-                            Icon(Icons.Filled.Edit, "오늘 일기 다시 그리기", tint = Color.White, modifier = Modifier.size(20.dp))
+                            Icon(com.g1.sketchbook.brush.IconDrawLine, "오늘 일기 다시 그리기", tint = Color.White, modifier = Modifier.size(20.dp))
                         }
                     }
                     IconButton(
@@ -762,7 +761,7 @@ private fun CleanDetailBody(
                                     .bounceClick { onOpenDiary(date) },
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Icon(Icons.Filled.Edit, "오늘 그리기 시작", tint = MaterialTheme.colorScheme.onPrimary)
+                                Icon(com.g1.sketchbook.brush.IconDrawLine, "오늘 그리기 시작", tint = MaterialTheme.colorScheme.onPrimary)
                             }
                         }
                     }
