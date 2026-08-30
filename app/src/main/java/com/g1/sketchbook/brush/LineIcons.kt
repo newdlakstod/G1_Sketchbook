@@ -186,6 +186,43 @@ val IconScreenSharedLine: ImageVector by lazy {
     }.build()
 }
 
+/** 이미지로 저장 — Lucide "image-down"(사진 프레임 + 우하단 다운로드 화살표). 페이지/올가미 선택
+ *  영역/일기 다운로드 등 "이미지로 저장" 계열 버튼에 공통으로 쓴다(2026-08-30, 기존 Material
+ *  Save 아이콘을 사용자가 넘겨준 실제 SVG로 교체). */
+val IconImageSaveLine: ImageVector by lazy {
+    ImageVector.Builder(name = "ImageSaveLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+        path(
+            fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = LineStrokeWidth,
+            strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21
+            moveTo(10.3f, 21f)
+            horizontalLineTo(5f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2f, dy1 = -2f)
+            verticalLineTo(5f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2f, dy1 = -2f)
+            horizontalLineToRelative(14f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2f, dy1 = 2f)
+            verticalLineToRelative(10f)
+            lineToRelative(-3.1f, -3.1f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -2.814f, dy1 = 0.014f)
+            lineTo(6f, 21f)
+            // m14 19 3 3v-5.5
+            moveTo(14f, 19f)
+            lineToRelative(3f, 3f)
+            verticalLineToRelative(-5.5f)
+            // m17 22 3-3
+            moveTo(17f, 22f)
+            lineToRelative(3f, -3f)
+            // circle cx=9 cy=9 r=2
+            moveTo(11f, 9f)
+            arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 7f, y1 = 9f)
+            arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 11f, y1 = 9f)
+            close()
+        }
+    }.build()
+}
+
 /** 선생님모드 꺼짐 — Lucide "screen-share-off"(모니터 + 모서리 X 표시). */
 val IconScreenUnsharedLine: ImageVector by lazy {
     ImageVector.Builder(name = "ScreenUnsharedLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {

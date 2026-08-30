@@ -45,7 +45,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Opacity
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -701,7 +700,7 @@ private fun CleanDetailBody(
                         onClick = { showDownloadDialog = true },
                         modifier = Modifier.size(40.dp).clip(CircleShape).background(Color(0x66000000)),
                     ) {
-                        Icon(Icons.Filled.Save, "다운로드", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(com.g1.sketchbook.brush.IconImageSaveLine, "다운로드", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 }
                 if (showDownloadDialog) {

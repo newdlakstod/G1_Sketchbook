@@ -48,7 +48,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -808,7 +807,7 @@ fun ScreenControls(
                             IconBtn(if (fullscreen) Icons.Filled.FullscreenExit else IconFullscreenLine, if (fullscreen) "전체화면 종료" else "전체화면",
                                 tint = if (fullscreen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) { toggle(); expanded = false }
                         }
-                        onDownload?.let { download -> IconBtn(Icons.Filled.Save, "이미지로 저장") { download(); expanded = false } }
+                        onDownload?.let { download -> IconBtn(IconImageSaveLine, "이미지로 저장") { download(); expanded = false } }
                     }
                 }
             }
@@ -908,7 +907,7 @@ fun LassoSaveButton(xPx: Float, yPx: Float, onSave: () -> Unit, modifier: Modifi
             .bounceClick(onClick = onSave),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Filled.Save, "선택 영역 저장", tint = MaterialTheme.colorScheme.primary)
+        Icon(IconImageSaveLine, "선택 영역 저장", tint = MaterialTheme.colorScheme.primary)
     }
 }
 
