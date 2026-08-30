@@ -99,16 +99,23 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
     }
 }
 
-private fun reconcileDiary(repo: DiaryRepository, backup: BackupRepository, uid: String, remote: Map<String, Pair<Long, String>>) {
+private fun reconcileDiary(repo: DiaryRepository, backup: BackupRepository, uid: String, remote: Map<String, RemoteDiaryDay>) {
     val allDates = (repo.listDates() + remote.keys).toSet()
     for (date in allDates) {
         val localAt = if (repo.hasEntry(date)) repo.updatedAt(date) else null
-        val remotePair = remote[date]
-        when (decideSyncAction(localAt, remotePair?.first)) {
-            SyncAction.PULL -> if (remotePair != null) {
-                backup.decodeImage(remotePair.second)?.let { repo.save(date, it); repo.setUpdatedAt(date, remotePair.first) }
+        val remoteDay = remote[date]
+        when (decideSyncAction(localAt, remoteDay?.updatedAt)) {
+            // 합성 이미지(image)와 별도 필기 레이어(content)를 같이 당겨온다 — content가 없으면(옛
+            // 기기가 이 기능 이전 버전으로 올렸거나 그 기기에서도 아직 없던 날) 그냥 건너뛴다. 예전엔
+            // content를 아예 동기화 안 해서, 폰에서 그린 오늘 일기를 태블릿에서 열면 합성 이미지만
+            // 받아오고(hasEntry=true) content는 영영 안 생겨서(hasContent=false) "투명 배경 PNG로
+            // 다운로드"가 그 기기에서는 항상 "기존 일기는 지원 안 해요" 오류만 떴다(2026-08-30,
+            // "오늘일기 저장하기에서 투명배경 저장 계속 오류" 리포트로 원인 확정).
+            SyncAction.PULL -> if (remoteDay != null) {
+                backup.decodeImage(remoteDay.image)?.let { repo.save(date, it); repo.setUpdatedAt(date, remoteDay.updatedAt) }
+                remoteDay.contentBase64?.let { b64 -> backup.decodeImage(b64)?.let { repo.saveContent(date, it) } }
             }
-            SyncAction.PUSH -> repo.load(date)?.let { backup.pushDiaryDay(uid, date, it, repo.updatedAt(date)) }
+            SyncAction.PUSH -> repo.load(date)?.let { backup.pushDiaryDay(uid, date, it, repo.updatedAt(date), repo.loadContent(date)) }
             SyncAction.DELETE_LOCAL, SyncAction.NOOP -> {} // diary has no delete feature — tombstones never occur
         }
     }

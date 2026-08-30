@@ -20,9 +20,15 @@ data class RemoteSharedBookRef(
     val createdAt: Long, val deleted: Boolean,
 )
 
+/** [contentBase64] is the separate stroke-only transparent layer (same file [DiaryRepository.loadContent]
+ *  reads/writes locally) — null for days pushed before this existed, or by an older app version. Synced
+ *  alongside the composite [image] so "투명 배경 PNG로 다운로드" keeps working after a diary crosses devices,
+ *  not just on the device it was drawn on (2026-08-30, was composite-only until now). */
+data class RemoteDiaryDay(val updatedAt: Long, val image: String, val contentBase64: String?)
+
 data class RemoteSnapshot(
     val sketchbooks: List<RemoteSketchbook>,
-    val diary: Map<String, Pair<Long, String>>, // date -> (updatedAt, base64)
+    val diary: Map<String, RemoteDiaryDay>,
     val settings: RemoteSettings?,
     val sharedBooks: List<RemoteSharedBookRef>,
 )

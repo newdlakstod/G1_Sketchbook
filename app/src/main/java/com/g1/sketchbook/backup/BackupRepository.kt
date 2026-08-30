@@ -92,9 +92,14 @@ class BackupRepository {
         root.child(uid).child("sharedBooks").child(code).setValue(mapOf("deleted" to true))
     }
 
-    fun pushDiaryDay(uid: String, date: String, bmp: Bitmap, updatedAt: Long) {
-        root.child(uid).child("diary").child(date)
-            .setValue(mapOf("updatedAt" to updatedAt, "image" to encode(bmp)))
+    /** [contentBmp] is the separate stroke-only layer ([DiaryRepository.loadContent]) — null for a
+     *  diary day that predates that feature (or hasn't been redrawn since), same as the local file
+     *  possibly not existing. Pushed with [preserveAlpha]=true (like sketchbook pages) since it's a
+     *  transparent PNG, not the opaque composite. */
+    fun pushDiaryDay(uid: String, date: String, bmp: Bitmap, updatedAt: Long, contentBmp: Bitmap? = null) {
+        val payload = mutableMapOf<String, Any?>("updatedAt" to updatedAt, "image" to encode(bmp))
+        if (contentBmp != null) payload["content"] = encode(contentBmp, preserveAlpha = true)
+        root.child(uid).child("diary").child(date).setValue(payload)
     }
 
     /** [avatarBmp] is encoded here (mirrors the other pushX functions taking a raw Bitmap) —
@@ -150,7 +155,8 @@ class BackupRepository {
             val date = c.key ?: return@mapNotNull null
             val updatedAt = c.child("updatedAt").getValue(Long::class.java) ?: return@mapNotNull null
             val image = c.child("image").getValue(String::class.java) ?: return@mapNotNull null
-            date to (updatedAt to image)
+            val content = c.child("content").getValue(String::class.java)
+            date to RemoteDiaryDay(updatedAt, image, content)
         }.toMap()
 
         val s = snap.child("settings")
