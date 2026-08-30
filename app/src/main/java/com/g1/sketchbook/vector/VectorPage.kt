@@ -28,8 +28,8 @@ fun VectorPage.toJson(): String {
     return sb.toString()
 }
 
-private val strokeRegex = Regex("\\{\"color\":(-?\\d+),\"points\":\\[(.*?)]}")
-private val pointRegex = Regex("\\{\"x\":(-?[0-9.eE+-]+),\"y\":(-?[0-9.eE+-]+),\"w\":(-?[0-9.eE+-]+)}")
+private val strokeRegex = Regex("\\{\"color\":(-?\\d+),\"points\":\\[(.*?)]\\}")
+private val pointRegex = Regex("\\{\"x\":(-?[0-9.eE+-]+),\"y\":(-?[0-9.eE+-]+),\"w\":(-?[0-9.eE+-]+)\\}")
 
 /** [json]이 이 파일의 [VectorPage.toJson] 형식이 아니면(손상된 파일, 미래 포맷 등) null — 호출부는
  *  null을 "빈 페이지"로 취급한다(스펙의 에러 처리 방침). */
