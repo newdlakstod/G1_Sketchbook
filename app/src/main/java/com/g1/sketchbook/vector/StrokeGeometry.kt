@@ -47,3 +47,43 @@ fun pointInPolygon(x: Float, y: Float, polygon: List<Point>): Boolean {
     }
     return inside
 }
+
+/** [strokes] 전체를 감싸는 최소 사각형(각 점의 굵기 절반만큼 바깥으로 확장) — 획이 하나도 없으면
+ *  null. 벡터 캔버스 미리보기/썸네일과 "전체" 내보내기(무한 캔버스)가 이 경계상자를 기준으로 삼는다. */
+data class Bounds(val minX: Float, val minY: Float, val maxX: Float, val maxY: Float) {
+    val width: Float get() = maxX - minX
+    val height: Float get() = maxY - minY
+}
+
+fun contentBounds(strokes: List<VectorStroke>): Bounds? {
+    var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE
+    var maxX = -Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+    for (stroke in strokes) {
+        for (p in stroke.points) {
+            val half = p.w / 2f
+            if (p.x - half < minX) minX = p.x - half
+            if (p.y - half < minY) minY = p.y - half
+            if (p.x + half > maxX) maxX = p.x + half
+            if (p.y + half > maxY) maxY = p.y + half
+        }
+    }
+    return if (minX > maxX) null else Bounds(minX, minY, maxX, maxY)
+}
+
+/** [points] 전체를 감싸는 최소 사각형 — 라쏘 폴리곤 자체의 내보내기 영역을 계산하는 데 쓴다
+ *  ([contentBounds]와 달리 폭 개념이 없는 순수 점 목록용). */
+fun pointsBounds(points: List<Point>): Bounds? {
+    if (points.isEmpty()) return null
+    var minX = points[0].x; var minY = points[0].y
+    var maxX = points[0].x; var maxY = points[0].y
+    for (p in points) {
+        if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y
+        if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y
+    }
+    return Bounds(minX, minY, maxX, maxY)
+}
+
+/** 라쏘 다각형 [lasso] 안에 [stroke]의 점이 하나라도 들어가면 선택된 것으로 본다 — 손가락으로
+ *  정확히 완전히 두르기는 어려우니, 살짝 스치기만 해도 선택되는 관대한 판정. */
+fun strokeTouchesLasso(stroke: VectorStroke, lasso: List<Point>): Boolean =
+    stroke.points.any { pointInPolygon(it.x, it.y, lasso) }
