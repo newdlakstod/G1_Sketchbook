@@ -83,6 +83,8 @@ data class Sketchbook(
 
 const val MAX_PAGES = 15
 
+private const val VECTOR_PREVIEW_SIZE = 512
+
 /**
  * Local-first persistence for personal sketchbooks: metadata in SharedPreferences (JSON), page
  * images as PNG files under filesDir/sketchbooks/{id}/page_{i}.png.
@@ -184,31 +186,40 @@ class SketchbookRepository(private val context: Context) {
      *  "지금"이라 항상 원격보다 최신으로 보여서, 다음 동기화가 곧바로 그걸 되밀어 올린다(핑퐁). */
     fun setPageUpdatedAt(id: String, index: Int, timestamp: Long) { pageFile(id, index).setLastModified(timestamp) }
 
-    private fun vectorPageFile(id: String, index: Int): File {
+    private fun vectorCanvasFile(id: String): File {
         val dir = File(root, id).apply { mkdirs() }
-        return File(dir, "page_$index.json")
+        return File(dir, "vector_canvas.json")
     }
 
-    fun loadVectorPage(id: String, index: Int): VectorPage? {
-        val f = vectorPageFile(id, index)
+    private fun vectorPreviewFile(id: String): File {
+        val dir = File(root, id).apply { mkdirs() }
+        return File(dir, "vector_preview.png")
+    }
+
+    fun loadVectorCanvas(id: String): VectorPage? {
+        val f = vectorCanvasFile(id)
         if (!f.exists()) return null
         return vectorPageFromJson(f.readText())
     }
 
-    /** JSON(진짜 저장 데이터)과 함께, 같은 인덱스의 `page_{i}.png`에 렌더링한 비트맵도 같이 써서
-     *  [loadPageThumb]/[loadPage] 등 기존 PNG 전용 썸네일 경로가 벡터 페이지에도 그대로 통한다 —
-     *  `PagePanel`(3열 페이지 목록) 등 다른 화면을 벡터 인지하게 고칠 필요가 없다. PNG는 순수
-     *  캐시라 JSON만 진짜 상태다. */
-    fun saveVectorPage(id: String, index: Int, page: VectorPage) {
-        vectorPageFile(id, index).writeText(page.toJson())
-        FileOutputStream(pageFile(id, index)).use {
-            renderVectorPage(page, Catalog.size("vector").pxW()).compress(Bitmap.CompressFormat.PNG, 100, it)
+    /** JSON(진짜 저장 데이터)과 함께, 목록/캐러셀/읽기모드가 쓸 미리보기 PNG도 같이 렌더링해 둔다
+     *  — 매번 획 목록을 파싱+렌더링하지 않고 캐시된 비트맵을 바로 읽게 하기 위함. PNG는 순수 캐시라
+     *  JSON만 진짜 상태다. */
+    fun saveVectorCanvas(id: String, page: VectorPage) {
+        vectorCanvasFile(id).writeText(page.toJson())
+        FileOutputStream(vectorPreviewFile(id)).use {
+            renderVectorPage(page, VECTOR_PREVIEW_SIZE).compress(Bitmap.CompressFormat.PNG, 100, it)
         }
     }
 
-    fun vectorPageUpdatedAt(id: String, index: Int): Long = vectorPageFile(id, index).lastModified()
+    fun loadVectorPreview(id: String): Bitmap? {
+        val f = vectorPreviewFile(id)
+        return if (f.exists()) BitmapFactory.decodeFile(f.absolutePath) else null
+    }
 
-    fun setVectorPageUpdatedAt(id: String, index: Int, timestamp: Long) { vectorPageFile(id, index).setLastModified(timestamp) }
+    fun vectorCanvasUpdatedAt(id: String): Long = vectorCanvasFile(id).lastModified()
+
+    fun setVectorCanvasUpdatedAt(id: String, timestamp: Long) { vectorCanvasFile(id).setLastModified(timestamp) }
 
     /** 페이지 순서 바꾸기(길게 눌러 드래그) — [order]\[새 위치\] = 그 자리에 와야 할 예전 인덱스.
      *  파일을 직접 맞바꿔서 반영하므로 다른 코드는 그대로 인덱스로 읽기만 하면 된다. 중간에 원본을
