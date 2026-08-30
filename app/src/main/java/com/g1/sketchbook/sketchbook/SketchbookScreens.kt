@@ -350,14 +350,20 @@ private fun CreateWizard(
             )
         }
         step == WStep.CODE -> {
+            // 개인 스케치북 생성 카드(PersonalCreateCard)와 배경색·입력란 모양을 맞췄다(2026-08-30
+            // 요청) — 그쪽은 MaterialTheme.colorScheme.background(따뜻한 크림색)를 쓰는데 기본
+            // AlertDialog는 colorScheme.surface(거의 흰색)라 미묘하게 달라 보였다. 텍스트 크기·색은
+            // 원래도 둘 다 OutlinedTextField 기본 타이포를 그대로 썼어서 이미 같았다.
             AlertDialog(
                 onDismissRequest = { if (!busy) onDismiss() },
+                containerColor = MaterialTheme.colorScheme.background,
+                shape = RoundedCornerShape(Dimens.Wizard.cardRadius),
                 title = { Text("초대 코드 입력") },
                 text = {
                     Column {
                         OutlinedTextField(code, { code = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(6); error = null },
-                            singleLine = true, enabled = !busy, label = { Text("초대 코드") },
-                            shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
+                            singleLine = true, enabled = !busy, placeholder = { Text("초대 코드") },
+                            shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth())
                         if (error != null) { Spacer(Modifier.height(10.dp)); Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                         if (busy) { Spacer(Modifier.height(12.dp)); androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth()) }
                     }
@@ -369,11 +375,13 @@ private fun CreateWizard(
         type == WType.SHARED_NEW -> {
             AlertDialog(
                 onDismissRequest = { if (!busy) onDismiss() },
+                containerColor = MaterialTheme.colorScheme.background,
+                shape = RoundedCornerShape(Dimens.Wizard.cardRadius),
                 title = { Text("이름을 정해요") },
                 text = {
                     Column {
                         OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
-                            label = { Text("스케치북 이름") }, shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
+                            placeholder = { Text("스케치북 이름") }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth())
                         if (error != null) { Spacer(Modifier.height(10.dp)); Text(error!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                         if (busy) { Spacer(Modifier.height(12.dp)); androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth()) }
                     }
