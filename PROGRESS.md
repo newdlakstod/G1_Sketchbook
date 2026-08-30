@@ -4,16 +4,21 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
-- **벡터(SVG) 스케치북 구현 완료, 병합 대기 중** (2026-08-30, Claude, `vector-drawing` 브랜치):
-  아이콘처럼 확대해도 안 깨지는, 처음부터 벡터로 그리는 새 스케치북 타입. 브레인스토밍→스펙
-  (`docs/superpowers/specs/2026-08-30-vector-sketchbook-design.md`)→계획
-  (`docs/superpowers/plans/2026-08-30-vector-sketchbook.md`, 10태스크)→subagent-driven
-  구현까지 전 과정 완료, 태스크별 리뷰 + 최종 전체 브랜치 리뷰(크리티컬 3건+중요 5건 발견 →
-  전부 수정 → 재검증 통과)까지 끝났다. 펜 하나(속도-굵기 변화)만 지원, 획 단위 지우개, undo만
-  (redo 없음), 정사각(1024×1024) 캔버스, 기존 SketchbookRepository/백업 동기화 틀 재사용,
-  SVG 내보내기(Downloads 컬렉션). `master`에는 아직 안 올렸다 — 사용자가 "지금은 그대로 두기"를
-  선택(직접 검토 후 머지/PR 결정 예정). 다음 세션에서 이어받으면: `git log vector-drawing` 확인
-  후 사용자에게 머지 의향 확인부터.
+- **벡터(SVG) 스케치북 — 구현 후 `master` 병합, 이어서 캔버스 구조 개편까지 완료** (2026-08-30~31,
+  Claude): 처음부터 벡터로 그리는 새 스케치북 타입. 1차로 `vector-drawing` 브랜치에서 스펙
+  (`docs/superpowers/specs/2026-08-30-vector-sketchbook-design.md`)→계획(10태스크)→subagent-driven
+  구현→전체 리뷰까지 마치고 `master`에 병합. 병합 직후 "획 긋자마자 종료" 크래시 리포트를 받아
+  원인 규명(Android ICU 정규식 엔진이 데스크톱 JVM 유닛 테스트와 다르게 `\{...}` 이스케이프를
+  거부 — `VectorPage.kt`) 후 수정. 이어서 사용자 요청으로 "페이지 여러 장" 구조를 "책 한 권 =
+  캔버스 한 장(생성 시 무한 또는 커스텀 크기 선택)"으로 재구조화하는 2차 브레인스토밍→스펙
+  (`docs/superpowers/specs/2026-08-30-vector-canvas-restructure-design.md`)→계획
+  (`docs/superpowers/plans/2026-08-30-vector-canvas-restructure.md`, 11태스크)→subagent-driven
+  구현까지 완료, 태스크별 리뷰 + 최종 전체 브랜치 리뷰(Important 5건 → 수정 웨이브 1회 → 재검증
+  전부 ADDRESSED)까지 끝나서 `master`에 머지·GitHub에 푸시됨. 두 손가락 핀치 확대/이동, 라쏘로
+  영역 선택해 내보내기(선택한 획만 정확히 필터링), 전체 내보내기, 자동 표지(그려진 내용 경계상자
+  기준, 홈 캐러셀/리스트 그리드/읽기모드 3곳 전부 배선)까지 포함. 펜 하나(속도-굵기 변화)만
+  지원, 획 단위 지우개, undo만(redo 없음) — 브러시 굵기 슬라이더/실시간 스무딩/선택 후 굵기
+  조절/폐곡선 면칠하기는 다음 스펙(아직 브레인스토밍만 하고 미착수).
 - **v2.12.0 배포** (2026-08-30, Claude): v2.11.0 이후 쌓인 변경을 한 번에 반영했다.
   **새 기능**: (1) 스케치북 페이지 편집화면에 "이미지로 저장" 메뉴 추가 — 종이+그림 그대로 또는
   투명 배경 PNG로 갤러리 저장(`BrushView.exportBitmap()`/`exportContent()` 재사용, 일기의 액자·
