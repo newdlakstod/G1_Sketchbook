@@ -1,6 +1,7 @@
 package com.g1.sketchbook.vector
 
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -16,7 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,9 +32,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.g1.sketchbook.R
 import com.g1.sketchbook.data.SessionStore
 import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.Sketchbook
@@ -111,11 +114,15 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, startPag
                 Icon(Icons.Filled.Undo, "되돌리기")
             }
             IconButton(onClick = { erasing = !erasing }) {
-                Icon(Icons.Filled.Delete, "지우개(획 삭제)", tint = if (erasing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                Image(
+                    painterResource(R.drawable.brush_eraser), "지우개(획 삭제)",
+                    colorFilter = ColorFilter.tint(if (erasing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface),
+                )
             }
             IconButton(onClick = {
                 val v = view ?: return@IconButton
-                val svg = vectorPageToSvg(v.currentPage(), VectorBrushView.CANVAS_SIZE.toInt())
+                val size = VectorBrushView.CANVAS_SIZE
+                val svg = vectorPageToSvg(v.currentPage(), Bounds(0f, 0f, size, size))
                 val status = saveSvgToGallery(context, svg, "${book.name}_p${page}")
                 Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
             }) {
