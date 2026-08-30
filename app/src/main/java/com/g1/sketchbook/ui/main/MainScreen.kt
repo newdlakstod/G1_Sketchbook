@@ -232,13 +232,13 @@ private fun HomeTab(
                         if (book.vector) {
                             // 벡터 스케치북은 페이지 넘김 애니메이션(읽기모드) 자체가 스펙에서
                             // 제외돼서(전용 캔버스 화면의 읽기모드 버튼도 같은 이유로 없음) 여기서도
-                            // PageCurl 대신 선택된 페이지를 그냥 정지 이미지로 보여준다 — 페이지 넘김
-                            // 제스처 없음.
+                            // PageCurl 대신 저장된 미리보기를 그냥 정지 이미지로 보여준다 — 페이지
+                            // 개념 자체가 없어졌으니(2026-08-30) 페이지 넘김 제스처도 없음.
                             val side = minOf(maxWidth, maxHeight)
-                            val pageBmp = remember(book.id, selectedReadPage) { repo?.loadPage(book.id, selectedReadPage) }
-                            if (pageBmp != null) {
+                            val previewBmp = remember(book.id) { repo?.loadVectorPreview(book.id) }
+                            if (previewBmp != null) {
                                 Image(
-                                    bitmap = pageBmp.asImageBitmap(), contentDescription = null,
+                                    bitmap = previewBmp.asImageBitmap(), contentDescription = null,
                                     modifier = Modifier.size(side).clip(RoundedCornerShape(16.dp)),
                                 )
                             } else {

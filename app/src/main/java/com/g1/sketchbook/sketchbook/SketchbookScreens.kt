@@ -1120,7 +1120,7 @@ fun SketchbookCanvasScreen(
         return
     }
     if (book.vector) {
-        com.g1.sketchbook.vector.VectorCanvasScreen(bookId, book, myUid, startPage, onBack)
+        com.g1.sketchbook.vector.VectorCanvasScreen(bookId, book, myUid, onBack)
         return
     }
     val scope = rememberCoroutineScope()
