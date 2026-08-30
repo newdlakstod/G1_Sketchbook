@@ -10,6 +10,10 @@ data class RemoteSketchbook(
     /** 표지 삭제 툼스톤 — 노드를 지우면 "원래 표지가 없었음"과 구분이 안 돼서 다른 기기가 되살린다. */
     val coverRemoved: Boolean = false,
     val pages: Map<Int, Pair<Long, String>>, // index -> (updatedAt, base64)
+    /** 벡터 스케치북 여부·페이지(텍스트 그대로, base64 인코딩 없음) — [pages]와 상호 배타적으로
+     *  쓰인다: vector=true인 책은 항상 pages가 비어 있고 vectorPages만 쓴다. */
+    val vector: Boolean = false,
+    val vectorPages: Map<Int, Pair<Long, String>> = emptyMap(), // index -> (updatedAt, strokes json)
 )
 
 /** 공유 스케치북은 실제 그림이 아니라 "이 계정이 이 코드에 참여 중"이라는 사실만 계정 전체에

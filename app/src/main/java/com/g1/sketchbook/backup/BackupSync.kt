@@ -8,6 +8,8 @@ import com.g1.sketchbook.diary.DiaryRepository
 import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
+import com.g1.sketchbook.vector.toJson
+import com.g1.sketchbook.vector.vectorPageFromJson
 
 /** Runs one full reconcile pass: pulls everything from the cloud, compares against local state
  *  item-by-item via [decideSyncAction], and applies whichever side is newer. Called on sign-in and
@@ -63,7 +65,8 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
         when (decideSyncAction(l?.updatedAt, r?.updatedAt, r?.deleted ?: false)) {
             SyncAction.DELETE_LOCAL -> repo.delete(id)
             SyncAction.PULL -> if (r != null) {
-                repo.upsert(Sketchbook(id, r.name, r.sizeKey, r.bgKey, r.createdAt, r.pageCount, r.fav, coverColor = r.coverColor, updatedAt = r.updatedAt))
+                repo.upsert(Sketchbook(id, r.name, r.sizeKey, r.bgKey, r.createdAt, r.pageCount, r.fav,
+                    coverColor = r.coverColor, vector = r.vector, updatedAt = r.updatedAt))
             }
             SyncAction.PUSH -> if (l != null) backup.pushSketchbookMeta(uid, l)
             SyncAction.NOOP -> {}
@@ -84,16 +87,34 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
             SyncAction.NOOP -> {}
         }
 
+        val isVector = l?.vector == true || r?.vector == true
         val pageCount = maxOf(l?.pageCount ?: 0, r?.pageCount ?: MAX_PAGES)
         for (index in 0 until pageCount) {
-            val localPageAt = repo.pageUpdatedAt(id, index).takeIf { it > 0L } // 표지와 같은 이유 — 디코드 불필요
-            val remotePage = r?.pages?.get(index)
-            when (decideSyncAction(localPageAt, remotePage?.first)) {
-                SyncAction.PULL -> if (remotePage != null) {
-                    backup.decodeImage(remotePage.second)?.let { repo.savePage(id, index, it); repo.setPageUpdatedAt(id, index, remotePage.first) }
+            if (isVector) {
+                val localAt = repo.vectorPageUpdatedAt(id, index).takeIf { it > 0L }
+                val remotePage = r?.vectorPages?.get(index)
+                when (decideSyncAction(localAt, remotePage?.first)) {
+                    SyncAction.PULL -> if (remotePage != null) {
+                        vectorPageFromJson(remotePage.second)?.let {
+                            repo.saveVectorPage(id, index, it)
+                            repo.setVectorPageUpdatedAt(id, index, remotePage.first)
+                        }
+                    }
+                    SyncAction.PUSH -> repo.loadVectorPage(id, index)?.let {
+                        backup.pushVectorPage(uid, id, index, it.toJson(), repo.vectorPageUpdatedAt(id, index))
+                    }
+                    else -> {}
                 }
-                SyncAction.PUSH -> repo.loadPage(id, index)?.let { backup.pushSketchbookPage(uid, id, index, it, repo.pageUpdatedAt(id, index)) }
-                else -> {}
+            } else {
+                val localPageAt = repo.pageUpdatedAt(id, index).takeIf { it > 0L }
+                val remotePage = r?.pages?.get(index)
+                when (decideSyncAction(localPageAt, remotePage?.first)) {
+                    SyncAction.PULL -> if (remotePage != null) {
+                        backup.decodeImage(remotePage.second)?.let { repo.savePage(id, index, it); repo.setPageUpdatedAt(id, index, remotePage.first) }
+                    }
+                    SyncAction.PUSH -> repo.loadPage(id, index)?.let { backup.pushSketchbookPage(uid, id, index, it, repo.pageUpdatedAt(id, index)) }
+                    else -> {}
+                }
             }
         }
     }
