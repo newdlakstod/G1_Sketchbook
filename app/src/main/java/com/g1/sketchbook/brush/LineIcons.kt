@@ -267,6 +267,79 @@ val IconPeopleLine: ImageVector by lazy {
     }.build()
 }
 
+/** 공유노트 새로 만들기 — Lucide "file-plus-2"(문서 + 우하단 + 표시), 2026-08-30 사용자가 넘겨준
+ *  SVG로 기존 Material GroupAdd 아이콘을 교체. */
+val IconNewNoteLine: ImageVector by lazy {
+    ImageVector.Builder(name = "NewNoteLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+        path(
+            fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = LineStrokeWidth,
+            strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // M11.35 22H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v5.35
+            moveTo(11.35f, 22f)
+            horizontalLineTo(6f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2f, dy1 = -2f)
+            verticalLineTo(4f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2f, dy1 = -2f)
+            horizontalLineToRelative(8f)
+            arcToRelative(2.4f, 2.4f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.706f, dy1 = 0.706f)
+            lineToRelative(3.588f, 3.588f)
+            arcTo(2.4f, 2.4f, 0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20f, y1 = 8f)
+            verticalLineToRelative(5.35f)
+            // M14 2v5a1 1 0 0 0 1 1h5
+            moveTo(14f, 2f)
+            verticalLineToRelative(5f)
+            arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1f, dy1 = 1f)
+            horizontalLineToRelative(5f)
+            // M14 19h6
+            moveTo(14f, 19f)
+            horizontalLineToRelative(6f)
+            // M17 16v6
+            moveTo(17f, 16f)
+            verticalLineToRelative(6f)
+        }
+    }.build()
+}
+
+/** 초대 코드로 참가 — Lucide "key-round", 2026-08-30 사용자가 넘겨준 SVG로 기존 Material Key
+ *  아이콘을 교체. 열쇠 머리의 작은 구멍(circle)만 원본대로 채워서 그린다. */
+val IconKeyLine: ImageVector by lazy {
+    ImageVector.Builder(name = "KeyLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {
+        path(
+            fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = LineStrokeWidth,
+            strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z
+            moveTo(2.586f, 17.414f)
+            arcTo(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 2f, y1 = 18.828f)
+            verticalLineTo(21f)
+            arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1f, dy1 = 1f)
+            horizontalLineToRelative(3f)
+            arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1f, dy1 = -1f)
+            verticalLineToRelative(-1f)
+            arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1f, dy1 = -1f)
+            horizontalLineToRelative(1f)
+            arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1f, dy1 = -1f)
+            verticalLineToRelative(-1f)
+            arcToRelative(1f, 1f, 0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1f, dy1 = -1f)
+            horizontalLineToRelative(0.172f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.414f, dy1 = -0.586f)
+            lineToRelative(0.814f, -0.814f)
+            arcToRelative(6.5f, 6.5f, 0f, isMoreThanHalf = true, isPositiveArc = false, dx1 = -4f, dy1 = -4f)
+            close()
+        }
+        path(
+            fill = SolidColor(Color.Black), stroke = null,
+        ) {
+            // circle cx=16.5 cy=7.5 r=.5 (열쇠 머리 구멍 — 원본대로 채움)
+            moveTo(17f, 7.5f)
+            arcTo(0.5f, 0.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 16f, y1 = 7.5f)
+            arcTo(0.5f, 0.5f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 17f, y1 = 7.5f)
+            close()
+        }
+    }.build()
+}
+
 /** 선생님모드 꺼짐 — Lucide "screen-share-off"(모니터 + 모서리 X 표시). */
 val IconScreenUnsharedLine: ImageVector by lazy {
     ImageVector.Builder(name = "ScreenUnsharedLine", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f).apply {

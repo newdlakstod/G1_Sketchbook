@@ -52,11 +52,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Opacity
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Delete
@@ -135,6 +133,8 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.brush.BrushControls
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.BrushView
+import com.g1.sketchbook.brush.IconKeyLine
+import com.g1.sketchbook.brush.IconNewNoteLine
 import com.g1.sketchbook.brush.alignment
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.excludeSystemGestureEdges
@@ -503,8 +503,8 @@ private fun SketchbookListScreen(
         },
         actions = {
             if (showShared) {
-                IconButton(onClick = onNewShared) { Icon(Icons.Filled.GroupAdd, "공유 스케치북 만들기") }
-                IconButton(onClick = onJoinShared) { Icon(Icons.Filled.Key, "참여코드로 입장하기") }
+                IconButton(onClick = onNewShared) { Icon(IconNewNoteLine, "공유 스케치북 만들기") }
+                IconButton(onClick = onJoinShared) { Icon(IconKeyLine, "참여코드로 입장하기") }
             } else {
                 IconButton(onClick = onNewPersonal) { Icon(Icons.Filled.Add, "스케치북 추가") }
             }
