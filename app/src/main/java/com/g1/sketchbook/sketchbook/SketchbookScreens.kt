@@ -564,7 +564,7 @@ private fun SketchbookListScreen(
         title = if (showShared) "Draw together" else "Sketchbook list",
         sidePanel = {
             PageThumbnailPanel(
-                repo = repo, book = selectedBook,
+                repo = repo, book = selectedBook?.takeIf { !it.vector },
                 onOpen = { selectedBook?.let(onOpen) },
                 onOpenPage = { p -> selectedBook?.let { onOpenAtPage(it, p) } },
                 onEdit = { selectedBook?.let { editing = it } },
@@ -723,7 +723,11 @@ private fun CoverCard(
     // 갤러리에서 고른 표지 이미지가 있으면 그걸, 없으면 (커스텀 지정 시) coverColor, 그것도 없으면
     // 기본색을 보여준다. coverVersion을 키에 넣어야 같은 id라도 표지 사진이 바뀌면 다시 읽어온다.
     var cover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(book.id, book.coverVersion, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
+    LaunchedEffect(book.id, book.coverVersion, repo) {
+        cover = withContext(Dispatchers.IO) {
+            if (book.vector) repo?.loadVectorPreview(book.id) else repo?.loadCoverThumb(book.id)
+        }
+    }
     // Same cover ratio as the home carousel (Dimens.Home.coverRatio) — every note cover keeps one
     // fixed proportion across the whole app, whichever screen shows it.
     Box(Modifier.aspectRatio(Dimens.Home.coverRatio)) {

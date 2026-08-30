@@ -41,6 +41,9 @@ import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.sketchbook.saveVectorCanvasSynced
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.saveSvgToGallery
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 벡터 스케치북 전용 캔버스 화면 — 책 한 권 = 캔버스 한 장(페이지 없음). 도구는 펜/지우개/
  *  내보내기용 라쏘 셋. 두 손가락 핀치로 확대·이동. */
@@ -62,11 +65,14 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
         saveVectorCanvasSynced(scope, repo, backup, myUid, bookId, v.currentPage())
     }
 
-    fun exportRegion(region: Bounds) {
-        val v = view ?: return
-        val svg = vectorPageToSvg(v.currentPage(), region)
-        val status = saveSvgToGallery(context, svg, book.name)
-        Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
+    fun exportRegion(page: VectorPage, region: Bounds) {
+        scope.launch(Dispatchers.IO) {
+            val svg = vectorPageToSvg(page, region)
+            val status = saveSvgToGallery(context, svg, book.name)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -115,8 +121,8 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
             IconButton(onClick = {
                 tool = if (tool == VectorBrushView.Tool.LASSO_EXPORT) VectorBrushView.Tool.DRAW else VectorBrushView.Tool.LASSO_EXPORT
                 view?.tool = tool
-                view?.onLassoComplete = { _, lasso ->
-                    pointsBounds(lasso)?.let { exportRegion(it) }
+                view?.onLassoComplete = { selected, lasso ->
+                    pointsBounds(lasso)?.let { exportRegion(VectorPage(selected), it) }
                     tool = VectorBrushView.Tool.DRAW; view?.tool = tool
                 }
             }) {
@@ -133,7 +139,7 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
                 } else {
                     Bounds(0f, 0f, book.vectorCanvasW?.toFloat() ?: 1024f, book.vectorCanvasH?.toFloat() ?: 1024f)
                 }
-                exportRegion(whole)
+                exportRegion(v.currentPage(), whole)
             }) {
                 Icon(com.g1.sketchbook.brush.IconImageSaveLine, "전체 내보내기")
             }

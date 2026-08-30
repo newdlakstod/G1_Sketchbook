@@ -439,7 +439,11 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     // 없으면 기본색을 보여준다(목록탭 CoverCard와 동일). coverVersion을 키에 넣어야 같은 id라도
                     // 표지 사진이 바뀌면 다시 읽어온다.
                     var cover by remember(book.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
-                    LaunchedEffect(book.id, book.coverVersion, repo) { cover = withContext(Dispatchers.IO) { repo?.loadCoverThumb(book.id) } }
+                    LaunchedEffect(book.id, book.coverVersion, repo) {
+                        cover = withContext(Dispatchers.IO) {
+                            if (book.vector) repo?.loadVectorPreview(book.id) else repo?.loadCoverThumb(book.id)
+                        }
+                    }
                     // 표지가 사진이면 두께 스택은 검정으로 고정 — book.coverColor는 사진 적용 전에
                     // 마지막으로 골랐던(또는 기본) 색이 그대로 남아있는 필드라, 사진 표지에 그 색을
                     // 그대로 쓰면 "직전 표지 색"이 두께 부분에서만 새어나오는 것처럼 보였다.
@@ -513,8 +517,12 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
         Spacer(Modifier.height(4.dp))
         Text(
             centeredBook?.let { b ->
-                val bgLabel = Catalog.backgrounds.firstOrNull { it.key == b.bgKey }?.label ?: b.bgKey
-                "${b.dateLabel} · ${b.size.label} · $bgLabel"
+                if (b.vector) {
+                    "✏️ 벡터 · ${b.dateLabel}"
+                } else {
+                    val bgLabel = Catalog.backgrounds.firstOrNull { it.key == b.bgKey }?.label ?: b.bgKey
+                    "${b.dateLabel} · ${b.size.label} · $bgLabel"
+                }
             } ?: "",
             fontSize = Dimens.Home.carouselSubtitleSp, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,

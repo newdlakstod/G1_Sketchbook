@@ -59,8 +59,8 @@ data class Sketchbook(
      *  파일을 다시 읽어오지 않으므로, 이 값을 키에 함께 넣어 캐시를 무효화한다. */
     val coverVersion: Int = 0,
     /** 처음부터 벡터(획 점 목록)로 그리는 스케치북 — [shared]와 동시에 켜지지 않는다(생성 마법사가
-     *  그 조합을 만들지 않음). true면 페이지는 `page_{i}.png`가 아니라 `page_{i}.json`에 저장되고,
-     *  [SketchbookRepository.loadVectorPage]/[saveVectorPage]로 읽고 쓴다. */
+     *  그 조합을 만들지 않음). true면 페이지 개념이 없고, 책 한 권의 획 전체가 `vector_canvas.json`
+     *  파일 하나에 저장되며, [SketchbookRepository.loadVectorCanvas]/[saveVectorCanvas]로 읽고 쓴다. */
     val vector: Boolean = false,
     /** 무한 캔버스 여부(벡터 책 전용, [vector]=true일 때만 의미 있음) — true면 [vectorCanvasW]/
      *  [vectorCanvasH]는 항상 null. 페이지 개념이 없는 벡터 책 하나가 곧 캔버스 한 장이다. */
