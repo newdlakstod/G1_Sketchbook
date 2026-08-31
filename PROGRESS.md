@@ -4,6 +4,27 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **벡터 스탬프/패턴 브러시 — SVG 임포트 기반, `master` 병합 완료** (2026-08-31, Claude): 사용자가
+  "니가 만드는 게 정확히 원하는 대로 안 나온다"는 피드백을 준 뒤, 브러시 모양 자체를 사용자가
+  직접 SVG로 만들어 임포트하는 방식으로 전환. 브레인스토밍(스펙
+  `docs/superpowers/specs/2026-08-31-vector-stamp-brush-design.md`) → 계획(12태스크,
+  `docs/superpowers/plans/2026-08-31-vector-stamp-brush.md`) → `vector-stamp-brush` 브랜치에서
+  subagent-driven 구현 → 태스크별 리뷰(Task 2 중첩 `<g>` 그룹 변환 합성 버그, Task 3 spacingPx≤0
+  무한루프 버그 각각 발견·수정) → 최종 전체 브랜치 리뷰(Critical 1건: `vectorPageToSvg`의 유일한
+  실제 호출부가 `stampBrushes`를 안 넘겨서 내보낸 SVG엔 스탬프가 아예 안 나오던 것 + Important
+  7건: 지우개가 리본 폴리곤으로만 히트테스트해 스탬프 획을 못 지움, 회전 행렬 테스트 커버리지 0,
+  `matrix()`/비균일 `scale()` 등 미지원 transform이 조용히 항등변환으로 잘못 적용, SVG 임포트가
+  메인 스레드에서 파싱, 구버전 앱이 못 읽는 필드를 항상 씀, spacingPx보다 짧은 획이 완전히 안
+  보이는 유령 획, 미리보기/내보내기가 스탬프 가장자리를 잘라냄 → 수정 웨이브 1회로 12건 전부
+  ADDRESSED, 잔여 Minor 4건은 논블로킹으로 파킹)까지 마치고 `master`에 fast-forward 병합.
+  SVG 지원 범위: `path`(전체 명령어+타원호)/`rect`/`circle`/`ellipse` + `translate`/`scale`만 걸린
+  `<g>` 그룹(중첩 지원, `rotate`/`matrix`/`skew`/비균일 scale은 그룹째 건너뜀). 찍는 간격·크기는
+  브러시마다 고정값(속도 무관), 색은 항상 지금 펜 색으로 틴트. 브러시는 여러 개 임포트·이름
+  변경·간격삭제 가능, 계정 백업(Firebase, 원본 SVG 텍스트만 업로드해 가볍게 유지)으로 다른 기기에도
+  동기화 — 단, 브러시 이름/간격/크기를 나중에 수정해도 그 변경 자체는 다른 기기로 아직 안
+  전파됨(최초 동기화 이후 last-write-wins 비교가 없음, 의도적으로 이번 범위에서 제외·후속 과제로
+  남김). 브러시 스와치 패널에 "+" 버튼(SAF 파일선택기)·실제 모양 미리보기·길게눌러 편집/삭제 팝업
+  추가.
 - **벡터(SVG) 스케치북 — 구현 후 `master` 병합, 이어서 캔버스 구조 개편까지 완료** (2026-08-30~31,
   Claude): 처음부터 벡터로 그리는 새 스케치북 타입. 1차로 `vector-drawing` 브랜치에서 스펙
   (`docs/superpowers/specs/2026-08-30-vector-sketchbook-design.md`)→계획(10태스크)→subagent-driven
