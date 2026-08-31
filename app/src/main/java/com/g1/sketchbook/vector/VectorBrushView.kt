@@ -306,9 +306,11 @@ class VectorBrushView(context: Context) : View(context) {
     }
 
     /** 기존 래스터 펜(`BrushView.penSeg`)과 같은 느낌의 속도-굵기 곡선 — 빠를수록 가늘게, 최대
-     *  65%까지 얇아진다. */
+     *  65%까지 얇아진다. [strokeWidthDp]에 화면 밀도를 곱해야 이름 그대로 실제 물리적 dp가 된다 —
+     *  안 곱하면(특히 무한 캔버스는 기본 줌에서 캔버스 1단위=화면 1래스터 픽셀이라) 고밀도 화면에서
+     *  숫자만큼의 dp보다 훨씬 얇게(라쏘 테두리선처럼 밀도 보정 없이) 그려진다. */
     private fun widthFor(speed: Float): Float {
-        val w = strokeWidthDp * (1f - min(0.65f, speed * 0.2f))
+        val w = strokeWidthDp * resources.displayMetrics.density * (1f - min(0.65f, speed * 0.2f))
         return max(1f, w)
     }
 
