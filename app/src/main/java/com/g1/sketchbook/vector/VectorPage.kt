@@ -17,6 +17,11 @@ data class VectorStroke(
     val fillEnabled: Boolean = true,
     val strokeColor: Long? = null,
     val strokeWidthPx: Float = 2f,
+    /** null이면 지금 펜(cap/fillEnabled/strokeColor/strokeWidthPx 그대로 적용). 아니면 이 id의
+     *  스탬프 브러시로 그려진 획 — 이때는 위 네 필드를 무시하고 [points]를 중심선 삼아
+     *  [stampPolygons]로 다시 계산해서 그린다(전부 [color]로 틴트). 참조하는 브러시가 삭제된
+     *  경우 렌더링 시점에 못 찾으면 지금 펜(리본, [color])으로 폴백. */
+    val brushProfileId: String? = null,
 )
 
 /** 벡터 스케치북 페이지 하나 = 획 목록 전체. */
@@ -38,6 +43,7 @@ fun VectorPage.toJson(): String {
             .append(",\"fillEnabled\":").append(s.fillEnabled)
             .append(",\"strokeColor\":").append(s.strokeColor ?: Long.MIN_VALUE)
             .append(",\"strokeWidthPx\":").append(s.strokeWidthPx)
+            .append(",\"brushProfileId\":\"").append(s.brushProfileId ?: "").append("\"")
             .append("}")
     }
     sb.append("]}")
@@ -46,7 +52,8 @@ fun VectorPage.toJson(): String {
 
 private val strokeRegex = Regex(
     "\\{\"color\":(-?\\d+),\"points\":\\[(.*?)](?:,\"cap\":\"(\\w+)\")?" +
-        "(?:,\"fillEnabled\":(true|false),\"strokeColor\":(-?\\d+),\"strokeWidthPx\":(-?[0-9.eE+-]+))?\\}",
+        "(?:,\"fillEnabled\":(true|false),\"strokeColor\":(-?\\d+),\"strokeWidthPx\":(-?[0-9.eE+-]+))?" +
+        "(?:,\"brushProfileId\":\"(.*?)\")?\\}",
 )
 private val pointRegex = Regex("\\{\"x\":(-?[0-9.eE+-]+),\"y\":(-?[0-9.eE+-]+),\"w\":(-?[0-9.eE+-]+)\\}")
 
@@ -71,7 +78,8 @@ fun vectorPageFromJson(json: String): VectorPage? {
             val fillEnabled = m.groups[4]?.value?.toBoolean() ?: true
             val strokeColor = m.groups[5]?.value?.toLong()?.takeIf { it != Long.MIN_VALUE }
             val strokeWidthPx = m.groups[6]?.value?.toFloat() ?: 2f
-            VectorStroke(color, points, cap, fillEnabled, strokeColor, strokeWidthPx)
+            val brushProfileId = m.groups[7]?.value?.ifBlank { null }
+            VectorStroke(color, points, cap, fillEnabled, strokeColor, strokeWidthPx, brushProfileId)
         }.toList()
         VectorPage(strokes)
     }.getOrNull()
