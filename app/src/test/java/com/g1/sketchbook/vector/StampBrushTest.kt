@@ -54,4 +54,10 @@ class StampBrushTest {
         val profile = StampBrushProfile("id1", "테스트", listOf(square), spacingPx = 10f, sizePx = 10f)
         assertEquals(0, stampPolygons(profile, listOf(VectorPoint(0f, 0f, 4f))).size)
     }
+
+    @Test fun nonPositiveSpacingProducesNoStampsInsteadOfHanging() {
+        val profile = StampBrushProfile("id1", "테스트", listOf(square), spacingPx = 0f, sizePx = 10f)
+        val centerline = listOf(VectorPoint(0f, 0f, 4f), VectorPoint(100f, 0f, 4f))
+        assertEquals(0, stampPolygons(profile, centerline).size)
+    }
 }

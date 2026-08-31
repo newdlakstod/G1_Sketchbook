@@ -54,7 +54,7 @@ fun stampBrushProfileFromJson(json: String): StampBrushProfile? = runCatching {
  *  회전 -> [StampBrushProfile.sizePx]만큼 스케일 -> 그 지점 좌표로 평행이동. 중심선 전체 길이가
  *  [StampBrushProfile.spacingPx]보다 짧으면(또는 점이 2개 미만이면) 찍을 자리가 없어 빈 목록. */
 fun stampPolygons(profile: StampBrushProfile, points: List<VectorPoint>): List<List<Point>> {
-    if (points.size < 2 || profile.shapes.isEmpty()) return emptyList()
+    if (points.size < 2 || profile.shapes.isEmpty() || profile.spacingPx <= 0f) return emptyList()
     // 누적 호 길이 테이블 — 중심선을 따라 이동한 총 거리 하나씩.
     val cumulative = DoubleArray(points.size)
     for (i in 1 until points.size) {
