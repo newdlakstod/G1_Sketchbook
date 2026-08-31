@@ -92,4 +92,24 @@ class SvgShapeParserTest {
         assertTrue(kotlin.math.abs(w - 1f) < 0.01f)
         assertTrue(kotlin.math.abs(h - 0.5f) < 0.01f)
     }
+
+    @Test fun nestedGroupsComposeAncestorAndOwnTransform() {
+        // 바깥 그룹 translate(100,0) 안에: 안쪽 그룹 translate(0,50)으로 감싼 rect1, 그리고 안쪽 그룹
+        // 밖(같은 바깥 그룹 안)의 형제 rect2. 두 사각형이 정확히 세로로만(가로 오프셋 없이) 50만큼
+        // 떨어져 있어야 중첩 그룹이 제대로 합성된 것 — 안쪽 그룹의 변환이 유실되거나 형제가 바깥
+        // 그룹의 변환을 못 받으면 오프셋이 가로로 나타나거나 달라진다.
+        val svg = """<svg viewBox="0 0 300 300">
+            <g transform="translate(100,0)">
+                <g transform="translate(0,50)"><rect x="0" y="0" width="10" height="10"/></g>
+                <rect x="0" y="0" width="10" height="10"/>
+            </g>
+        </svg>"""
+        val shapes = parseSvgDocument(svg)!!
+        assertEquals(2, shapes.size)
+        val centerA = Point(shapes[0].sumOf { it.x.toDouble() }.toFloat() / shapes[0].size, shapes[0].sumOf { it.y.toDouble() }.toFloat() / shapes[0].size)
+        val centerB = Point(shapes[1].sumOf { it.x.toDouble() }.toFloat() / shapes[1].size, shapes[1].sumOf { it.y.toDouble() }.toFloat() / shapes[1].size)
+        val dx = kotlin.math.abs(centerA.x - centerB.x)
+        val dy = kotlin.math.abs(centerA.y - centerB.y)
+        assertTrue(dy > dx * 5f, "expected mostly-vertical offset between the two rects, got dx=$dx dy=$dy")
+    }
 }
