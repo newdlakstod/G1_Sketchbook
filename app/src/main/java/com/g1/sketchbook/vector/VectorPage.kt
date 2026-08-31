@@ -43,8 +43,8 @@ fun VectorPage.toJson(): String {
             .append(",\"fillEnabled\":").append(s.fillEnabled)
             .append(",\"strokeColor\":").append(s.strokeColor ?: Long.MIN_VALUE)
             .append(",\"strokeWidthPx\":").append(s.strokeWidthPx)
-            .append(",\"brushProfileId\":\"").append(s.brushProfileId ?: "").append("\"")
-            .append("}")
+        if (s.brushProfileId != null) sb.append(",\"brushProfileId\":\"").append(s.brushProfileId).append('"')
+        sb.append("}")
     }
     sb.append("]}")
     return sb.toString()

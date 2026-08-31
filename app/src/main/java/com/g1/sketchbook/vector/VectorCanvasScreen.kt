@@ -252,8 +252,9 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
     }
 
     fun exportRegion(page: VectorPage, region: Bounds) {
+        val brushes = stampBrushes.associateBy { it.id }
         scope.launch(Dispatchers.IO) {
-            val svg = vectorPageToSvg(page, region)
+            val svg = vectorPageToSvg(page, region, brushes)
             val status = saveSvgToGallery(context, svg, book.name)
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
@@ -263,16 +264,20 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val text = runCatching {
-            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-        }.getOrNull()
-        if (text == null || !text.contains("<svg")) {
-            Toast.makeText(context, "SVG 파일을 읽을 수 없습니다", Toast.LENGTH_SHORT).show()
-            return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val text = runCatching {
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            }.getOrNull()
+            withContext(Dispatchers.Main) {
+                if (text == null || !text.contains("<svg")) {
+                    Toast.makeText(context, "SVG 파일을 읽을 수 없습니다", Toast.LENGTH_SHORT).show()
+                } else {
+                    pendingImportSvgText = text
+                    importNameDraft = "브러시 ${stampBrushes.size + 1}"
+                    importNameDialogOpen = true
+                }
+            }
         }
-        pendingImportSvgText = text
-        importNameDraft = "브러시 ${stampBrushes.size + 1}"
-        importNameDialogOpen = true
     }
 
     fun pushStampBrushAsync(profile: StampBrushProfile) {
@@ -314,7 +319,7 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
             com.g1.sketchbook.brush.LassoSaveButton(a.x, a.y, onSave = {
                 val v = view ?: return@LassoSaveButton
                 val page = v.exportSelection() ?: return@LassoSaveButton
-                contentBounds(page.strokes)?.let { exportRegion(page, it) }
+                contentBounds(page.strokes, stampBrushes.associateBy { it.id })?.let { exportRegion(page, it) }
             })
         }
         Row(
@@ -436,7 +441,7 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
             IconButton(onClick = {
                 val v = view ?: return@IconButton
                 val whole = if (book.vectorInfinite) {
-                    contentBounds(v.currentPage().strokes)?.let {
+                    contentBounds(v.currentPage().strokes, stampBrushes.associateBy { it.id })?.let {
                         val padX = it.width * 0.05f; val padY = it.height * 0.05f
                         Bounds(it.minX - padX, it.minY - padY, it.maxX + padX, it.maxY + padY)
                     } ?: Bounds(0f, 0f, 64f, 64f)
@@ -456,18 +461,23 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
                 confirmButton = {
                     TextButton(onClick = {
                         val svgText = pendingImportSvgText
+                        val name = importNameDraft.ifBlank { "브러시" }
                         importNameDialogOpen = false; pendingImportSvgText = null
                         if (svgText != null) {
-                            val profile = stampRepo.importFromSvg(importNameDraft.ifBlank { "브러시" }, svgText)
-                            if (profile != null) {
-                                stampBrushes = stampRepo.list()
-                                view?.stampBrushes = stampBrushes.associateBy { it.id }
-                                selectedStampBrushId = profile.id
-                                view?.brushProfileId = profile.id
-                                tool = VectorBrushView.Tool.DRAW; view?.tool = tool
-                                pushStampBrushAsync(profile)
-                            } else {
-                                Toast.makeText(context, "지원하지 않는 SVG 형식입니다", Toast.LENGTH_SHORT).show()
+                            scope.launch(Dispatchers.IO) {
+                                val profile = stampRepo.importFromSvg(name, svgText)
+                                withContext(Dispatchers.Main) {
+                                    if (profile != null) {
+                                        stampBrushes = stampRepo.list()
+                                        view?.stampBrushes = stampBrushes.associateBy { it.id }
+                                        selectedStampBrushId = profile.id
+                                        view?.brushProfileId = profile.id
+                                        tool = VectorBrushView.Tool.DRAW; view?.tool = tool
+                                        pushStampBrushAsync(profile)
+                                    } else {
+                                        Toast.makeText(context, "지원하지 않는 SVG 형식입니다", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             }
                         }
                     }) { Text("추가") }

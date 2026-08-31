@@ -51,8 +51,10 @@ fun stampBrushProfileFromJson(json: String): StampBrushProfile? = runCatching {
 
 /** [points](획의 중심선)를 따라 호 길이 기준 [StampBrushProfile.spacingPx]마다 [StampBrushProfile.shapes]를
  *  하나씩 찍는다 — 각 지점에서: 정규화된 스탬프 다각형들을 그 지점의 진행 방향(접선) 각도만큼
- *  회전 -> [StampBrushProfile.sizePx]만큼 스케일 -> 그 지점 좌표로 평행이동. 중심선 전체 길이가
- *  [StampBrushProfile.spacingPx]보다 짧으면(또는 점이 2개 미만이면) 찍을 자리가 없어 빈 목록. */
+ *  회전 -> [StampBrushProfile.sizePx]만큼 스케일 -> 그 지점 좌표로 평행이동. 첫 도장은 항상
+ *  시작점(호 길이 0)에 찍히므로, 중심선 전체 길이가 [StampBrushProfile.spacingPx]보다 짧아도 최소
+ *  한 개는 나온다 — 안 그러면 커밋·저장·지우기까지 되는데 화면엔 아무것도 안 보이는 유령 획이 된다.
+ *  점이 2개 미만이거나 도형이 없거나 간격이 0 이하면 빈 목록. */
 fun stampPolygons(profile: StampBrushProfile, points: List<VectorPoint>): List<List<Point>> {
     if (points.size < 2 || profile.shapes.isEmpty() || profile.spacingPx <= 0f) return emptyList()
     // 누적 호 길이 테이블 — 중심선을 따라 이동한 총 거리 하나씩.
@@ -62,7 +64,6 @@ fun stampPolygons(profile: StampBrushProfile, points: List<VectorPoint>): List<L
         cumulative[i] = cumulative[i - 1] + hypot(dx, dy)
     }
     val totalLen = cumulative.last()
-    if (totalLen < profile.spacingPx) return emptyList()
 
     val result = mutableListOf<List<Point>>()
     var target = 0.0

@@ -95,19 +95,24 @@ fun pointInPolygon(x: Float, y: Float, polygon: List<Point>): Boolean {
     return inside
 }
 
-/** [strokes] 전체를 감싸는 최소 사각형(각 점의 굵기 절반만큼 바깥으로 확장) — 획이 하나도 없으면
- *  null. 벡터 캔버스 미리보기/썸네일과 "전체" 내보내기(무한 캔버스)가 이 경계상자를 기준으로 삼는다. */
+/** 축에 정렬된 사각 경계상자 하나 — 내보내기 영역, 미리보기 맞춤 등에 쓴다. */
 data class Bounds(val minX: Float, val minY: Float, val maxX: Float, val maxY: Float) {
     val width: Float get() = maxX - minX
     val height: Float get() = maxY - minY
 }
 
-fun contentBounds(strokes: List<VectorStroke>): Bounds? {
+/** [strokes] 전체를 감싸는 최소 사각형 — 획이 하나도 없으면 null. 벡터 캔버스 미리보기/썸네일과
+ *  "전체" 내보내기(무한 캔버스)가 이 경계상자를 기준으로 삼는다. 지금 펜으로 그린 획은 각 점의
+ *  굵기 절반만큼만 바깥으로 확장하면 되지만, [stampBrushes]에서 찾은 스탬프 브러시 획은 찍힌
+ *  도장 하나의 반지름(대략 [StampBrushProfile.sizePx]의 대각선 절반)만큼 훨씬 크게 튀어나올 수
+ *  있어 그만큼 확장한다 — 안 그러면 미리보기/내보내기에서 스탬프 가장자리가 잘린다. */
+fun contentBounds(strokes: List<VectorStroke>, stampBrushes: Map<String, StampBrushProfile> = emptyMap()): Bounds? {
     var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE
     var maxX = -Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
     for (stroke in strokes) {
+        val profile = stroke.brushProfileId?.let { stampBrushes[it] }
         for (p in stroke.points) {
-            val half = p.w / 2f
+            val half = if (profile != null) profile.sizePx * 0.75f else p.w / 2f
             if (p.x - half < minX) minX = p.x - half
             if (p.y - half < minY) minY = p.y - half
             if (p.x + half > maxX) maxX = p.x + half

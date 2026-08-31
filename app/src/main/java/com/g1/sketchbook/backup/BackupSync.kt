@@ -8,6 +8,7 @@ import com.g1.sketchbook.diary.DiaryRepository
 import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
+import com.g1.sketchbook.vector.StampBrushRepository
 import com.g1.sketchbook.vector.toJson
 import com.g1.sketchbook.vector.vectorPageFromJson
 
@@ -59,7 +60,7 @@ private fun reconcileSharedBooks(repo: SketchbookRepository, backup: BackupRepos
  *  원격에서 지워졌으면(deleted=true) 로컬에서도 지움, 로컬에만 있으면(또는 원격이 이미 지운 걸
  *  로컬은 아직 갖고 있으면) 원격에 올린다. */
 private fun reconcileStampBrushes(context: Context, backup: BackupRepository, uid: String, remote: List<RemoteStampBrush>) {
-    val local = com.g1.sketchbook.vector.StampBrushRepository(context)
+    val local = StampBrushRepository(context)
     val remoteById = remote.associateBy { it.id }
     val localIds = local.list().map { it.id }.toSet()
 

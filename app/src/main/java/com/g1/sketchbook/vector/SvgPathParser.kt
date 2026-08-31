@@ -104,7 +104,7 @@ fun parseSvgPath(d: String, steps: Int = 12): List<Point> {
             else -> return points
             }
             prevCmd = cmd
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             return points
         }
     }

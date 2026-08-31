@@ -46,13 +46,19 @@ private fun parseElements(xml: String, scale: Float, dx: Float, dy: Float, into:
 
         val closeStart = findMatchingGClose(xml, tagEnd)
         val transform = rawAttrs["transform"]
-        if (transform == null || !transform.contains("rotate")) {
+        if (transform == null || isSupportedGroupTransform(transform)) {
             var gScale = 1f; var gDx = 0f; var gDy = 0f
             transform?.let { t ->
-                Regex("translate\\(([-\\d.]+)[ ,]+([-\\d.]+)\\)").find(t)?.let { tm ->
-                    gDx = tm.groupValues[1].toFloat(); gDy = tm.groupValues[2].toFloat()
+                val translateXY = Regex("translate\\(([-\\d.]+)[ ,]+([-\\d.]+)\\)").find(t)
+                if (translateXY != null) {
+                    gDx = translateXY.groupValues[1].toFloatOrNull() ?: 0f
+                    gDy = translateXY.groupValues[2].toFloatOrNull() ?: 0f
+                } else {
+                    Regex("translate\\(([-\\d.]+)\\)").find(t)?.let { tm ->
+                        gDx = tm.groupValues[1].toFloatOrNull() ?: 0f
+                    }
                 }
-                Regex("scale\\(([-\\d.]+)\\)").find(t)?.let { sm -> gScale = sm.groupValues[1].toFloat() }
+                Regex("scale\\(([-\\d.]+)\\)").find(t)?.let { sm -> gScale = sm.groupValues[1].toFloatOrNull() ?: 1f }
             }
             // 부모 스케일/이동에 이 그룹 자신의 translate/scale을 이어붙인다(부모 먼저 적용된 좌표계 위에).
             val inner = xml.substring(tagEnd, closeStart)
@@ -122,6 +128,18 @@ private fun findMatchingGClose(xml: String, from: Int): Int {
         }
     }
     return xml.length
+}
+
+/** `translate`/`scale`(균일 배율만 — `scale(sx,sy)`처럼 가로세로가 다른 형태는 이 앱의 단일
+ *  스케일 모델로 정확히 표현할 수 없어 미지원) 외의 transform 함수(`rotate`/`matrix`/`skewX`/
+ *  `skewY`/비균일 `scale(sx,sy)` 등)가 하나라도 섞여 있으면 이 그룹 전체를 건너뛴다 — 일부만
+ *  적용해서 도형이 잘못된 자리에 그려지는 것보다, 안 그려지는 편이 안전하다. */
+private fun isSupportedGroupTransform(transform: String): Boolean {
+    val funcNames = Regex("([a-zA-Z]+)\\(").findAll(transform).map { it.groupValues[1] }.toList()
+    if (funcNames.isEmpty() || funcNames.any { it != "translate" && it != "scale" }) return false
+    val scaleArgs = Regex("scale\\(([^)]*)\\)").find(transform)?.groupValues?.get(1)
+    if (scaleArgs != null && scaleArgs.split(Regex("[ ,]+")).filter { it.isNotBlank() }.size > 1) return false
+    return true
 }
 
 private fun ellipsePolygon(cx: Float, cy: Float, rx: Float, ry: Float, sides: Int = 24): List<Point> =

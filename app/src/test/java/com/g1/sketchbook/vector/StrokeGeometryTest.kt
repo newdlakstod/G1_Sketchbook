@@ -104,4 +104,12 @@ class StrokeGeometryTest {
         assertTrue(kotlin.math.abs(endCapMidpoint.x - 12f) < 0.01f)
         assertTrue(kotlin.math.abs(endCapMidpoint.y - 0f) < 0.01f)
     }
+
+    @Test fun contentBoundsExpandsForStampBrushStrokes() {
+        val square = listOf(Point(-0.5f, -0.5f), Point(0.5f, -0.5f), Point(0.5f, 0.5f), Point(-0.5f, 0.5f))
+        val profile = StampBrushProfile("id1", "테스트", listOf(square), spacingPx = 20f, sizePx = 40f)
+        val strokes = listOf(VectorStroke(0L, listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f)), brushProfileId = "id1"))
+        val bounds = contentBounds(strokes, mapOf("id1" to profile))!!
+        assertTrue(bounds.minY < -20f)
+    }
 }

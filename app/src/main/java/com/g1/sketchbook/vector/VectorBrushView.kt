@@ -314,11 +314,17 @@ class VectorBrushView(context: Context) : View(context) {
 
     private fun eraseAt(x: Float, y: Float) {
         for (i in committed.indices.reversed()) {
-            val outline = strokeOutline(committed[i].points, committed[i].cap)
-            if (outline.isNotEmpty() && pointInPolygon(x, y, outline)) {
-                val erased = committed[i]
+            val stroke = committed[i]
+            val profile = stroke.brushProfileId?.let { stampBrushes[it] }
+            val hit = if (profile != null) {
+                stampPolygons(profile, stroke.points).any { it.isNotEmpty() && pointInPolygon(x, y, it) }
+            } else {
+                val outline = strokeOutline(stroke.points, stroke.cap)
+                outline.isNotEmpty() && pointInPolygon(x, y, outline)
+            }
+            if (hit) {
                 committed.removeAt(i)
-                history.add(UndoOp.Erased(erased))
+                history.add(UndoOp.Erased(stroke))
                 invalidate()
                 onStrokeEnd?.invoke()
                 return

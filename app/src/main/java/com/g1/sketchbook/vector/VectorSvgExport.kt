@@ -1,7 +1,10 @@
 package com.g1.sketchbook.vector
 
-/** [page]에서 [region]에 해당하는 부분만 아이콘용 SVG 문서 텍스트로 직렬화한다 — 획 하나 =
- *  `<path>` 하나(채워진 다각형 모양), 그린 순서 그대로 유지. viewBox는 항상 "0 0 width height"로
+/** [page]에서 [region]에 해당하는 부분만 아이콘용 SVG 문서 텍스트로 직렬화한다 — 지금 펜으로
+ *  그린 획 하나 = `<path>` 하나(채워진 다각형 모양). [VectorStroke.brushProfileId]가 [stampBrushes]에서
+ *  찾아지면 그 대신 찍힌 도장 하나하나를 각각 독립된 `<path>`로 풀어서 쓴다(못 찾으면 지금 펜으로
+ *  폴백) — 획 하나가 여러 `<path>`가 될 수 있다는 뜻. 그린 순서 그대로 유지. viewBox는 항상
+ *  "0 0 width height"로
  *  시작하도록 [region]만큼 좌표를 평행이동한다(내보낸 SVG가 원본 캔버스 좌표계를 몰라도 되게).
  *  점이 하나도 [region] 안에 없는 획은 통째로 건너뛴다 — 부분적으로만 겹치는 획은 지금은
  *  잘라내지 않고 그대로 포함한다(잘라내기는 이 스펙 범위 밖). [VectorStroke.fillEnabled]가

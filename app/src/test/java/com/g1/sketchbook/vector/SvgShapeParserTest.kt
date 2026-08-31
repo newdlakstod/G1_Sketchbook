@@ -112,4 +112,34 @@ class SvgShapeParserTest {
         val dy = kotlin.math.abs(centerA.y - centerB.y)
         assertTrue(dy > dx * 5f, "expected mostly-vertical offset between the two rects, got dx=$dx dy=$dy")
     }
+
+    @Test fun matrixTransformGroupIsSkipped() {
+        val svg = """<svg viewBox="0 0 40 40">
+            <g transform="matrix(1,0,0,1,5,5)"><path d="M0,0 L5,0 L5,5 Z"/></g>
+            <rect x="0" y="0" width="5" height="5"/>
+        </svg>"""
+        val shapes = parseSvgDocument(svg)!!
+        assertEquals(1, shapes.size)
+    }
+
+    @Test fun nonUniformScaleGroupIsSkipped() {
+        val svg = """<svg viewBox="0 0 40 40">
+            <g transform="scale(2,3)"><path d="M0,0 L5,0 L5,5 Z"/></g>
+            <rect x="0" y="0" width="5" height="5"/>
+        </svg>"""
+        val shapes = parseSvgDocument(svg)!!
+        assertEquals(1, shapes.size)
+    }
+
+    @Test fun singleArgTranslateIsSupported() {
+        val svg = """<svg viewBox="0 0 40 40"><g transform="translate(10)"><rect x="0" y="0" width="5" height="5"/></g></svg>"""
+        val shapes = parseSvgDocument(svg)!!
+        assertEquals(1, shapes.size)
+    }
+
+    @Test fun malformedTransformNumberDoesNotCrash() {
+        val svg = """<svg viewBox="0 0 40 40"><g transform="translate(-,5)"><rect x="0" y="0" width="5" height="5"/></g></svg>"""
+        val shapes = parseSvgDocument(svg)
+        assertTrue(shapes == null || shapes.isNotEmpty())
+    }
 }
