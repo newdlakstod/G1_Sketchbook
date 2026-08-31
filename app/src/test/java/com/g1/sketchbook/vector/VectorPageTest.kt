@@ -80,4 +80,18 @@ class VectorPageTest {
         val decoded = vectorPageFromJson(json)!!.strokes[0]
         assertEquals(null, decoded.brushProfileId)
     }
+
+    @Test fun fillColorRoundTripsThroughJson() {
+        val page = VectorPage(listOf(
+            VectorStroke(-65536L, listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f)), fillColor = -16711936L),
+        ))
+        assertEquals(page, vectorPageFromJson(page.toJson()))
+    }
+
+    @Test fun jsonWithoutFillColorFieldDefaultsToNull() {
+        val json = "{\"strokes\":[{\"color\":-65536,\"points\":[{\"x\":0.0,\"y\":0.0,\"w\":4.0},{\"x\":10.0,\"y\":0.0,\"w\":4.0}],\"cap\":\"ROUND\",\"fillEnabled\":true,\"strokeColor\":-9223372036854775808,\"strokeWidthPx\":2.0,\"brushProfileId\":\"stamp-1\"}]}"
+        val decoded = vectorPageFromJson(json)!!.strokes[0]
+        assertEquals(null, decoded.fillColor)
+        assertEquals("stamp-1", decoded.brushProfileId)
+    }
 }

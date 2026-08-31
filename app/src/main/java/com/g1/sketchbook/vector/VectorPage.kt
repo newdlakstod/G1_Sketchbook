@@ -14,6 +14,9 @@ data class VectorStroke(
     val color: Long,
     val points: List<VectorPoint>,
     val cap: VectorCap = VectorCap.BUTT,
+    /** 리본을 채울지가 아니라, 이 획이 자기 자신과 교차해서 만드는 닫힌 구역을 채울지 — 리본
+     *  자체는 이 값과 무관하게 항상 [color]로 채워진다([VectorRenderer.drawVectorPage] 참고).
+     *  true여도 자기 교차가 없으면(대부분의 획) 시각적으로 아무 효과 없음. */
     val fillEnabled: Boolean = true,
     val strokeColor: Long? = null,
     val strokeWidthPx: Float = 2f,
@@ -22,6 +25,8 @@ data class VectorStroke(
      *  [stampPolygons]로 다시 계산해서 그린다(전부 [color]로 틴트). 참조하는 브러시가 삭제된
      *  경우 렌더링 시점에 못 찾으면 지금 펜(리본, [color])으로 폴백. */
     val brushProfileId: String? = null,
+    /** [fillEnabled]로 채워지는 자기교차 폐곡선의 색 — null이면 [color](리본 색)를 그대로 쓴다. */
+    val fillColor: Long? = null,
 )
 
 /** 벡터 스케치북 페이지 하나 = 획 목록 전체. */
@@ -44,6 +49,7 @@ fun VectorPage.toJson(): String {
             .append(",\"strokeColor\":").append(s.strokeColor ?: Long.MIN_VALUE)
             .append(",\"strokeWidthPx\":").append(s.strokeWidthPx)
         if (s.brushProfileId != null) sb.append(",\"brushProfileId\":\"").append(s.brushProfileId).append('"')
+        if (s.fillColor != null) sb.append(",\"fillColor\":").append(s.fillColor)
         sb.append("}")
     }
     sb.append("]}")
@@ -53,7 +59,8 @@ fun VectorPage.toJson(): String {
 private val strokeRegex = Regex(
     "\\{\"color\":(-?\\d+),\"points\":\\[(.*?)](?:,\"cap\":\"(\\w+)\")?" +
         "(?:,\"fillEnabled\":(true|false),\"strokeColor\":(-?\\d+),\"strokeWidthPx\":(-?[0-9.eE+-]+))?" +
-        "(?:,\"brushProfileId\":\"(.*?)\")?\\}",
+        "(?:,\"brushProfileId\":\"(.*?)\")?" +
+        "(?:,\"fillColor\":(-?\\d+))?\\}",
 )
 private val pointRegex = Regex("\\{\"x\":(-?[0-9.eE+-]+),\"y\":(-?[0-9.eE+-]+),\"w\":(-?[0-9.eE+-]+)\\}")
 
@@ -79,7 +86,8 @@ fun vectorPageFromJson(json: String): VectorPage? {
             val strokeColor = m.groups[5]?.value?.toLong()?.takeIf { it != Long.MIN_VALUE }
             val strokeWidthPx = m.groups[6]?.value?.toFloat() ?: 2f
             val brushProfileId = m.groups[7]?.value?.ifBlank { null }
-            VectorStroke(color, points, cap, fillEnabled, strokeColor, strokeWidthPx, brushProfileId)
+            val fillColor = m.groups[8]?.value?.toLong()
+            VectorStroke(color, points, cap, fillEnabled, strokeColor, strokeWidthPx, brushProfileId, fillColor)
         }.toList()
         VectorPage(strokes)
     }.getOrNull()
