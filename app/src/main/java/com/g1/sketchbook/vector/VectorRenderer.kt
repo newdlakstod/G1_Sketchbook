@@ -6,14 +6,17 @@ import android.graphics.Paint
 import android.graphics.Path
 import kotlin.math.min
 
-/** [page]의 모든 획을 [canvas]에 그린다 — 지금 펜으로 그린 획은 [strokeOutline]으로 계산한 다각형
- *  하나를 [VectorStroke.fillEnabled]면 [VectorStroke.color]로 채우고, [VectorStroke.strokeColor]가
- *  있으면 그 폴리곤 테두리를 그 색·[VectorStroke.strokeWidthPx] 굵기로 덧그린다(채움 먼저, 테두리가
- *  그 위에 — 일러스트레이터 패스의 fill+stroke와 같은 순서). [VectorStroke.brushProfileId]가
- *  [stampBrushes]에서 찾아지면 대신 [stampPolygons]로 계산한 도장들을 [VectorStroke.color]로 채워
- *  그린다(못 찾으면 지금 펜으로 폴백). 그린 순서 그대로라 나중 획이 위에 덮인다. `VectorBrushView.onDraw`와
- *  썸네일 렌더링([renderVectorPage])이 이 함수 하나를 같이 쓴다 — 그리기 중인 화면과 저장되는
- *  썸네일이 항상 같은 방식으로 그려진다. */
+/** [page]의 모든 획을 [canvas]에 그린다 — 지금 펜으로 그린 획은 [strokeOutline]으로 계산한 리본
+ *  다각형을 [VectorStroke.color]로 항상 채우고([VectorStroke.fillEnabled]와 무관 — 리본은 펜이
+ *  실제로 지나간 자리라 항상 보여야 함), [VectorStroke.strokeColor]가 있으면 그 위에 폴리곤
+ *  테두리를 그 색·[VectorStroke.strokeWidthPx] 굵기로 덧그린다. [VectorStroke.fillEnabled]면 그
+ *  다음으로 [selfIntersectionFills]로 찾은 자기교차 폐곡선들을 [VectorStroke.fillColor]
+ *  (없으면 [VectorStroke.color])로 채워 리본 위에 덧그린다 — 손으로 닫힌 도형을 그리면 그 내부가
+ *  자동으로 채워지는 효과. [VectorStroke.brushProfileId]가 [stampBrushes]에서 찾아지면 위 전부
+ *  대신 [stampPolygons]로 계산한 도장들을 [VectorStroke.color]로 채워 그린다(못 찾으면 지금
+ *  펜으로 폴백). 그린 순서 그대로라 나중 획이 위에 덮인다. `VectorBrushView.onDraw`와 썸네일
+ *  렌더링([renderVectorPage])이 이 함수 하나를 같이 쓴다 — 그리기 중인 화면과 저장되는 썸네일이
+ *  항상 같은 방식으로 그려진다. */
 fun drawVectorPage(canvas: Canvas, page: VectorPage, stampBrushes: Map<String, StampBrushProfile> = emptyMap()) {
     val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -35,14 +38,22 @@ fun drawVectorPage(canvas: Canvas, page: VectorPage, stampBrushes: Map<String, S
         val path = Path()
         outline.forEachIndexed { i, p -> if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y) }
         path.close()
-        if (stroke.fillEnabled) {
-            fillPaint.color = stroke.color.toInt()
-            canvas.drawPath(path, fillPaint)
-        }
+        fillPaint.color = stroke.color.toInt()
+        canvas.drawPath(path, fillPaint)
         stroke.strokeColor?.let { sc ->
             strokePaint.color = sc.toInt()
             strokePaint.strokeWidth = stroke.strokeWidthPx
             canvas.drawPath(path, strokePaint)
+        }
+        if (stroke.fillEnabled) {
+            fillPaint.color = (stroke.fillColor ?: stroke.color).toInt()
+            for (region in selfIntersectionFills(stroke.points)) {
+                if (region.isEmpty()) continue
+                val fillPath = Path()
+                region.forEachIndexed { i, p -> if (i == 0) fillPath.moveTo(p.x, p.y) else fillPath.lineTo(p.x, p.y) }
+                fillPath.close()
+                canvas.drawPath(fillPath, fillPaint)
+            }
         }
     }
 }
