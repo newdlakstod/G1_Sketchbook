@@ -34,6 +34,13 @@ class VectorBrushView(context: Context) : View(context) {
     var fillEnabled: Boolean = true
     var strokeColor: Long? = null
     var strokeWidthPx: Float = 2f
+    /** 다음에 그릴 획에 적용할 스탬프 브러시 — null이면 지금 펜. [VectorCanvasScreen]의 브러시
+     *  스와치 패널에서 고른다. */
+    var brushProfileId: String? = null
+    /** id로 [StampBrushProfile]을 찾는 조회용 맵 — 그리기·지우개 히트테스트·undo 미리보기 전부
+     *  이 맵으로 렌더링한다. [VectorCanvasScreen]이 [com.g1.sketchbook.vector.StampBrushRepository]에서
+     *  읽어 채워 넣는다(이 파일 자체는 저장소를 모른다 — 순수 뷰). */
+    var stampBrushes: Map<String, StampBrushProfile> = emptyMap()
     /** 라쏘로 선택한 획을 크기조절할 때 선 굵기도 같이 줄일지(true) 굵기는 그대로 두고 좌표만
      *  키울지(false) — 브러시 설정 버튼에서 고른다. */
     var scaleStrokeWidth: Boolean = true
@@ -271,7 +278,7 @@ class VectorBrushView(context: Context) : View(context) {
                         Tool.DRAW -> {
                             val cur = current; current = null
                             if (cur != null && cur.size >= 2) {
-                                val stroke = VectorStroke(color, cur, cap, fillEnabled, strokeColor, strokeWidthPx)
+                                val stroke = VectorStroke(color, cur, cap, fillEnabled, strokeColor, strokeWidthPx, brushProfileId)
                                 committed.add(stroke)
                                 history.add(UndoOp.Drew(stroke))
                                 onStrokeEnd?.invoke()
@@ -388,18 +395,18 @@ class VectorBrushView(context: Context) : View(context) {
         canvas.concat(disp)
         if (selIdx != null && movingSelection) {
             val selSet = selIdx.toSet()
-            drawVectorPage(canvas, VectorPage(committed.filterIndexed { i, _ -> i !in selSet }))
+            drawVectorPage(canvas, VectorPage(committed.filterIndexed { i, _ -> i !in selSet }), stampBrushes)
         } else {
-            drawVectorPage(canvas, VectorPage(committed))
+            drawVectorPage(canvas, VectorPage(committed), stampBrushes)
         }
-        current?.let { pts -> if (pts.size >= 2) drawVectorPage(canvas, VectorPage(listOf(VectorStroke(color, pts, cap, fillEnabled, strokeColor, strokeWidthPx)))) }
+        current?.let { pts -> if (pts.size >= 2) drawVectorPage(canvas, VectorPage(listOf(VectorStroke(color, pts, cap, fillEnabled, strokeColor, strokeWidthPx, brushProfileId))), stampBrushes) }
         canvas.restore()
 
         if (selIdx != null && movingSelection) {
             val m = Matrix(disp); m.postConcat(selectionTransform)
             canvas.save()
             canvas.setMatrix(m)
-            drawVectorPage(canvas, VectorPage(selIdx.map { committed[it] }))
+            drawVectorPage(canvas, VectorPage(selIdx.map { committed[it] }), stampBrushes)
             canvas.restore()
         }
         selectionLasso?.let { drawLasso(canvas, it, if (movingSelection) selectionTransform else null) }
