@@ -4,6 +4,8 @@ import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +37,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +59,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.g1.sketchbook.R
 import com.g1.sketchbook.data.SessionStore
 import com.g1.sketchbook.sketchbook.Sketchbook
@@ -83,6 +89,24 @@ private fun DrawScope.drawBrushSwatchPreview(color: Color) {
         cubicTo(w * 1.0f, h * 0.72f, w * 0.62f, h * 0.92f, w * 0.32f, h * 0.68f)
     }
     drawPath(path, color = color, style = Stroke(width = size.minDimension * 0.16f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+}
+
+/** 임포트된 스탬프 브러시의 스와치 미리보기 — [drawBrushSwatchPreview]("기본"용 장식 곡선)와 달리
+ *  실제로 파싱해서 정규화해 둔 모양([StampBrushProfile.shapes], 중심 원점·가장 긴 변 길이 1)을
+ *  스와치 박스 크기에 맞춰 그대로 그린다. */
+private fun DrawScope.drawStampShapePreview(shapes: List<List<Point>>, color: Color) {
+    val cx = size.width / 2f; val cy = size.height / 2f
+    val scale = size.minDimension * 0.85f
+    for (shape in shapes) {
+        if (shape.isEmpty()) continue
+        val path = Path()
+        shape.forEachIndexed { i, p ->
+            val x = cx + p.x * scale; val y = cy + p.y * scale
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        path.close()
+        drawPath(path, color = color)
+    }
 }
 
 private fun VectorCap.toComposeCap(): StrokeCap = when (this) {
@@ -190,6 +214,7 @@ private fun StrokeDialog(
  *  라쏘 셋. 두 손가락 핀치로 확대·이동 — 단, 라쏘로 선택한 영역이 있으면 그 영역 안을 눌러
  *  드래그·핀치하는 건 캔버스가 아니라 선택 자체를 이동·크기조절한다. 선택은 저장(내보내기)
  *  버튼을 눌러야 SVG로 저장된다(라쏘를 놓는 즉시 저장되지 않음). */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -200,7 +225,13 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
     var view by remember { mutableStateOf<VectorBrushView?>(null) }
     var color by remember { mutableStateOf(session.brushColor) }
     var tool by remember { mutableStateOf(VectorBrushView.Tool.DRAW) }
-    var brushProfile by remember { mutableStateOf(BrushProfiles[0]) }
+    val stampRepo = remember { StampBrushRepository(context) }
+    var stampBrushes by remember { mutableStateOf(stampRepo.list()) }
+    var selectedStampBrushId by remember { mutableStateOf<String?>(null) }
+    var editingBrush by remember { mutableStateOf<StampBrushProfile?>(null) }
+    var pendingImportSvgText by remember { mutableStateOf<String?>(null) }
+    var importNameDraft by remember { mutableStateOf("") }
+    var importNameDialogOpen by remember { mutableStateOf(false) }
     var brushSwatchPanelOpen by remember { mutableStateOf(false) }
     var strokeWidthDp by remember { mutableStateOf(8f) }
     var cap by remember { mutableStateOf(VectorCap.ROUND) }
@@ -230,6 +261,31 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
         }
     }
 
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val text = runCatching {
+            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        }.getOrNull()
+        if (text == null || !text.contains("<svg")) {
+            Toast.makeText(context, "SVG 파일을 읽을 수 없습니다", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        pendingImportSvgText = text
+        importNameDraft = "브러시 ${stampBrushes.size + 1}"
+        importNameDialogOpen = true
+    }
+
+    fun pushStampBrushAsync(profile: StampBrushProfile) {
+        if (myUid.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            val svg = stampRepo.originalSvgText(profile.id) ?: return@launch
+            backup.pushStampBrush(
+                myUid,
+                com.g1.sketchbook.backup.RemoteStampBrush(profile.id, profile.name, svg, profile.spacingPx, profile.sizePx, System.currentTimeMillis(), false),
+            )
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         AndroidView(
             factory = { ctx ->
@@ -241,6 +297,8 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
                     it.strokeColor = if (strokeEnabled) strokeColor else null
                     it.strokeWidthPx = strokeWidthPx
                     it.scaleStrokeWidth = scaleStrokeWidth
+                    it.brushProfileId = selectedStampBrushId
+                    it.stampBrushes = stampBrushes.associateBy { b -> b.id }
                     it.infinite = book.vectorInfinite
                     it.canvasW = (book.vectorCanvasW ?: 1024).toFloat()
                     it.canvasH = (book.vectorCanvasH ?: 1024).toFloat()
@@ -277,17 +335,39 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
             }
             Box {
                 IconButton(onClick = { brushSwatchPanelOpen = true }) {
-                    Canvas(Modifier.size(24.dp)) { drawBrushSwatchPreview(Color(color)) }
+                    Canvas(Modifier.size(24.dp)) {
+                        val brush = stampBrushes.firstOrNull { it.id == selectedStampBrushId }
+                        if (brush != null) drawStampShapePreview(brush.shapes, Color(color)) else drawBrushSwatchPreview(Color(color))
+                    }
                 }
                 DropdownMenu(expanded = brushSwatchPanelOpen, onDismissRequest = { brushSwatchPanelOpen = false }) {
-                    BrushProfiles.forEach { profile ->
-                        DropdownMenuItem(
-                            text = { Text(profile.label) },
-                            leadingIcon = { Canvas(Modifier.size(32.dp)) { drawBrushSwatchPreview(Color(color)) } },
-                            trailingIcon = if (profile == brushProfile) { { Icon(Icons.Filled.Check, null) } } else null,
-                            onClick = { brushProfile = profile; brushSwatchPanelOpen = false },
-                        )
+                    DropdownMenuItem(
+                        text = { Text(BrushProfiles[0].label) },
+                        leadingIcon = { Canvas(Modifier.size(32.dp)) { drawBrushSwatchPreview(Color(color)) } },
+                        trailingIcon = if (selectedStampBrushId == null) { { Icon(Icons.Filled.Check, null) } } else null,
+                        onClick = { selectedStampBrushId = null; view?.brushProfileId = null; brushSwatchPanelOpen = false },
+                    )
+                    stampBrushes.forEach { brush ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = { selectedStampBrushId = brush.id; view?.brushProfileId = brush.id; brushSwatchPanelOpen = false },
+                                    onLongClick = { editingBrush = brush; brushSwatchPanelOpen = false },
+                                )
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Canvas(Modifier.size(32.dp)) { drawStampShapePreview(brush.shapes, Color(color)) }
+                            Spacer(Modifier.width(12.dp))
+                            Text(brush.name, modifier = Modifier.weight(1f))
+                            if (brush.id == selectedStampBrushId) Icon(Icons.Filled.Check, null)
+                        }
                     }
+                    DropdownMenuItem(
+                        text = { Text("추가...") },
+                        leadingIcon = { Icon(Icons.Filled.Add, null) },
+                        onClick = { brushSwatchPanelOpen = false; importLauncher.launch("image/svg+xml") },
+                    )
                 }
             }
             Box {
@@ -367,6 +447,83 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
             }) {
                 Icon(com.g1.sketchbook.brush.IconImageSaveLine, "전체 내보내기")
             }
+        }
+        if (importNameDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { importNameDialogOpen = false; pendingImportSvgText = null },
+                title = { Text("브러시 이름") },
+                text = { TextField(value = importNameDraft, onValueChange = { importNameDraft = it }, singleLine = true) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val svgText = pendingImportSvgText
+                        importNameDialogOpen = false; pendingImportSvgText = null
+                        if (svgText != null) {
+                            val profile = stampRepo.importFromSvg(importNameDraft.ifBlank { "브러시" }, svgText)
+                            if (profile != null) {
+                                stampBrushes = stampRepo.list()
+                                view?.stampBrushes = stampBrushes.associateBy { it.id }
+                                selectedStampBrushId = profile.id
+                                view?.brushProfileId = profile.id
+                                tool = VectorBrushView.Tool.DRAW; view?.tool = tool
+                                pushStampBrushAsync(profile)
+                            } else {
+                                Toast.makeText(context, "지원하지 않는 SVG 형식입니다", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }) { Text("추가") }
+                },
+                dismissButton = { TextButton(onClick = { importNameDialogOpen = false; pendingImportSvgText = null }) { Text("취소") } },
+            )
+        }
+        editingBrush?.let { brush ->
+            var nameDraft by remember(brush.id) { mutableStateOf(brush.name) }
+            var spacingDraft by remember(brush.id) { mutableStateOf(brush.spacingPx) }
+            var sizeDraft by remember(brush.id) { mutableStateOf(brush.sizePx) }
+            AlertDialog(
+                onDismissRequest = { editingBrush = null },
+                title = { Text("브러시 편집") },
+                text = {
+                    Column {
+                        TextField(value = nameDraft, onValueChange = { nameDraft = it }, singleLine = true)
+                        Spacer(Modifier.height(12.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("간격", modifier = Modifier.weight(1f))
+                            IconButton(onClick = { spacingDraft = (spacingDraft - 2f).coerceAtLeast(4f) }) { Icon(Icons.Filled.Remove, "간격 줄이기") }
+                            Text("${spacingDraft.toInt()}px")
+                            IconButton(onClick = { spacingDraft = (spacingDraft + 2f).coerceAtMost(200f) }) { Icon(Icons.Filled.Add, "간격 늘리기") }
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("크기", modifier = Modifier.weight(1f))
+                            IconButton(onClick = { sizeDraft = (sizeDraft - 2f).coerceAtLeast(4f) }) { Icon(Icons.Filled.Remove, "크기 줄이기") }
+                            Text("${sizeDraft.toInt()}px")
+                            IconButton(onClick = { sizeDraft = (sizeDraft + 2f).coerceAtMost(200f) }) { Icon(Icons.Filled.Add, "크기 늘리기") }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        stampRepo.rename(brush.id, nameDraft.ifBlank { brush.name })
+                        stampRepo.updateSpacingAndSize(brush.id, spacingDraft, sizeDraft)
+                        stampBrushes = stampRepo.list()
+                        view?.stampBrushes = stampBrushes.associateBy { it.id }
+                        editingBrush = null
+                        stampBrushes.firstOrNull { it.id == brush.id }?.let { pushStampBrushAsync(it) }
+                    }) { Text("저장") }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = {
+                            stampRepo.delete(brush.id)
+                            stampBrushes = stampRepo.list()
+                            view?.stampBrushes = stampBrushes.associateBy { it.id }
+                            if (selectedStampBrushId == brush.id) { selectedStampBrushId = null; view?.brushProfileId = null }
+                            editingBrush = null
+                            if (myUid.isNotBlank()) scope.launch(Dispatchers.IO) { backup.deleteStampBrush(myUid, brush.id, System.currentTimeMillis()) }
+                        }) { Text("삭제") }
+                        TextButton(onClick = { editingBrush = null }) { Text("취소") }
+                    }
+                },
+            )
         }
         IconButton(onClick = { saveCurrent(); onBack() }, modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
             Icon(Icons.Filled.Close, "닫기")
