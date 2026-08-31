@@ -1,20 +1,30 @@
 package com.g1.sketchbook.vector
 
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** 2D 점 하나 — `android.graphics.PointF`를 안 쓰는 이유는 이 파일이 Android 의존 없는 순수
  *  Kotlin이라 로컬 유닛 테스트(JVM)에서 그대로 돌아가야 하기 때문. */
 data class Point(val x: Float, val y: Float)
 
+/** 획 양 끝의 마감 모양 — 일러스트레이터 등 벡터 편집기의 획 마감 옵션과 동일한 개념.
+ *  [BUTT]가 기존(이 옵션이 생기기 전) 동작과 완전히 같다 — 구버전 데이터를 읽을 때 값이 없으면
+ *  [BUTT]로 취급해 예전 그림의 생김새를 그대로 유지한다([VectorPage.kt]의 역직렬화 참고). */
+enum class VectorCap { ROUND, SQUARE, BUTT }
+
 /** 획의 점 목록(중심선 + 지점별 굵기)을 "굵기가 변하는 리본" 모양의 채워진 다각형 외곽선으로
  *  바꾼다 — 각 점에서 진행 방향에 수직인 법선 방향으로 굵기/2만큼 오프셋한 좌표를 위/아래 경계로
- *  삼아, 위쪽 경계를 순서대로 + 아래쪽 경계를 역순으로 이어 닫힌 다각형을 만든다(획 하나 =
- *  다각형 하나, `stroke-width` 아님 — 그려질 때도, SVG로 내보낼 때도 이 모양 그대로 채워 그린다).
- *  점이 2개 미만이면(찍기만 하고 안 그은 경우) 그릴 게 없어 빈 목록. */
-fun strokeOutline(points: List<VectorPoint>): List<Point> {
+ *  삼아, 위쪽 경계를 순서대로 + [cap] 모양의 끝단 + 아래쪽 경계를 역순으로 + 시작단 마감을 이어
+ *  닫힌 다각형을 만든다(획 하나 = 다각형 하나, `stroke-width` 아님 — 그려질 때도, SVG로 내보낼
+ *  때도 이 모양 그대로 채워 그린다). [cap]이 [VectorCap.BUTT]면 끝단에 아무것도 안 붙어서(원래
+ *  이 옵션이 생기기 전과 완전히 같은 모양) 점이 2개 미만이면(찍기만 하고 안 그은 경우) 그릴 게
+ *  없어 빈 목록. */
+fun strokeOutline(points: List<VectorPoint>, cap: VectorCap = VectorCap.BUTT): List<Point> {
     if (points.size < 2) return emptyList()
     val left = ArrayList<Point>(points.size)
     val right = ArrayList<Point>(points.size)
+    val normals = ArrayList<FloatArray>(points.size)
     for (i in points.indices) {
         val p = points[i]
         val (dx, dy) = if (i < points.size - 1) {
@@ -24,11 +34,48 @@ fun strokeOutline(points: List<VectorPoint>): List<Point> {
         }
         val len = sqrt(dx * dx + dy * dy)
         val (nx, ny) = if (len < 0.0001f) 0f to 0f else -dy / len to dx / len
+        normals.add(floatArrayOf(nx, ny))
         val half = p.w / 2f
         left.add(Point(p.x + nx * half, p.y + ny * half))
         right.add(Point(p.x - nx * half, p.y - ny * half))
     }
-    return left + right.asReversed()
+    val startNormal = normals[0]
+    val endNormal = normals[points.size - 1]
+    // 끝점의 접선(다음 점 방향 계산에 쓴 (dx,dy))은 이미 몸통 밖(진행 방향 연장)을 향해서 그대로
+    // outward로 쓴다 — 법선을 -90도 회전하면 그 접선이 나온다: tangent = (ny, -nx).
+    val endOutward = floatArrayOf(endNormal[1], -endNormal[0])
+    // 시작점의 접선은 몸통 안(다음 점 방향)을 향하므로, outward는 그 반대.
+    val startOutward = floatArrayOf(-startNormal[1], startNormal[0])
+    val endCap = capArc(points[points.size - 1], fromEdge = endNormal, outward = endOutward, cap = cap)
+    val startCap = capArc(points[0], fromEdge = floatArrayOf(-startNormal[0], -startNormal[1]), outward = startOutward, cap = cap)
+    return left + endCap + right.asReversed() + startCap
+}
+
+/** [p] 끝단의 마감 모양을 이루는 "중간" 점들만 반환한다 — 정확한 left/right 위치 자체는 이미
+ *  [strokeOutline]의 left/right 배열에 있으니 여기선 안 겹치게 뺀다. [fromEdge] 방향에서
+ *  [outward] 방향을 지나 정반대(=−[fromEdge]) 방향까지 반원을 그리는 셈 — [VectorCap.BUTT]는
+ *  중간점 없이 바로 이어짐(직선), [VectorCap.SQUARE]는 바깥으로 [outward]만큼 나간 모서리 2개,
+ *  [VectorCap.ROUND]는 매끄러운 호. */
+private fun capArc(p: VectorPoint, fromEdge: FloatArray, outward: FloatArray, cap: VectorCap): List<Point> {
+    val half = p.w / 2f
+    return when (cap) {
+        VectorCap.BUTT -> emptyList()
+        VectorCap.SQUARE -> listOf(
+            Point(p.x + half * (fromEdge[0] + outward[0]), p.y + half * (fromEdge[1] + outward[1])),
+            Point(p.x + half * (-fromEdge[0] + outward[0]), p.y + half * (-fromEdge[1] + outward[1])),
+        )
+        VectorCap.ROUND -> {
+            val steps = 8
+            (1 until steps).map { i ->
+                val t = (i.toFloat() / steps) * Math.PI.toFloat()
+                val cosT = cos(t); val sinT = sin(t)
+                Point(
+                    p.x + half * (fromEdge[0] * cosT + outward[0] * sinT),
+                    p.y + half * (fromEdge[1] * cosT + outward[1] * sinT),
+                )
+            }
+        }
+    }
 }
 
 /** 표준 ray-casting 알고리즘 — [polygon] 안에 [x],[y]가 들어있는지. 지우개(획 단위 삭제)가 탭 지점이

@@ -72,4 +72,36 @@ class StrokeGeometryTest {
         val stroke = VectorStroke(0L, listOf(VectorPoint(50f, 50f, 2f), VectorPoint(60f, 60f, 2f)))
         assertFalse(strokeTouchesLasso(stroke, lasso))
     }
+
+    @Test fun buttCapExplicitlyMatchesDefaultBehavior() {
+        val points = listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f))
+        assertEquals(strokeOutline(points), strokeOutline(points, VectorCap.BUTT))
+    }
+
+    @Test fun squareCapExtendsBothEndsByHalfWidth() {
+        val outline = strokeOutline(listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f)), VectorCap.SQUARE)
+        assertEquals(
+            listOf(
+                Point(0f, 2f), Point(10f, 2f),
+                Point(12f, 2f), Point(12f, -2f),
+                Point(10f, -2f), Point(0f, -2f),
+                Point(-2f, -2f), Point(-2f, 2f),
+            ),
+            outline,
+        )
+    }
+
+    @Test fun roundCapAddsSevenPointsPerEndForEightSteps() {
+        val outline = strokeOutline(listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f)), VectorCap.ROUND)
+        assertEquals(18, outline.size) // 2 (left) + 7 (end cap) + 2 (right reversed) + 7 (start cap)
+    }
+
+    @Test fun roundCapBulgesOutwardAtTheMidpoint() {
+        val outline = strokeOutline(listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f)), VectorCap.ROUND)
+        // 끝점(10,0) 쪽 반원의 정중앙(outward 방향 정확히)은 (12,0) 근처여야 한다 — left 2개 다음이
+        // endCap이고, steps=8이면 그 4번째(index 3) 점이 t=π/2(outward 정중앙).
+        val endCapMidpoint = outline[2 + 3]
+        assertTrue(kotlin.math.abs(endCapMidpoint.x - 12f) < 0.01f)
+        assertTrue(kotlin.math.abs(endCapMidpoint.y - 0f) < 0.01f)
+    }
 }

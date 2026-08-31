@@ -40,4 +40,27 @@ class VectorSvgExportTest {
         val svg = vectorPageToSvg(page, Bounds(0f, 0f, 100f, 100f))
         assertTrue(svg.contains("<path").not())
     }
+
+    @Test fun fillDisabledRendersFillNone() {
+        val page = VectorPage(listOf(VectorStroke(-65536L, listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f)), fillEnabled = false)))
+        val svg = vectorPageToSvg(page, Bounds(0f, 0f, 100f, 100f))
+        assertTrue(svg.contains("fill=\"none\""))
+        assertTrue(svg.contains("fill=\"#ff0000\"").not())
+    }
+
+    @Test fun strokeColorAddsStrokeAndWidthAttributes() {
+        val page = VectorPage(listOf(
+            VectorStroke(-65536L, listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f)), strokeColor = -16777216L /* opaque black */, strokeWidthPx = 3f),
+        ))
+        val svg = vectorPageToSvg(page, Bounds(0f, 0f, 100f, 100f))
+        assertTrue(svg.contains("fill=\"#ff0000\""))
+        assertTrue(svg.contains("stroke=\"#000000\""))
+        assertTrue(svg.contains("stroke-width=\"3.0\""))
+    }
+
+    @Test fun noStrokeColorMeansNoStrokeAttribute() {
+        val page = VectorPage(listOf(VectorStroke(-65536L, listOf(VectorPoint(0f, 0f, 4f), VectorPoint(10f, 0f, 4f)))))
+        val svg = vectorPageToSvg(page, Bounds(0f, 0f, 100f, 100f))
+        assertTrue(svg.contains("stroke=").not())
+    }
 }

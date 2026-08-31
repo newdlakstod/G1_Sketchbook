@@ -6,20 +6,30 @@ import android.graphics.Paint
 import android.graphics.Path
 import kotlin.math.min
 
-/** [page]의 모든 획을 [canvas]에 그린다 — 획 하나 = [strokeOutline]으로 계산한 다각형 하나를 그
- *  획의 색으로 채워 그린다(그린 순서 그대로라 나중 획이 위에 덮인다). `VectorBrushView.onDraw`와
- *  썸네일 렌더링([renderVectorPage])이 이 함수 하나를 같이 쓴다 — 그리기 중인 화면과 저장되는
- *  썸네일이 항상 같은 방식으로 그려진다. */
+/** [page]의 모든 획을 [canvas]에 그린다 — 획 하나 = [strokeOutline]으로 계산한 다각형 하나를
+ *  [VectorStroke.fillEnabled]면 [VectorStroke.color]로 채우고, [VectorStroke.strokeColor]가
+ *  있으면 그 폴리곤 테두리를 그 색·[VectorStroke.strokeWidthPx] 굵기로 덧그린다(채움 먼저,
+ *  테두리가 그 위에 — 일러스트레이터 패스의 fill+stroke와 같은 순서). 그린 순서 그대로라 나중
+ *  획이 위에 덮인다. `VectorBrushView.onDraw`와 썸네일 렌더링([renderVectorPage])이 이 함수
+ *  하나를 같이 쓴다 — 그리기 중인 화면과 저장되는 썸네일이 항상 같은 방식으로 그려진다. */
 fun drawVectorPage(canvas: Canvas, page: VectorPage) {
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     for (stroke in page.strokes) {
-        val outline = strokeOutline(stroke.points)
+        val outline = strokeOutline(stroke.points, stroke.cap)
         if (outline.isEmpty()) continue
         val path = Path()
         outline.forEachIndexed { i, p -> if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y) }
         path.close()
-        paint.color = stroke.color.toInt()
-        canvas.drawPath(path, paint)
+        if (stroke.fillEnabled) {
+            fillPaint.color = stroke.color.toInt()
+            canvas.drawPath(path, fillPaint)
+        }
+        stroke.strokeColor?.let { sc ->
+            strokePaint.color = sc.toInt()
+            strokePaint.strokeWidth = stroke.strokeWidthPx
+            canvas.drawPath(path, strokePaint)
+        }
     }
 }
 
