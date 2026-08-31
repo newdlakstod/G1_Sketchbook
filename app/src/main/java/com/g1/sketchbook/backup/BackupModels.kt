@@ -87,3 +87,25 @@ fun decideSyncAction(localUpdatedAt: Long?, remoteUpdatedAt: Long?, remoteDelete
         else -> SyncAction.PUSH
     }
 }
+
+/**
+ * v2.16.0의 잘못된 자동 복구가 잠긴 과거 일기 합성본을 로컬에서 다시 저장한 경우에만, 한 번
+ * 원격 사본을 우선해 되돌린다. 오늘 일기나 원격 사본이 없는 일기는 절대 버리지 않는다.
+ */
+fun decideDiarySyncAction(
+    localUpdatedAt: Long?,
+    remoteUpdatedAt: Long?,
+    rollbackUnsafeRecovery: Boolean,
+    isLockedPastDate: Boolean,
+): SyncAction {
+    if (
+        rollbackUnsafeRecovery &&
+        isLockedPastDate &&
+        localUpdatedAt != null &&
+        remoteUpdatedAt != null &&
+        localUpdatedAt > remoteUpdatedAt
+    ) {
+        return SyncAction.PULL
+    }
+    return decideSyncAction(localUpdatedAt, remoteUpdatedAt)
+}

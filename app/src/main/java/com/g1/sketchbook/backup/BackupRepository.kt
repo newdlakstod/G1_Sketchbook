@@ -21,9 +21,10 @@ import kotlin.math.min
 class BackupRepository {
     private val root by lazy { FirebaseDatabase.getInstance().reference.child("backups") }
 
-    /** [preserveAlpha]는 스케치북 페이지 전용 — exportContent()로 만든 페이지는 종이 없이 필기만
+    /** [preserveAlpha]는 스케치북 페이지·다이어리 합성본에 사용 — exportContent()로 만든 페이지는 종이 없이 필기만
      *  투명 배경으로 저장되는데, JPEG은 알파 채널이 없어 투명한 곳이 검은색으로 눌러 붙는다(태블릿↔폰
-     *  전환 시 배경이 검게 보이던 원인). 표지·일기·아바타는 원래부터 불투명이라 지금처럼 JPEG로 용량을 아낀다. */
+     *  전환 시 배경이 검게 보이던 원인). 다이어리 합성본도 구버전 데이터에 투명 픽셀이 남을 수 있어
+     *  PNG로 보존한다. 표지·아바타는 불투명 JPEG로 용량을 아낀다. */
     private fun encode(bmp: Bitmap, maxSide: Int = 1800, quality: Int = 90, preserveAlpha: Boolean = false): String {
         val s = min(1f, maxSide.toFloat() / max(bmp.width, bmp.height))
         val scaled = if (s < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * s).toInt(), (bmp.height * s).toInt(), true) else bmp
@@ -125,7 +126,7 @@ class BackupRepository {
      *  possibly not existing. Pushed with [preserveAlpha]=true (like sketchbook pages) since it's a
      *  transparent PNG, not the opaque composite. */
     fun pushDiaryDay(uid: String, date: String, bmp: Bitmap, updatedAt: Long, contentBmp: Bitmap? = null) {
-        val payload = mutableMapOf<String, Any?>("updatedAt" to updatedAt, "image" to encode(bmp))
+        val payload = mutableMapOf<String, Any?>("updatedAt" to updatedAt, "image" to encode(bmp, preserveAlpha = true))
         if (contentBmp != null) payload["content"] = encode(contentBmp, preserveAlpha = true)
         root.child(uid).child("diary").child(date).setValue(payload)
     }

@@ -20,19 +20,22 @@ internal fun diaryDateFromCompositeFile(name: String): String? =
         ?.removeSuffix(".png")
 
 /**
- * JPEG 변환으로 투명 배경이 검게 굳은 레거시 다이어리인지 찾고, 복구할 픽셀만 표시한다.
- *
- * 정상 그림의 검은 선까지 지우지 않도록 다음 조건을 모두 만족할 때만 손상으로 본다.
- * 1. 근검정 픽셀이 이미지 바깥 가장자리와 연결되어 있다.
- * 2. 그 연결 영역이 전체 픽셀의 15% 이상이다.
- * 3. 적어도 한 행에서 폭의 70% 이상을 덮는 넓은 검정 띠가 있다.
+ * 화면에만 쓸 비파괴 복구본을 만든다. 저장된 합성본은 절대 수정하지 않으며, 큰 가장자리 연결 검정
+ * 영역만 종이 픽셀로 바꾼 뒤 별도 필기 레이어를 다시 얹는다. 안전하게 판정할 수 없으면 null이다.
  */
-internal fun edgeConnectedBlackCorruptionMask(
-    pixels: IntArray,
+internal fun buildLegacyDiaryPreviewPixels(
+    storedComposite: IntArray,
+    paperPixels: IntArray,
+    contentPixels: IntArray?,
     width: Int,
     height: Int,
-): BooleanArray? {
-    if (width <= 0 || height <= 0 || pixels.size != width * height) return null
+): IntArray? {
+    if (
+        width <= 0 || height <= 0 ||
+        storedComposite.size != width * height ||
+        paperPixels.size != storedComposite.size ||
+        (contentPixels != null && contentPixels.size != storedComposite.size)
+    ) return null
 
     fun isNearBlack(pixel: Int): Boolean {
         val red = pixel ushr 16 and 0xFF
@@ -41,18 +44,16 @@ internal fun edgeConnectedBlackCorruptionMask(
         return red <= 56 && green <= 56 && blue <= 56
     }
 
-    val connected = BooleanArray(pixels.size)
-    val queue = IntArray(pixels.size)
+    val connected = BooleanArray(storedComposite.size)
+    val queue = IntArray(storedComposite.size)
     var head = 0
     var tail = 0
-
     fun enqueue(index: Int) {
-        if (!connected[index] && isNearBlack(pixels[index])) {
+        if (!connected[index] && isNearBlack(storedComposite[index])) {
             connected[index] = true
             queue[tail++] = index
         }
     }
-
     for (x in 0 until width) {
         enqueue(x)
         enqueue((height - 1) * width + x)
@@ -73,10 +74,27 @@ internal fun edgeConnectedBlackCorruptionMask(
         if (y > 0) enqueue(index - width)
         if (y + 1 < height) enqueue(index + width)
     }
+    if (tail < storedComposite.size * 0.15f || rowCounts.none { it >= width * 0.70f }) return null
 
-    val largeArea = tail >= pixels.size * 0.15f
-    val wideBand = rowCounts.any { it >= width * 0.70f }
-    return connected.takeIf { largeArea && wideBand }
+    val preview = storedComposite.copyOf()
+    for (index in preview.indices) {
+        if (connected[index]) preview[index] = paperPixels[index]
+    }
+    contentPixels?.forEachIndexed { index, source ->
+        val alpha = source ushr 24 and 0xFF
+        if (alpha == 0) return@forEachIndexed
+        if (alpha == 0xFF) {
+            preview[index] = source
+        } else {
+            val destination = preview[index]
+            val inverse = 0xFF - alpha
+            val red = ((source ushr 16 and 0xFF) * alpha + (destination ushr 16 and 0xFF) * inverse + 127) / 255
+            val green = ((source ushr 8 and 0xFF) * alpha + (destination ushr 8 and 0xFF) * inverse + 127) / 255
+            val blue = ((source and 0xFF) * alpha + (destination and 0xFF) * inverse + 127) / 255
+            preview[index] = 0xFF000000.toInt() or (red shl 16) or (green shl 8) or blue
+        }
+    }
+    return preview
 }
 
 /**
@@ -87,8 +105,7 @@ class DiaryRepository(context: Context) {
     private val appContext = context.applicationContext
     private val dir = File(context.filesDir, "diary").apply { mkdirs() }
     private val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    private val recoveryLock = Any()
-    private val recoveryChecked = mutableSetOf<String>()
+    private val unsafeRecoveryRollbackMarker = File(dir, ".unsafe-black-recovery-rollback-v1")
     private val paperTexture by lazy {
         BitmapFactory.decodeResource(appContext.resources, R.drawable.paper_watercolor)
     }
@@ -100,23 +117,52 @@ class DiaryRepository(context: Context) {
     fun hasEntry(date: String) = file(date).exists()
     fun hasContent(date: String) = contentFile(date).exists()
 
-    fun load(date: String): Bitmap? = synchronized(recoveryLock) {
-        val source = decodeMutable(file(date)) ?: return@synchronized null
-        if (!recoveryChecked.add(date)) return@synchronized source
-        recoverLegacyBlackComposite(date, source)
-    }
+    fun load(date: String): Bitmap? =
+        file(date).takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.absolutePath) }
 
     fun loadContent(date: String): Bitmap? =
         contentFile(date).takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.absolutePath) }
 
+    /** 상세/달력 표시 전용. 원본 파일과 mtime은 건드리지 않는다. */
+    fun loadDisplay(date: String, maxSide: Int = 1800): Bitmap? {
+        val stored = decodeSampled(file(date), maxSide) ?: return null
+        val width = stored.width
+        val height = stored.height
+        val paper = renderPaper(width, height)
+        val loadedContent = decodeSampled(contentFile(date), maxOf(width, height))
+        val content = loadedContent?.let {
+            if (it.width == width && it.height == height) it
+            else Bitmap.createScaledBitmap(it, width, height, true)
+        }
+        if (content !== loadedContent) loadedContent?.recycle()
+
+        val storedPixels = IntArray(width * height)
+        val paperPixels = IntArray(width * height)
+        val contentPixels = content?.let { IntArray(width * height) }
+        stored.getPixels(storedPixels, 0, width, 0, 0, width, height)
+        paper.getPixels(paperPixels, 0, width, 0, 0, width, height)
+        contentPixels?.let { content?.getPixels(it, 0, width, 0, 0, width, height) }
+        val previewPixels = buildLegacyDiaryPreviewPixels(
+            storedPixels, paperPixels, contentPixels, width, height,
+        )
+        paper.recycle()
+        content?.recycle()
+        if (previewPixels == null) return stored
+
+        val preview = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        preview.setPixels(previewPixels, 0, width, 0, 0, width, height)
+        stored.recycle()
+        return preview
+    }
+
     fun loadThumb(date: String, reqPx: Int = 160): Bitmap? {
-        val f = file(date); if (!f.exists()) return null
-        ensureLegacyCompositeRecovered(date)
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(f.absolutePath, bounds)
+        val full = loadDisplay(date, reqPx * 2) ?: return null
         var sample = 1
-        while (bounds.outWidth / (sample * 2) >= reqPx) sample *= 2
-        return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+        while (full.width / (sample * 2) >= reqPx) sample *= 2
+        if (sample == 1) return full
+        val thumb = Bitmap.createScaledBitmap(full, full.width / sample, full.height / sample, true)
+        full.recycle()
+        return thumb
     }
 
     fun save(date: String, bmp: Bitmap) {
@@ -139,54 +185,25 @@ class DiaryRepository(context: Context) {
      *  "지금"이라 항상 원격보다 최신으로 보여서, 다음 동기화가 곧바로 그걸 되밀어 올린다(핑퐁). */
     fun setUpdatedAt(date: String, timestamp: Long) { file(date).setLastModified(timestamp) }
 
-    private fun decodeMutable(file: File): Bitmap? =
-        file.takeIf { it.exists() }?.let {
-            BitmapFactory.decodeFile(it.absolutePath, BitmapFactory.Options().apply { inMutable = true })
-        }
+    fun needsUnsafeRecoveryRollback(): Boolean = !unsafeRecoveryRollbackMarker.exists()
 
-    /** 달력 썸네일은 원래 축소 디코드만 하지만, 아직 검사하지 않은 레거시 파일은 처음 한 번 원본을
-     * 읽어 복구·재저장한 뒤 축소본을 만든다. 복구된 파일의 mtime이 갱신되어 다음 계정 동기화에서
-     * 검은 원격 사본도 정상 PNG로 덮어쓴다. */
-    private fun ensureLegacyCompositeRecovered(date: String) {
-        synchronized(recoveryLock) {
-            if (date in recoveryChecked) return
-            val source = decodeMutable(file(date)) ?: return
-            recoveryChecked.add(date)
-            val recovered = recoverLegacyBlackComposite(date, source)
-            recovered.recycle()
-        }
+    fun markUnsafeRecoveryRollbackComplete() {
+        unsafeRecoveryRollbackMarker.createNewFile()
     }
 
-    private fun recoverLegacyBlackComposite(date: String, source: Bitmap): Bitmap {
-        val pixels = IntArray(source.width * source.height)
-        source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
-        val mask = edgeConnectedBlackCorruptionMask(pixels, source.width, source.height) ?: return source
-
-        val content = decodeMutable(contentFile(date))
-        val matchingContent = content?.takeIf {
-            it.width == source.width && it.height == source.height
-        }
-        val repaired = renderPaper(source.width, source.height)
-        if (matchingContent != null) {
-            // 투명 그림 레이어가 남아 있으면 배경을 다시 합성하는 것이 가장 정확하며,
-            // 검은 선도 손상 배경과 구분할 필요 없이 그대로 보존된다.
-            Canvas(repaired).drawBitmap(matchingContent, 0f, 0f, null)
-        } else {
-            // 레이어가 없던 구버전 파일은 손상으로 확정된 근검정 픽셀만 투명하게 만든다.
-            for (index in pixels.indices) {
-                if (mask[index]) pixels[index] = 0
-            }
-            source.setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
-            Canvas(repaired).drawBitmap(source, 0f, 0f, null)
-        }
-        content?.recycle()
-        source.recycle()
-        save(date, repaired)
-        return repaired
+    private fun decodeSampled(file: File, maxSide: Int): Bitmap? {
+        if (!file.exists()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxSide) sample *= 2
+        return BitmapFactory.decodeFile(
+            file.absolutePath,
+            BitmapFactory.Options().apply { inSampleSize = sample },
+        )
     }
 
-    /** BrushView와 같은 cover-fit 규칙으로 종이 질감을 그려, 복구한 썸네일과 편집 화면의 종이가
-     * 서로 다르게 보이지 않게 한다. */
     private fun renderPaper(width: Int, height: Int): Bitmap {
         val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)

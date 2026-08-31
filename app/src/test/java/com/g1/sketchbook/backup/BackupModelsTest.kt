@@ -35,4 +35,52 @@ class BackupModelsTest {
     @Test fun remoteTombstoneWithNoLocalCopyIsNoop() {
         assertEquals(SyncAction.NOOP, decideSyncAction(null, 999L, remoteDeleted = true))
     }
+
+    @Test fun unsafeRecoveryRollbackRestoresAnOlderRemoteCopyForALockedPastDiary() {
+        assertEquals(
+            SyncAction.PULL,
+            decideDiarySyncAction(
+                localUpdatedAt = 200L,
+                remoteUpdatedAt = 100L,
+                rollbackUnsafeRecovery = true,
+                isLockedPastDate = true,
+            ),
+        )
+    }
+
+    @Test fun unsafeRecoveryRollbackNeverDiscardsALocalDiaryWhenNoRemoteCopyExists() {
+        assertEquals(
+            SyncAction.PUSH,
+            decideDiarySyncAction(
+                localUpdatedAt = 200L,
+                remoteUpdatedAt = null,
+                rollbackUnsafeRecovery = true,
+                isLockedPastDate = true,
+            ),
+        )
+    }
+
+    @Test fun unsafeRecoveryRollbackDoesNotOverrideTodaysNewerDrawing() {
+        assertEquals(
+            SyncAction.PUSH,
+            decideDiarySyncAction(
+                localUpdatedAt = 200L,
+                remoteUpdatedAt = 100L,
+                rollbackUnsafeRecovery = true,
+                isLockedPastDate = false,
+            ),
+        )
+    }
+
+    @Test fun normalDiarySyncResumesAfterTheOneTimeRollback() {
+        assertEquals(
+            SyncAction.PUSH,
+            decideDiarySyncAction(
+                localUpdatedAt = 200L,
+                remoteUpdatedAt = 100L,
+                rollbackUnsafeRecovery = false,
+                isLockedPastDate = true,
+            ),
+        )
+    }
 }

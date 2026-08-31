@@ -145,10 +145,12 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
 
 private fun reconcileDiary(repo: DiaryRepository, backup: BackupRepository, uid: String, remote: Map<String, RemoteDiaryDay>) {
     val allDates = (repo.listDates() + remote.keys).toSet()
+    val rollbackUnsafeRecovery = repo.needsUnsafeRecoveryRollback()
+    val today = repo.today()
     for (date in allDates) {
         val localAt = if (repo.hasEntry(date)) repo.updatedAt(date) else null
         val remoteDay = remote[date]
-        when (decideSyncAction(localAt, remoteDay?.updatedAt)) {
+        when (decideDiarySyncAction(localAt, remoteDay?.updatedAt, rollbackUnsafeRecovery, date < today)) {
             // 합성 이미지(image)와 별도 필기 레이어(content)를 같이 당겨온다 — content가 없으면(옛
             // 기기가 이 기능 이전 버전으로 올렸거나 그 기기에서도 아직 없던 날) 그냥 건너뛴다. 예전엔
             // content를 아예 동기화 안 해서, 폰에서 그린 오늘 일기를 태블릿에서 열면 합성 이미지만
@@ -163,6 +165,7 @@ private fun reconcileDiary(repo: DiaryRepository, backup: BackupRepository, uid:
             SyncAction.DELETE_LOCAL, SyncAction.NOOP -> {} // diary has no delete feature — tombstones never occur
         }
     }
+    if (rollbackUnsafeRecovery) repo.markUnsafeRecoveryRollbackComplete()
 }
 
 /** Settings always "exist" locally (SessionStore has defaults from the start), so unlike sketchbook

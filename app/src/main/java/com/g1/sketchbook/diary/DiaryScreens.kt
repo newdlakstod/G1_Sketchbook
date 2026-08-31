@@ -644,7 +644,13 @@ private fun CleanDetailBody(
     previewBitmap: Bitmap? = null,
     onNavigate: (String) -> Unit,
 ) {
-    val bmp = remember(date, repo, previewBitmap) { previewBitmap ?: repo?.load(date) }
+    var bmp by remember(date, repo, previewBitmap) { mutableStateOf(previewBitmap) }
+    LaunchedEffect(date, repo, previewBitmap) {
+        if (previewBitmap == null) {
+            bmp = withContext(Dispatchers.IO) { repo?.loadDisplay(date) }
+        }
+    }
+    val displayBitmap = bmp
     val parts = date.split("-")
     val ctx = LocalContext.current
     var showDownloadDialog by remember { mutableStateOf(false) }
@@ -663,9 +669,9 @@ private fun CleanDetailBody(
     val dateLabel = "${parts[0]}.${parts[1]}.${parts[2]}"
     Box(modifier) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            if (bmp != null) {
+            if (displayBitmap != null) {
                 Image(
-                    bmp.asImageBitmap(), date, contentScale = ContentScale.Crop,
+                    displayBitmap.asImageBitmap(), date, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                         .pointerInput(date) {
                             detectTransformGestures { _, pan, zoom, _ ->
@@ -713,7 +719,7 @@ private fun CleanDetailBody(
                         onDismiss = { showDownloadDialog = false },
                         onPlain = {
                             showDownloadDialog = false
-                            val status = saveToGallery(ctx, bmp, "daymory_$date")
+                            val status = saveToGallery(ctx, displayBitmap, "daymory_$date")
                             Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
                         },
                         onTransparent = {
@@ -730,7 +736,7 @@ private fun CleanDetailBody(
                         },
                         onFramed = {
                             showDownloadDialog = false
-                            val framed = renderFramedDiaryBitmap(ctx, bmp, date)
+                            val framed = renderFramedDiaryBitmap(ctx, displayBitmap, date)
                             val status = saveToGallery(ctx, framed, "daymory_${date}_frame")
                             Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
                         },
@@ -774,13 +780,13 @@ private fun CleanDetailBody(
                 }
             }
         }
-        if (showOverlayPlacement && bmp != null) {
+        if (showOverlayPlacement && displayBitmap != null) {
             CalendarOverlayPlacementScreen(
-                bmp = bmp, date = date,
+                bmp = displayBitmap, date = date,
                 onCancel = { showOverlayPlacement = false },
                 onSave = { placement ->
                     showOverlayPlacement = false
-                    val composited = renderCalendarOverlayDiaryBitmap(ctx, bmp, date, placement)
+                    val composited = renderCalendarOverlayDiaryBitmap(ctx, displayBitmap, date, placement)
                     val status = saveToGallery(ctx, composited, "daymory_${date}_calendar")
                     Toast.makeText(ctx, status, Toast.LENGTH_SHORT).show()
                 },
@@ -1407,4 +1413,3 @@ private fun buildThumbs(repo: DiaryRepository, year: Int, month: Int): Map<Strin
     }
     return map
 }
-

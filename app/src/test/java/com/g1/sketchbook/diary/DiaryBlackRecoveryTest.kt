@@ -1,54 +1,61 @@
 package com.g1.sketchbook.diary
 
 import kotlin.test.Test
-import kotlin.test.assertFalse
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class DiaryBlackRecoveryTest {
     private val paper = 0xFFF6F1E6.toInt()
     private val black = 0xFF030303.toInt()
+    private val red = 0xFFE05454.toInt()
 
     @Test
-    fun wideBlackBandConnectedToTheBottomEdgeIsRecoverable() {
+    fun previewReplacesOnlyTheBlackBandAndNeverMutatesTheStoredComposite() {
         val width = 10
         val height = 10
-        val pixels = IntArray(width * height) { paper }
+        val stored = IntArray(width * height) { paper }
         for (y in 5 until height) {
-            for (x in 0 until width) pixels[y * width + x] = black
+            for (x in 0 until width) stored[y * width + x] = black
         }
-        // 검은 손상 영역 위에 남아 있는 실제 색 그림은 복구 마스크에서 제외해야 한다.
-        pixels[7 * width + 4] = 0xFFE05454.toInt()
+        stored[7 * width + 4] = red
+        val before = stored.copyOf()
+        val transparentContent = IntArray(width * height)
+        transparentContent[8 * width + 5] = 0xFF202020.toInt()
 
-        val mask = edgeConnectedBlackCorruptionMask(pixels, width, height)
+        val preview = buildLegacyDiaryPreviewPixels(
+            storedComposite = stored,
+            paperPixels = IntArray(width * height) { paper },
+            contentPixels = transparentContent,
+            width = width,
+            height = height,
+        )
 
-        assertNotNull(mask)
-        assertTrue(mask[9 * width])
-        assertTrue(mask[6 * width + 8])
-        assertFalse(mask[7 * width + 4])
-        assertFalse(mask[2 * width + 4])
+        assertNotNull(preview)
+        assertContentEquals(before, stored)
+        assertEquals(paper, preview[9 * width])
+        assertEquals(red, preview[7 * width + 4])
+        assertEquals(0xFF202020.toInt(), preview[8 * width + 5])
     }
 
     @Test
-    fun interiorBlackDrawingIsNotTreatedAsCorruption() {
+    fun normalInteriorBlackDrawingDoesNotProduceAReplacementPreview() {
         val width = 10
         val height = 10
-        val pixels = IntArray(width * height) { paper }
+        val stored = IntArray(width * height) { paper }
         for (y in 3..6) {
-            for (x in 3..6) pixels[y * width + x] = black
+            for (x in 3..6) stored[y * width + x] = black
         }
 
-        assertNull(edgeConnectedBlackCorruptionMask(pixels, width, height))
-    }
-
-    @Test
-    fun thinBlackBorderIsNotTreatedAsCorruption() {
-        val width = 10
-        val height = 10
-        val pixels = IntArray(width * height) { paper }
-        for (x in 0 until width) pixels[(height - 1) * width + x] = black
-
-        assertNull(edgeConnectedBlackCorruptionMask(pixels, width, height))
+        assertNull(
+            buildLegacyDiaryPreviewPixels(
+                storedComposite = stored,
+                paperPixels = IntArray(width * height) { paper },
+                contentPixels = null,
+                width = width,
+                height = height,
+            ),
+        )
     }
 }
