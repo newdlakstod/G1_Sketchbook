@@ -33,13 +33,27 @@ class SessionStore(context: Context) {
     }
     fun loadAvatarImage(): Bitmap? = if (avatarFile.exists()) BitmapFactory.decodeFile(avatarFile.absolutePath) else null
 
-    /** 20 editable colour favourites (ARGB longs) — the toolbar shows the first 5 inline, the rest
-     *  live in the "즐겨찾기 전체" grid popup ([FavoritesCount]). */
-    var favoriteColors: List<Long>
+    /** 툴바에 항상 보이는 빠른 접근 색상 5개 — [paletteColors](21개)와 서로 독립이다(2026-08-31,
+     *  예전엔 같은 리스트의 앞 5개를 그대로 썼는데 분리 요청으로 갈라짐). 아직 한 번도 따로 저장한
+     *  적 없으면(분리 직후 첫 실행 포함) 그 시점의 [paletteColors] 앞 5개를 그대로 복사해서
+     *  시작한다 — 마이그레이션 코드 없이 이 기본값 계산만으로 "기존 21개 중 앞 5개를 즐겨찾기로"
+     *  요구사항이 자연스럽게 만족된다. */
+    var quickFavorites: List<Long>
+        get() {
+            val raw = prefs.getString(KEY_QUICK_FAVS, null)
+            val parsed = raw?.let { runCatching { it.split(",").map { s -> s.toLong() } }.getOrNull() }
+            return parsed?.takeIf { it.size == QuickFavoritesCount } ?: paletteColors.take(QuickFavoritesCount)
+        }
+        set(value) = prefs.edit().putString(KEY_QUICK_FAVS, value.joinToString(",")).apply()
+
+    /** "즐겨찾기 전체" 그리드에 보이는 색상 21개 — [quickFavorites]와 독립. 분리 이전엔 이 저장
+     *  키([KEY_FAVS])가 곧 "즐겨찾기"였다 — 그 키를 그대로 재사용해서, 이미 저장돼 있던 21개가
+     *  자동으로(코드 변경 없이) 팔레트가 된다. */
+    var paletteColors: List<Long>
         get() {
             val raw = prefs.getString(KEY_FAVS, null) ?: return DefaultFavorites
             return runCatching { raw.split(",").map { it.toLong() } }
-                .getOrNull()?.takeIf { it.size == FavoritesCount } ?: DefaultFavorites
+                .getOrNull()?.takeIf { it.size == PaletteCount } ?: DefaultFavorites
         }
         set(value) = prefs.edit().putString(KEY_FAVS, value.joinToString(",")).apply()
 
@@ -106,6 +120,7 @@ class SessionStore(context: Context) {
         private const val KEY_NICK = "nickname"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_FAVS = "fav_colors"
+        private const val KEY_QUICK_FAVS = "quick_fav_colors"
         private const val KEY_GESTURE_2TAP = "gesture_2tap"
         private const val KEY_GESTURE_3TAP = "gesture_3tap"
         private const val KEY_GESTURE_LONGPRESS = "gesture_longpress"
@@ -120,7 +135,8 @@ class SessionStore(context: Context) {
         private const val KEY_SETTINGS_SYNCED_AT = "settings_synced_at"
         // 색상 피커 카드 폭(260dp, BrushControls.ColorPickerCard)에 24dp 스와치+8dp 간격이 한 줄에
         // 7개 들어가서(FavoritesGrid) 7×3줄 = 21 — 그리드 칸 수가 바뀌면 이 값도 같이 맞춰야 한다.
-        const val FavoritesCount = 21
+        const val PaletteCount = 21
+        const val QuickFavoritesCount = 5
         val DefaultFavorites = listOf(
             0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L,
             0xFF000000L, 0xFFFFFFFFL, 0xFF808080L, 0xFF2B4C9BL, 0xFF4DABF7L,

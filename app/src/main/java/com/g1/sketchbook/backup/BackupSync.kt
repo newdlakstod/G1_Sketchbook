@@ -157,7 +157,8 @@ private fun reconcileSettings(session: SessionStore, backup: BackupRepository, u
 fun syncSettingsUp(session: SessionStore, backup: BackupRepository, uid: String) {
     val now = System.currentTimeMillis()
     val record = RemoteSettings(
-        nickname = session.nickname, themeMode = session.themeMode, favoriteColors = session.favoriteColors,
+        nickname = session.nickname, themeMode = session.themeMode,
+        paletteColors = session.paletteColors, quickFavorites = session.quickFavorites,
         gesture2Tap = session.twoFingerTapAction.name, gesture3Tap = session.threeFingerTapAction.name,
         gestureLongPress = session.longPressAction.name, largeCovers = session.largeCovers,
         brushColor = session.brushColor,
@@ -173,7 +174,8 @@ fun syncSettingsUp(session: SessionStore, backup: BackupRepository, uid: String)
 private fun applyRemoteSettings(session: SessionStore, backup: BackupRepository, r: RemoteSettings) {
     if (r.nickname != null) session.nickname = r.nickname
     session.themeMode = r.themeMode
-    if (r.favoriteColors.size == SessionStore.FavoritesCount) session.favoriteColors = r.favoriteColors
+    if (r.paletteColors.size == SessionStore.PaletteCount) session.paletteColors = r.paletteColors
+    if (r.quickFavorites.size == SessionStore.QuickFavoritesCount) session.quickFavorites = r.quickFavorites
     session.twoFingerTapAction = runCatching { GestureAction.valueOf(r.gesture2Tap) }.getOrDefault(GestureAction.NONE)
     session.threeFingerTapAction = runCatching { GestureAction.valueOf(r.gesture3Tap) }.getOrDefault(GestureAction.NONE)
     session.longPressAction = runCatching { GestureAction.valueOf(r.gestureLongPress) }.getOrDefault(GestureAction.NONE)

@@ -160,8 +160,11 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) eraserOpacity else opacityByBrush[brush] ?: 100f
     val session = if (previewMode) null else remember(ctx) { com.g1.sketchbook.data.SessionStore(ctx) }
-    var favorites by remember(session) {
-        mutableStateOf(session?.favoriteColors ?: com.g1.sketchbook.data.SessionStore.DefaultFavorites)
+    var quickFavorites by remember(session) {
+        mutableStateOf(session?.quickFavorites ?: com.g1.sketchbook.data.SessionStore.DefaultFavorites.take(com.g1.sketchbook.data.SessionStore.QuickFavoritesCount))
+    }
+    var palette by remember(session) {
+        mutableStateOf(session?.paletteColors ?: com.g1.sketchbook.data.SessionStore.DefaultFavorites)
     }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
@@ -322,10 +325,15 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                     flushCompositeSave(v)
                 }
             },
-            favorites = favorites,
-            onEditFavorite = { i, c ->
-                val nf = favorites.toMutableList(); nf[i] = c; favorites = nf
-                session?.let { it.favoriteColors = nf }
+            quickFavorites = quickFavorites,
+            onEditQuickFavorite = { i, c ->
+                val nf = quickFavorites.toMutableList(); nf[i] = c; quickFavorites = nf
+                session?.let { it.quickFavorites = nf }
+            },
+            palette = palette,
+            onEditPalette = { i, c ->
+                val nf = palette.toMutableList(); nf[i] = c; palette = nf
+                session?.let { it.paletteColors = nf }
             },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             lassoActive = lassoActive,

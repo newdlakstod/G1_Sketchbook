@@ -153,7 +153,8 @@ fun SharedBookScreen(
     var eraserBlur by remember { mutableFloatStateOf(session.eraserBlur) }
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) eraserOpacity else opacityByBrush[brush] ?: 100f
-    var favorites by remember { mutableStateOf(session.favoriteColors) }
+    var quickFavorites by remember { mutableStateOf(session.quickFavorites) }
+    var palette by remember { mutableStateOf(session.paletteColors) }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     var page by remember { mutableIntStateOf(startPage.coerceIn(0, book.pageCount - 1)) }
@@ -429,8 +430,10 @@ fun SharedBookScreen(
                 eraserBlur = eraserBlur, onEraserBlur = { eraserBlur = it; session.eraserBlur = it },
                 onUndo = { view?.undo() }, onRedo = { view?.redo() },
                 onClear = { view?.clearCanvas(); saveLocal(); pushMine() },
-                favorites = favorites,
-                onEditFavorite = { i, c -> val nf = favorites.toMutableList(); nf[i] = c; favorites = nf; session.favoriteColors = nf },
+                quickFavorites = quickFavorites,
+                onEditQuickFavorite = { i, c -> val nf = quickFavorites.toMutableList(); nf[i] = c; quickFavorites = nf; session.quickFavorites = nf },
+                palette = palette,
+                onEditPalette = { i, c -> val nf = palette.toMutableList(); nf[i] = c; palette = nf; session.paletteColors = nf },
                 eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
                 lassoActive = lassoActive,
                 onToggleLasso = { lassoActive = !lassoActive; if (lassoActive) { erasing = false; fillActive = false } },

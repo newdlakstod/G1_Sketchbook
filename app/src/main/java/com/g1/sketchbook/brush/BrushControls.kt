@@ -249,7 +249,7 @@ private val ScreenControlsClearance = 60.dp
 
 // 즐겨찾기 그리드 — 카드 폭에 실제로 몇 칸이 들어가는지 계산해서 항상 3줄을 채운다("폭에 7개
 // 들어가면 21개, 8개 들어가면 24개" 식, 2026-08-26). 카드 폭이 바뀌면 총 개수도 이 값들 그대로
-// 다시 계산되므로, 저장 쪽(SessionStore.FavoritesCount)도 지금 카드 폭 기준 결과(7×3=21)에 맞춰뒀다.
+// 다시 계산되므로, 저장 쪽(SessionStore.PaletteCount)도 지금 카드 폭 기준 결과(7×3=21)에 맞춰뒀다.
 private val FavoriteSwatchSize = 24.dp
 private val FavoriteSwatchGap = 8.dp
 private const val FavoriteGridRows = 3
@@ -285,8 +285,12 @@ fun BrushControls(
     /** 지우개 전용 경계 블러(부드러움) 정도 — 브러시에는 없는 지우개만의 슬라이더. 0이면 또렷한 경계. */
     eraserBlur: Float = 0f,
     onEraserBlur: (Float) -> Unit = {},
-    favorites: List<Long> = BrushPalette.take(5),
-    onEditFavorite: (Int, Long) -> Unit = { _, _ -> },
+    quickFavorites: List<Long> = BrushPalette.take(5),
+    onEditQuickFavorite: (Int, Long) -> Unit = { _, _ -> },
+    /** "즐겨찾기 전체" 그리드에 보이는 21색 — [quickFavorites]와 독립(2026-08-31 분리, 예전엔 같은
+     *  리스트의 앞 5개를 인라인으로 보여줬었음). */
+    palette: List<Long> = BrushPalette,
+    onEditPalette: (Int, Long) -> Unit = { _, _ -> },
     eyedropArmed: Boolean = false,
     onToggleEyedrop: () -> Unit = {},
     /** 올가미(라소) 선택 도구 — 켜져 있으면 손가락으로 영역을 그려 선택하고, 안쪽을 드래그해서
@@ -583,12 +587,12 @@ fun BrushControls(
                     onClick = onToggleFill)
             }
             add {
-                // 5 favourites (of the 20 registered — the rest live in the "즐겨찾기 전체" grid below):
+                // 즐겨찾기 5개(팔레트 21개와는 별개 — 아래 "즐겨찾기 전체" 그리드가 그 21개):
                 // tap to pick; tap the already-selected one again to open a colour wheel for it.
                 // Touch area is ButtonTapSize (visually bigger than the swatch), but the ripple itself is
                 // scoped to the visible 28dp swatch (shared InteractionSource: outer box detects the tap
                 // with no indication of its own, inner box — clipped to the swatch's own circle — draws it).
-                favorites.take(5).forEachIndexed { i, c ->
+                quickFavorites.forEachIndexed { i, c ->
                     val on = !erasing && c == color
                     val interaction = remember { MutableInteractionSource() }
                     Box {
@@ -605,7 +609,7 @@ fun BrushControls(
                         }
                         if (editFavAt == i) Popup(popupAnchor, { editFavAt = -1 }, PopupProperties(focusable = true)) {
                             ColorPickerCard(c,
-                                onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
+                                onColor = { newColor -> onColor(newColor); onEditQuickFavorite(i, newColor) },
                                 onEyedrop = { editFavAt = -1; onToggleEyedrop() })
                         }
                     }
@@ -629,13 +633,13 @@ fun BrushControls(
                             onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
                     }
                 }
-                // 즐겨찾기 전체(20개) 그리드 — 툴바 인라인 자리는 5개뿐이라 나머지는 여기서 고르거나 등록.
+                // 팔레트(21개) 그리드 — 즐겨찾기 5개와는 별개인 색상 모음, 여기서 고르거나 등록.
                 Box {
-                    IconBtn(Icons.Filled.Palette, "즐겨찾기 전체",
+                    IconBtn(Icons.Filled.Palette, "팔레트",
                         tint = if (favoritesGridOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = { favoritesGridOpen = !favoritesGridOpen })
                     if (favoritesGridOpen) Popup(popupAnchor, { favoritesGridOpen = false }, PopupProperties(focusable = true)) {
-                        FavoritesGridPopup(favorites, color, erasing, onColor, onEditFavorite,
+                        FavoritesGridPopup(palette, color, erasing, onColor, onEditPalette,
                             onEyedrop = { favoritesGridOpen = false; onToggleEyedrop() })
                     }
                 }
@@ -1444,19 +1448,18 @@ private fun hslToRgb(h: Float, s: Float, l: Float): Triple<Int, Int, Int> {
     return Triple(r, g, b)
 }
 
-/** 즐겨찾기 전체를 [ColorPickerCard]와 같은 폭(260dp)의 그리드로 보여주는 팝업 — 인라인 5개와 같은
- *  [favorites] 리스트를 그대로 쓰되 전체를 보여준다(같은 index를 그대로 [onEditFavorite]에 넘기므로
- *  인라인 자리와 항상 같은 색을 가리킨다). 탭하면 선택, 이미 선택된 칸을 다시 탭하면 그 칸의 색을
- *  바꾸는 색상휠이 뜬다(인라인 스와치와 동일). */
+/** 팔레트 21개를 [ColorPickerCard]와 같은 폭(260dp)의 그리드로 보여주는 팝업 — 즐겨찾기 5개와는
+ *  독립된 [palette] 리스트(2026-08-31 분리). 탭하면 선택, 이미 선택된 칸을 다시 탭하면 그 칸의
+ *  색을 바꾸는 색상휠이 뜬다(즐겨찾기 인라인 스와치와 동일한 편집 방식). */
 @Composable
 private fun FavoritesGridPopup(
-    favorites: List<Long>, color: Long, erasing: Boolean,
-    onColor: (Long) -> Unit, onEditFavorite: (Int, Long) -> Unit, onEyedrop: () -> Unit,
+    palette: List<Long>, color: Long, erasing: Boolean,
+    onColor: (Long) -> Unit, onEditPalette: (Int, Long) -> Unit, onEyedrop: () -> Unit,
 ) {
     var editAt by remember { mutableIntStateOf(-1) }
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Box(Modifier.width(260.dp).padding(16.dp)) {
-            FavoritesGrid(favorites) { i, c ->
+            FavoritesGrid(palette) { i, c ->
                 val on = !erasing && c == color
                 val interaction = remember { MutableInteractionSource() }
                 Box {
@@ -1464,13 +1467,13 @@ private fun FavoritesGridPopup(
                         Modifier.size(FavoriteSwatchSize).clip(CircleShape).indication(interaction, LocalIndication.current)
                             .background(Color(c))
                             .border(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-                            .clickable(interactionSource = interaction, indication = null, onClickLabel = "즐겨찾기 색상 ${i + 1}") {
+                            .clickable(interactionSource = interaction, indication = null, onClickLabel = "팔레트 색상 ${i + 1}") {
                                 if (on) editAt = i else onColor(c)
                             },
                     )
                     if (editAt == i) Popup(AboveAnchor(0, 0), { editAt = -1 }, PopupProperties(focusable = true)) {
                         ColorPickerCard(c,
-                            onColor = { newColor -> onColor(newColor); onEditFavorite(i, newColor) },
+                            onColor = { newColor -> onColor(newColor); onEditPalette(i, newColor) },
                             onEyedrop = { editAt = -1; onEyedrop() })
                     }
                 }

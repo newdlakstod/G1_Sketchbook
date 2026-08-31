@@ -42,7 +42,11 @@ data class RemoteSnapshot(
 )
 
 data class RemoteSettings(
-    val nickname: String?, val themeMode: String, val favoriteColors: List<Long>,
+    val nickname: String?, val themeMode: String,
+    /** 팔레트 21색 — Firebase 키는 예전("즐겨찾기"였을 때) 그대로 "favoriteColors" 재사용. */
+    val paletteColors: List<Long>,
+    /** 즐겨찾기 5색 — [paletteColors]와 독립(2026-08-31 분리). */
+    val quickFavorites: List<Long>,
     val gesture2Tap: String, val gesture3Tap: String, val gestureLongPress: String,
     val largeCovers: Boolean, val brushColor: Long,
     val brushSizes: Map<String, Float>, val brushOpacities: Map<String, Float>,

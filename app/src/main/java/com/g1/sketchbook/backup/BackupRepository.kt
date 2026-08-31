@@ -116,7 +116,7 @@ class BackupRepository {
     fun pushSettings(uid: String, record: RemoteSettings, avatarBmp: Bitmap?) {
         val payload = mutableMapOf<String, Any?>(
             "themeMode" to record.themeMode,
-            "favoriteColors" to record.favoriteColors, "gesture2Tap" to record.gesture2Tap,
+            "favoriteColors" to record.paletteColors, "quickFavorites" to record.quickFavorites, "gesture2Tap" to record.gesture2Tap,
             "gesture3Tap" to record.gesture3Tap, "gestureLongPress" to record.gestureLongPress,
             "largeCovers" to record.largeCovers, "brushColor" to record.brushColor,
             "brushSizes" to record.brushSizes, "brushOpacities" to record.brushOpacities,
@@ -182,7 +182,8 @@ class BackupRepository {
         val settings = if (!s.exists()) null else RemoteSettings(
             nickname = s.child("nickname").getValue(String::class.java),
             themeMode = s.child("themeMode").getValue(String::class.java) ?: "system",
-            favoriteColors = s.child("favoriteColors").children.mapNotNull { it.getValue(Long::class.java) },
+            paletteColors = s.child("favoriteColors").children.mapNotNull { it.getValue(Long::class.java) },
+            quickFavorites = s.child("quickFavorites").children.mapNotNull { it.getValue(Long::class.java) },
             gesture2Tap = s.child("gesture2Tap").getValue(String::class.java) ?: "NONE",
             gesture3Tap = s.child("gesture3Tap").getValue(String::class.java) ?: "NONE",
             gestureLongPress = s.child("gestureLongPress").getValue(String::class.java) ?: "NONE",
