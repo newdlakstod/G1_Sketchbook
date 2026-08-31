@@ -27,7 +27,16 @@ data class VectorStroke(
     val brushProfileId: String? = null,
     /** [fillEnabled]로 채워지는 자기교차 폐곡선의 색 — null이면 [color](리본 색)를 그대로 쓴다. */
     val fillColor: Long? = null,
-)
+) {
+    /** [fillEnabled]일 때 채울 자기교차 폐곡선들 — 주 생성자가 아니라 클래스 바디에 선언해서
+     *  data class의 equals/hashCode/copy/toString에는 관여하지 않는다(오직 [points] 등 생성자
+     *  프로퍼티만 비교 대상). 커밋된 획은 [points]가 안 바뀌는데 캔버스를 다시 그릴 때마다(매
+     *  프레임) 모든 획을 다시 그리므로, `by lazy`로 이 획 객체 안에서 한 번만 계산해 재사용한다
+     *  — 저장 데이터에 지오메트리를 미리 구워넣지 않는다는 이 프로젝트의 기존 원칙(예:
+     *  [strokeOutline]도 매번 계산)은 그대로 유지되고, 이건 "같은 객체를 여러 프레임에 걸쳐 다시
+     *  그릴 때"만의 캐시일 뿐이다. */
+    val fills: List<List<Point>> by lazy { selfIntersectionFills(points) }
+}
 
 /** 벡터 스케치북 페이지 하나 = 획 목록 전체. */
 data class VectorPage(val strokes: List<VectorStroke>)

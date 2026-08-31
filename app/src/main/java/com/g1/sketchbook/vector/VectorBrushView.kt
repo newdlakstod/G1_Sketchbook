@@ -326,7 +326,7 @@ class VectorBrushView(context: Context) : View(context) {
             } else {
                 val outline = strokeOutline(stroke.points, stroke.cap)
                 val hitRibbon = outline.isNotEmpty() && pointInPolygon(x, y, outline)
-                val hitFill = stroke.fillEnabled && selfIntersectionFills(stroke.points).any { pointInPolygon(x, y, it) }
+                val hitFill = stroke.fillEnabled && stroke.fills.any { pointInPolygon(x, y, it) }
                 hitRibbon || hitFill
             }
             if (hit) {

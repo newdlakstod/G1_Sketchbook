@@ -170,4 +170,63 @@ class StrokeGeometryTest {
             fills,
         )
     }
+
+    @Test fun tinyBowtieBelowAreaThresholdProducesNoFill() {
+        // 기존 bowtieShapeProducesOneTriangularFill과 똑같은 모양을 0.1배로 축소 — 넓이가
+        // 25*0.01=0.25로 MIN_FILL_AREA(4)보다 작아서 무시돼야 한다(손떨림으로 생기는 의미 없는
+        // 아주 작은 교차를 걸러내는 게 목적).
+        val points = listOf(VectorPoint(0f, 0f, 1f), VectorPoint(1f, 1f, 1f), VectorPoint(0f, 1f, 1f), VectorPoint(1f, 0f, 1f))
+        assertEquals(emptyList(), selfIntersectionFills(points))
+    }
+
+    @Test fun circleShapeOvershootingItsStartProducesOneLargeFill() {
+        // 원을 근사하는 다각선을 시작 각도보다 살짝(5%) 더 돌아서 그린다 — 실제로 손으로 원을
+        // 그릴 때 닫히는 지점이 정확히 시작점이 아니라 그 근처를 살짝 지나치는 상황과 비슷하다.
+        // 결과는 원 넓이(πr²≈7854)에 가까운 큰 다각형 하나여야 한다(작은 오차 폴리곤이 아님).
+        val steps = 60
+        val radius = 50f
+        val points = (0..steps).map { i ->
+            val angle = 2 * Math.PI * i / steps * 1.05
+            VectorPoint((radius * kotlin.math.cos(angle)).toFloat(), (radius * kotlin.math.sin(angle)).toFloat(), 1f)
+        }
+        val fills = selfIntersectionFills(points)
+        assertEquals(1, fills.size)
+        val polygon = fills[0]
+        var sum = 0f
+        for (i in polygon.indices) {
+            val a = polygon[i]; val b = polygon[(i + 1) % polygon.size]
+            sum += a.x * b.y - b.x * a.y
+        }
+        val area = kotlin.math.abs(sum) / 2f
+        assertTrue(area > radius * radius, "expected a large near-circle area, got $area")
+    }
+
+    @Test fun tinySpuriousCrossingDoesNotPreventLaterLargeLoopFromClosing() {
+        // 이 수정이 노리는 바로 그 버그의 회귀 테스트 — 획 맨 앞에서 손떨림 수준의 아주 작은
+        // 자기교차(넓이 0.0025)가 한 번 생기고, 한참 뒤에 사용자가 의도한 큰 폐곡선이 그 작은
+        // 교차보다 앞선 세그먼트(여기선 세그먼트 1)를 다시 만나며 닫힌다.
+        //  - 0..3: 0.1배로 축소한 tiny bowtie — 세그먼트 2가 세그먼트 0과 (0.05,0.05)에서 교차,
+        //    넓이 0.0025 < MIN_FILL_AREA라 무시돼야 한다.
+        //  - 4..6: 그 작은 영역에서 멀리 떨어져 크게 한 바퀴 돈다(중간에 다른 교차가 안 생기게
+        //    원점 주변을 피해서 오른쪽 아래 → 오른쪽 위 → 왼쪽으로 이동).
+        //  - 7: (0.05, 5)에서 (0.05, 0.08)로 내려오며 세그먼트 1(y=0.1의 윗변)을 (0.05,0.1)에서
+        //    가로질러 큰 루프를 닫는다. y=0.08에서 멈추므로 세그먼트 0/2(둘 다 y=0.05에서 지남)는
+        //    건드리지 않는다 — 즉 파트너는 반드시 세그먼트 1이어야만 한다.
+        // 수정 전 코드는 작은 교차에서 startSeg를 2로 당겨버려 세그먼트 1이 후보에서 빠지고,
+        // 결과가 [작은 삼각형](넓이 0.0025) 하나뿐이 된다 — 큰 루프가 조용히 안 채워진다.
+        val points = listOf(
+            VectorPoint(0f, 0f, 1f), VectorPoint(0.1f, 0.1f, 1f), VectorPoint(0f, 0.1f, 1f), VectorPoint(0.1f, 0f, 1f),
+            VectorPoint(10f, -5f, 1f), VectorPoint(10f, 5f, 1f), VectorPoint(0.05f, 5f, 1f), VectorPoint(0.05f, 0.08f, 1f),
+        )
+        val fills = selfIntersectionFills(points)
+        assertEquals(1, fills.size)
+        val polygon = fills[0]
+        var sum = 0f
+        for (i in polygon.indices) {
+            val a = polygon[i]; val b = polygon[(i + 1) % polygon.size]
+            sum += a.x * b.y - b.x * a.y
+        }
+        val area = kotlin.math.abs(sum) / 2f
+        assertTrue(area > 20f, "expected the large intended loop to still be filled, got area $area")
+    }
 }

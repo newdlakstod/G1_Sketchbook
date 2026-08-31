@@ -166,6 +166,13 @@ internal fun segmentIntersection(p1: VectorPoint, p2: VectorPoint, p3: VectorPoi
  *  점을 마지막에 다시 안 붙임), 마지막 점에서 다시 그 교차점으로 닫는 건 렌더러의 `path.close()`가
  *  담당한다([strokeOutline]과 같은 컨벤션) — 교차점이 세그먼트 i 위의 한 점이라 이 마지막 변은
  *  세그먼트 i의 일부 구간일 뿐이라 항상 유효하다. */
+/** 자기교차로 생기는 구역이 이 넓이(px²)보다 작으면 무시한다 — 손떨림이나 촘촘한 터치 샘플링이
+ *  만드는 의미 없는 아주 작은 교차(진짜 부동소수점 오차가 아니라 진짜 기하학적 교차)까지 다
+ *  받아들이면, 그 교차가 [selfIntersectionFills]의 `startSeg`를 앞으로 당겨버려서 정작 사용자가
+ *  의도한 큰 폐곡선(예: 천천히 그린 원)이 나중에 닫힐 때 필요한 이전 구간이 이미 검색 범위 밖으로
+ *  밀려나 버린다 — 그러면 진짜 의도한 큰 도형이 조용히 안 채워진다. */
+private const val MIN_FILL_AREA = 4f
+
 fun selfIntersectionFills(points: List<VectorPoint>): List<List<Point>> {
     if (points.size < 4) return emptyList()
     val result = mutableListOf<List<Point>>()
@@ -181,10 +188,26 @@ fun selfIntersectionFills(points: List<VectorPoint>): List<List<Point>> {
             val (j, hit) = found
             val polygon = mutableListOf(hit)
             for (k in (j + 1)..i) polygon.add(Point(points[k].x, points[k].y))
-            result.add(polygon)
-            startSeg = i
+            // 넓이가 너무 작으면(손떨림 등으로 생긴, 사용자가 의도하지 않은 스침) 무시한다 — 이때
+            // startSeg를 그대로 둬야(안 당겨야) 나중에 진짜 의도한 큰 루프가 닫힐 때 이 지점(j)이
+            // 여전히 후보로 남는다. 이게 핵심 수정.
+            if (polygonArea(polygon) >= MIN_FILL_AREA) {
+                result.add(polygon)
+                startSeg = i
+            }
         }
         i++
     }
     return result
+}
+
+/** 신발끈 공식(shoelace formula)으로 다각형의 넓이를 구한다 — [selfIntersectionFills]가 너무 작은
+ *  가짜 교차를 걸러내는 데 쓴다. */
+private fun polygonArea(polygon: List<Point>): Float {
+    var sum = 0f
+    for (i in polygon.indices) {
+        val p1 = polygon[i]; val p2 = polygon[(i + 1) % polygon.size]
+        sum += p1.x * p2.y - p2.x * p1.y
+    }
+    return kotlin.math.abs(sum) / 2f
 }

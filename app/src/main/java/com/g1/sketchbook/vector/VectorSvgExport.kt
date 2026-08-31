@@ -52,7 +52,7 @@ fun vectorPageToSvg(page: VectorPage, region: Bounds, stampBrushes: Map<String, 
         }
         if (stroke.fillEnabled) {
             val fillHex = colorHex(stroke.fillColor ?: stroke.color)
-            for (closedRegion in selfIntersectionFills(stroke.points)) {
+            for (closedRegion in stroke.fills) {
                 if (closedRegion.isEmpty()) continue
                 val touches = closedRegion.any { it.x >= region.minX && it.x <= region.maxX && it.y >= region.minY && it.y <= region.maxY }
                 if (!touches) continue
@@ -61,7 +61,7 @@ fun vectorPageToSvg(page: VectorPage, region: Bounds, stampBrushes: Map<String, 
                     val x = p.x - region.minX; val y = p.y - region.minY
                     if (i == 0) sb.append(x).append(',').append(y) else sb.append(" L").append(x).append(',').append(y)
                 }
-                sb.append(" Z\" fill=\"").append(fillHex).append("\"/>")
+                sb.append(" Z\" fill=\"").append(fillHex).append("\" fill-rule=\"evenodd\"/>")
             }
         }
     }

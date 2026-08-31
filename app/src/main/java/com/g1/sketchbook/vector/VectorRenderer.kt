@@ -47,11 +47,12 @@ fun drawVectorPage(canvas: Canvas, page: VectorPage, stampBrushes: Map<String, S
         }
         if (stroke.fillEnabled) {
             fillPaint.color = (stroke.fillColor ?: stroke.color).toInt()
-            for (region in selfIntersectionFills(stroke.points)) {
+            for (region in stroke.fills) {
                 if (region.isEmpty()) continue
                 val fillPath = Path()
                 region.forEachIndexed { i, p -> if (i == 0) fillPath.moveTo(p.x, p.y) else fillPath.lineTo(p.x, p.y) }
                 fillPath.close()
+                fillPath.fillType = Path.FillType.EVEN_ODD
                 canvas.drawPath(fillPath, fillPaint)
             }
         }

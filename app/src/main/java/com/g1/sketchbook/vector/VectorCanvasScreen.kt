@@ -417,7 +417,7 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
                         }
                     }
                 }
-}
+            }
             Box {
                 IconButton(onClick = { strokeDialogOpen = true }) {
                     Canvas(Modifier.size(24.dp)) { drawStrokePreview(strokeEnabled, strokeColor, cap) }
