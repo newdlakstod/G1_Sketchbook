@@ -32,6 +32,9 @@ class VectorBrushView(context: Context) : View(context) {
     /** 새로 그리는 획의 채움/테두리 — 역시 "다음에 그릴 획"에만 영향(기존 획은 자기 자신의 값을
      *  그대로 씀). [strokeColor]가 null이면 테두리 없음(기존 채움만인 동작). */
     var fillEnabled: Boolean = true
+    /** [fillEnabled]로 채워지는 자기교차 폐곡선의 색 — null이면 [color](리본 색)를 그대로 쓴다.
+     *  "다음에 그릴 획"에만 영향(기존 획은 자기 자신의 값 그대로 씀). */
+    var fillColor: Long? = null
     var strokeColor: Long? = null
     var strokeWidthPx: Float = 2f
     /** 다음에 그릴 획에 적용할 스탬프 브러시 — null이면 지금 펜. [VectorCanvasScreen]의 브러시
@@ -278,7 +281,7 @@ class VectorBrushView(context: Context) : View(context) {
                         Tool.DRAW -> {
                             val cur = current; current = null
                             if (cur != null && cur.size >= 2) {
-                                val stroke = VectorStroke(color, cur, cap, fillEnabled, strokeColor, strokeWidthPx, brushProfileId)
+                                val stroke = VectorStroke(color, cur, cap, fillEnabled, strokeColor, strokeWidthPx, brushProfileId, fillColor)
                                 committed.add(stroke)
                                 history.add(UndoOp.Drew(stroke))
                                 onStrokeEnd?.invoke()
@@ -322,7 +325,9 @@ class VectorBrushView(context: Context) : View(context) {
                 stampPolygons(profile, stroke.points).any { it.isNotEmpty() && pointInPolygon(x, y, it) }
             } else {
                 val outline = strokeOutline(stroke.points, stroke.cap)
-                outline.isNotEmpty() && pointInPolygon(x, y, outline)
+                val hitRibbon = outline.isNotEmpty() && pointInPolygon(x, y, outline)
+                val hitFill = stroke.fillEnabled && selfIntersectionFills(stroke.points).any { pointInPolygon(x, y, it) }
+                hitRibbon || hitFill
             }
             if (hit) {
                 committed.removeAt(i)
@@ -407,7 +412,7 @@ class VectorBrushView(context: Context) : View(context) {
         } else {
             drawVectorPage(canvas, VectorPage(committed), stampBrushes)
         }
-        current?.let { pts -> if (pts.size >= 2) drawVectorPage(canvas, VectorPage(listOf(VectorStroke(color, pts, cap, fillEnabled, strokeColor, strokeWidthPx, brushProfileId))), stampBrushes) }
+        current?.let { pts -> if (pts.size >= 2) drawVectorPage(canvas, VectorPage(listOf(VectorStroke(color, pts, cap, fillEnabled, strokeColor, strokeWidthPx, brushProfileId, fillColor))), stampBrushes) }
         canvas.restore()
 
         if (selIdx != null && movingSelection) {
