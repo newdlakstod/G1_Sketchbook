@@ -8,13 +8,28 @@ package com.g1.sketchbook.vector
  *  false면 `fill="none"`, [VectorStroke.strokeColor]가 있으면 `stroke`/`stroke-width`도 같이
  *  쓴다(SVG의 fill·stroke 개념 그대로). 색은 ARGB Long에서 알파를 버리고 RGB만 "#rrggbb"로
  *  쓴다(펜은 항상 불투명). */
-fun vectorPageToSvg(page: VectorPage, region: Bounds): String {
+fun vectorPageToSvg(page: VectorPage, region: Bounds, stampBrushes: Map<String, StampBrushProfile> = emptyMap()): String {
     val w = region.width; val h = region.height
     val sb = StringBuilder()
     sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"").append(w)
         .append("\" height=\"").append(h)
         .append("\" viewBox=\"0 0 ").append(w).append(' ').append(h).append("\">")
     for (stroke in page.strokes) {
+        val profile = stroke.brushProfileId?.let { stampBrushes[it] }
+        if (profile != null) {
+            for (shape in stampPolygons(profile, stroke.points)) {
+                if (shape.isEmpty()) continue
+                val touches = shape.any { it.x >= region.minX && it.x <= region.maxX && it.y >= region.minY && it.y <= region.maxY }
+                if (!touches) continue
+                sb.append("<path d=\"M")
+                shape.forEachIndexed { i, p ->
+                    val x = p.x - region.minX; val y = p.y - region.minY
+                    if (i == 0) sb.append(x).append(',').append(y) else sb.append(" L").append(x).append(',').append(y)
+                }
+                sb.append(" Z\" fill=\"").append(colorHex(stroke.color)).append("\"/>")
+            }
+            continue
+        }
         val outline = strokeOutline(stroke.points, stroke.cap)
         if (outline.isEmpty()) continue
         val touchesRegion = outline.any { it.x >= region.minX && it.x <= region.maxX && it.y >= region.minY && it.y <= region.maxY }
