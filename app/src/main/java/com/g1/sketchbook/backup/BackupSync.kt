@@ -25,6 +25,7 @@ suspend fun reconcileBackup(context: Context, uid: String, backup: BackupReposit
     reconcileDiary(diaryRepo, backup, uid, remote.diary)
     reconcileSettings(session, backup, uid, remote.settings)
     reconcileSharedBooks(sketchbookRepo, backup, uid, remote.sharedBooks)
+    reconcileStampBrushes(context, backup, uid, remote.stampBrushes)
 }
 
 /** 공유 스케치북은 그림이 아니라 "참여 중"이라는 사실만 동기화한다(계정의 다른 기기에 같은 코드의
@@ -50,6 +51,31 @@ private fun reconcileSharedBooks(repo: SketchbookRepository, backup: BackupRepos
         if (code in justDeleted) continue
         val ref = remoteByCode[code]
         if (ref == null || ref.deleted) backup.pushSharedBookRef(uid, code, book.name, book.sizeKey, book.bgKey, book.createdAt)
+    }
+}
+
+/** [com.g1.sketchbook.vector.StampBrushRepository]의 로컬 스탬프 브러시 목록과 원격 `stampBrushes`를
+ *  맞춘다 — [reconcileSharedBooks]와 같은 툼스톤 방식: 원격에만 있고 로컬에 없으면 받아서 임포트,
+ *  원격에서 지워졌으면(deleted=true) 로컬에서도 지움, 로컬에만 있으면(또는 원격이 이미 지운 걸
+ *  로컬은 아직 갖고 있으면) 원격에 올린다. */
+private fun reconcileStampBrushes(context: Context, backup: BackupRepository, uid: String, remote: List<RemoteStampBrush>) {
+    val local = com.g1.sketchbook.vector.StampBrushRepository(context)
+    val remoteById = remote.associateBy { it.id }
+    val localIds = local.list().map { it.id }.toSet()
+
+    for (r in remote) {
+        if (r.deleted) {
+            if (r.id in localIds) local.delete(r.id)
+        } else if (r.id !in localIds) {
+            local.importFromRemote(r.id, r.name, r.svgText, r.spacingPx, r.sizePx)
+        }
+    }
+    for (profile in local.list()) {
+        val r = remoteById[profile.id]
+        if (r == null || r.deleted) {
+            val svgText = local.originalSvgText(profile.id) ?: continue
+            backup.pushStampBrush(uid, RemoteStampBrush(profile.id, profile.name, svgText, profile.spacingPx, profile.sizePx, System.currentTimeMillis(), false))
+        }
     }
 }
 

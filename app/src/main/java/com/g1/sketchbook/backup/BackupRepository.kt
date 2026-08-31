@@ -101,6 +101,25 @@ class BackupRepository {
         root.child(uid).child("sharedBooks").child(code).setValue(mapOf("deleted" to true))
     }
 
+    /** 원본 SVG 텍스트만 올린다(파싱된 다각형은 안 올림 — 받는 기기가 [com.g1.sketchbook.vector.parseSvgDocument]로
+     *  다시 파싱). */
+    fun pushStampBrush(uid: String, brush: RemoteStampBrush) {
+        root.child(uid).child("stampBrushes").child(brush.id).setValue(
+            mapOf(
+                "name" to brush.name, "svgText" to brush.svgText,
+                "spacingPx" to brush.spacingPx, "sizePx" to brush.sizePx,
+                "updatedAt" to brush.updatedAt, "deleted" to false,
+            ),
+        )
+    }
+
+    /** 툼스톤 — 하드 삭제하면 다른 기기가 "원래 없었음"으로 잘못 읽고 되살린다([deleteSharedBookRef]와 동일 이유). */
+    fun deleteStampBrush(uid: String, id: String, updatedAt: Long) {
+        root.child(uid).child("stampBrushes").child(id).setValue(
+            mapOf("deleted" to true, "updatedAt" to updatedAt),
+        )
+    }
+
     /** [contentBmp] is the separate stroke-only layer ([DiaryRepository.loadContent]) — null for a
      *  diary day that predates that feature (or hasn't been redrawn since), same as the local file
      *  possibly not existing. Pushed with [preserveAlpha]=true (like sketchbook pages) since it's a
@@ -214,6 +233,19 @@ class BackupRepository {
             )
         }
 
-        return RemoteSnapshot(sketchbooks, diary, settings, sharedBooks)
+        val stampBrushes = snap.child("stampBrushes").children.mapNotNull { c ->
+            val id = c.key ?: return@mapNotNull null
+            RemoteStampBrush(
+                id = id,
+                name = c.child("name").getValue(String::class.java) ?: "",
+                svgText = c.child("svgText").getValue(String::class.java) ?: "",
+                spacingPx = c.child("spacingPx").getValue(Double::class.java)?.toFloat() ?: 24f,
+                sizePx = c.child("sizePx").getValue(Double::class.java)?.toFloat() ?: 32f,
+                updatedAt = c.child("updatedAt").getValue(Long::class.java) ?: 0L,
+                deleted = c.child("deleted").getValue(Boolean::class.java) ?: false,
+            )
+        }
+
+        return RemoteSnapshot(sketchbooks, diary, settings, sharedBooks, stampBrushes)
     }
 }

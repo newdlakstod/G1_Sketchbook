@@ -28,6 +28,19 @@ data class RemoteSharedBookRef(
     val createdAt: Long, val deleted: Boolean,
 )
 
+/** 스탬프 브러시 하나의 백업용 표현 — 파싱된 다각형([com.g1.sketchbook.vector.StampBrushProfile.shapes])은
+ *  안 올리고 원본 [svgText]만 올려서 페이로드를 가볍게 유지한다(받는 기기가 다시 파싱). [deleted]는
+ *  툼스톤 — 이 기기에서 지운 항목을 다른 기기에도 지우라고 알리는 용도([RemoteSharedBookRef]와 같은 패턴). */
+data class RemoteStampBrush(
+    val id: String,
+    val name: String,
+    val svgText: String,
+    val spacingPx: Float,
+    val sizePx: Float,
+    val updatedAt: Long,
+    val deleted: Boolean,
+)
+
 /** [contentBase64] is the separate stroke-only transparent layer (same file [DiaryRepository.loadContent]
  *  reads/writes locally) — null for days pushed before this existed, or by an older app version. Synced
  *  alongside the composite [image] so "투명 배경 PNG로 다운로드" keeps working after a diary crosses devices,
@@ -39,6 +52,7 @@ data class RemoteSnapshot(
     val diary: Map<String, RemoteDiaryDay>,
     val settings: RemoteSettings?,
     val sharedBooks: List<RemoteSharedBookRef>,
+    val stampBrushes: List<RemoteStampBrush>,
 )
 
 data class RemoteSettings(

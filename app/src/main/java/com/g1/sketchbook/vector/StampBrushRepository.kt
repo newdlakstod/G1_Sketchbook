@@ -31,6 +31,7 @@ class StampBrushRepository(context: Context) {
         val id = newId()
         val profile = StampBrushProfile(id, name, shapes)
         file(id).writeText(profile.toJson())
+        File(root, "$id.svg").writeText(svgText)
         saveIds(ids() + id)
         return profile
     }
@@ -48,7 +49,21 @@ class StampBrushRepository(context: Context) {
 
     fun delete(id: String) {
         file(id).delete()
+        File(root, "$id.svg").delete()
         saveIds(ids() - id)
+    }
+
+    fun originalSvgText(id: String): String? = File(root, "$id.svg").takeIf { it.exists() }?.readText()
+
+    /** 원격 백업에서 받은 항목을 그대로 로컬에 심는다 — [id]를 새로 만들지 않고 원격이 정한 그대로
+     *  써야 다음 동기화 때 같은 항목으로 인식된다(툼스톤 비교가 id 기준이라). */
+    fun importFromRemote(id: String, name: String, svgText: String, spacingPx: Float, sizePx: Float): StampBrushProfile? {
+        val shapes = parseSvgDocument(svgText) ?: return null
+        val profile = StampBrushProfile(id, name, shapes, spacingPx, sizePx)
+        file(id).writeText(profile.toJson())
+        File(root, "$id.svg").writeText(svgText)
+        if (id !in ids()) saveIds(ids() + id)
+        return profile
     }
 
     private fun newId(): String {
