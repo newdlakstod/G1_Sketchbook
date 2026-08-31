@@ -6,17 +6,25 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -25,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +85,107 @@ private fun DrawScope.drawBrushSwatchPreview(color: Color) {
     drawPath(path, color = color, style = Stroke(width = size.minDimension * 0.16f, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
+private fun VectorCap.toComposeCap(): StrokeCap = when (this) {
+    VectorCap.ROUND -> StrokeCap.Round
+    VectorCap.SQUARE -> StrokeCap.Square
+    VectorCap.BUTT -> StrokeCap.Butt
+}
+
+/** 획(테두리) 다이얼로그를 여는 툴바 버튼의 미리보기 — 지금 골라둔 테두리 색·단면을 그대로 짧은
+ *  선 하나로 보여준다(테두리가 꺼져 있으면 회색으로). */
+private fun DrawScope.drawStrokePreview(strokeEnabled: Boolean, strokeColor: Long, cap: VectorCap) {
+    val previewColor = if (strokeEnabled) Color(strokeColor) else Color(0xFF9E9E9E)
+    drawLine(
+        previewColor,
+        Offset(size.width * 0.2f, size.height / 2f), Offset(size.width * 0.8f, size.height / 2f),
+        strokeWidth = size.height * 0.45f, cap = cap.toComposeCap(),
+    )
+}
+
+/** 단면(cap) 고르는 버튼 하나 — 실제 [StrokeCap]을 그대로 적용한 짧은 선을 그려서, 아이콘이 아니라
+ *  "이 마감을 고르면 실제로 이렇게 보인다"를 그대로 보여준다. */
+@Composable
+private fun CapButton(cap: VectorCap, selected: Boolean, onClick: () -> Unit) {
+    val lineColor = MaterialTheme.colorScheme.onSurface
+    Box(
+        Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+            .border(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+            .bounceClick(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(24.dp, 14.dp)) {
+            drawLine(
+                lineColor,
+                Offset(size.width * 0.25f, size.height / 2f), Offset(size.width * 0.75f, size.height / 2f),
+                strokeWidth = size.height * 0.6f, cap = cap.toComposeCap(),
+            )
+        }
+    }
+}
+
+/** 일러스트레이터 "획" 패널을 본떠서 획(테두리) 관련 설정만 따로 모은 다이얼로그 — 단면(cap)은
+ *  테두리를 꺼도 펜 몸체 모양 자체에 계속 영향을 주므로 켜짐 여부와 무관하게 항상 보이고, 두께·
+ *  색상은 테두리가 켜져 있을 때만 의미가 있어 그때만 보인다. 모퉁이(join)·선 정렬은 아직 실제로
+ *  구현되지 않아 이번엔 넣지 않았다. */
+@Composable
+private fun StrokeDialog(
+    cap: VectorCap, onCap: (VectorCap) -> Unit,
+    strokeEnabled: Boolean, onStrokeEnabled: (Boolean) -> Unit,
+    strokeWidthPx: Float, onStrokeWidthPx: (Float) -> Unit,
+    strokeColor: Long, onStrokeColor: (Long) -> Unit,
+    favorites: List<Long>,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("획") },
+        text = {
+            Column {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("테두리")
+                    Switch(checked = strokeEnabled, onCheckedChange = onStrokeEnabled)
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("단면")
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(VectorCap.BUTT, VectorCap.ROUND, VectorCap.SQUARE).forEach { option ->
+                        CapButton(option, selected = cap == option, onClick = { onCap(option) })
+                    }
+                }
+                if (strokeEnabled) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("두께", modifier = Modifier.weight(1f))
+                        IconButton(onClick = { onStrokeWidthPx((strokeWidthPx - 1f).coerceAtLeast(1f)) }) {
+                            Icon(Icons.Filled.Remove, "굵기 줄이기")
+                        }
+                        Text("${strokeWidthPx.toInt()} pt")
+                        IconButton(onClick = { onStrokeWidthPx((strokeWidthPx + 1f).coerceAtMost(20f)) }) {
+                            Icon(Icons.Filled.Add, "굵기 늘리기")
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("색상")
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        favorites.forEach { swatch ->
+                            Box(
+                                Modifier.size(28.dp).clip(CircleShape).background(Color(swatch))
+                                    .border(if (swatch == strokeColor) 2.dp else 1.dp,
+                                        if (swatch == strokeColor) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape)
+                                    .bounceClick { onStrokeColor(swatch) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } },
+    )
+}
+
 /** 벡터 스케치북 전용 캔버스 화면 — 책 한 권 = 캔버스 한 장(페이지 없음). 도구는 펜/지우개/
  *  라쏘 셋. 두 손가락 핀치로 확대·이동 — 단, 라쏘로 선택한 영역이 있으면 그 영역 안을 눌러
  *  드래그·핀치하는 건 캔버스가 아니라 선택 자체를 이동·크기조절한다. 선택은 저장(내보내기)
@@ -100,6 +210,7 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
     var strokeWidthPx by remember { mutableStateOf(2f) }
     var scaleStrokeWidth by remember { mutableStateOf(true) }
     var settingsMenuOpen by remember { mutableStateOf(false) }
+    var strokeDialogOpen by remember { mutableStateOf(false) }
     var canUndo by remember { mutableStateOf(false) }
     var selectionAnchor by remember { mutableStateOf<Offset?>(null) }
     val favorites = session.quickFavorites
@@ -190,14 +301,6 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
                         valueRange = com.g1.sketchbook.ui.theme.Dimens.Brush.penMinWidth..com.g1.sketchbook.ui.theme.Dimens.Brush.penMaxWidth,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
-                    val capOptions = listOf(VectorCap.ROUND to "둥글게", VectorCap.SQUARE to "사각형", VectorCap.BUTT to "딱 떨어지게")
-                    capOptions.forEach { (option, label) ->
-                        DropdownMenuItem(
-                            text = { Text(label) },
-                            leadingIcon = if (cap == option) { { Icon(Icons.Filled.Check, null) } } else null,
-                            onClick = { cap = option; view?.cap = option; settingsMenuOpen = false },
-                        )
-                    }
                     DropdownMenuItem(
                         text = { Text("라쏘로 크기 바꿀 때 굵기도 같이") },
                         trailingIcon = {
@@ -212,39 +315,22 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
                         },
                         onClick = { fillEnabled = !fillEnabled; view?.fillEnabled = fillEnabled },
                     )
-                    DropdownMenuItem(
-                        text = { Text("테두리") },
-                        trailingIcon = {
-                            Switch(checked = strokeEnabled, onCheckedChange = { checked ->
-                                strokeEnabled = checked
-                                view?.strokeColor = if (checked) strokeColor else null
-                            })
-                        },
-                        onClick = {
-                            strokeEnabled = !strokeEnabled
-                            view?.strokeColor = if (strokeEnabled) strokeColor else null
-                        },
+                }
+            }
+            Box {
+                IconButton(onClick = { strokeDialogOpen = true }) {
+                    Canvas(Modifier.size(24.dp)) { drawStrokePreview(strokeEnabled, strokeColor, cap) }
+                }
+                if (strokeDialogOpen) {
+                    StrokeDialog(
+                        cap = cap, onCap = { cap = it; view?.cap = it },
+                        strokeEnabled = strokeEnabled,
+                        onStrokeEnabled = { strokeEnabled = it; view?.strokeColor = if (it) strokeColor else null },
+                        strokeWidthPx = strokeWidthPx, onStrokeWidthPx = { strokeWidthPx = it; view?.strokeWidthPx = it },
+                        strokeColor = strokeColor, onStrokeColor = { strokeColor = it; view?.strokeColor = it },
+                        favorites = favorites,
+                        onDismiss = { strokeDialogOpen = false },
                     )
-                    if (strokeEnabled) {
-                        Row(
-                            Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            favorites.forEach { swatch ->
-                                Box(
-                                    Modifier.size(22.dp).clip(CircleShape).background(Color(swatch))
-                                        .border(if (swatch == strokeColor) 2.dp else 1.dp,
-                                            if (swatch == strokeColor) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape)
-                                        .bounceClick { strokeColor = swatch; view?.strokeColor = swatch },
-                                )
-                            }
-                        }
-                        Text("테두리 굵기", modifier = Modifier.padding(horizontal = 16.dp))
-                        Slider(
-                            value = strokeWidthPx, onValueChange = { strokeWidthPx = it; view?.strokeWidthPx = it },
-                            valueRange = 1f..20f, modifier = Modifier.padding(horizontal = 16.dp),
-                        )
-                    }
                 }
             }
             IconButton(enabled = canUndo, onClick = { view?.undo(); canUndo = view?.canUndo ?: false }) {
