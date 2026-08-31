@@ -236,6 +236,7 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
     var strokeWidthDp by remember { mutableStateOf(8f) }
     var cap by remember { mutableStateOf(VectorCap.ROUND) }
     var fillEnabled by remember { mutableStateOf(true) }
+    var fillColor by remember { mutableStateOf<Long?>(null) }
     var strokeEnabled by remember { mutableStateOf(false) }
     var strokeColor by remember { mutableStateOf(0xFF000000L) }
     var strokeWidthPx by remember { mutableStateOf(2f) }
@@ -299,6 +300,7 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
                     it.strokeWidthDp = strokeWidthDp
                     it.cap = cap
                     it.fillEnabled = fillEnabled
+                    it.fillColor = fillColor
                     it.strokeColor = if (strokeEnabled) strokeColor else null
                     it.strokeWidthPx = strokeWidthPx
                     it.scaleStrokeWidth = scaleStrokeWidth
@@ -400,8 +402,22 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
                         },
                         onClick = { fillEnabled = !fillEnabled; view?.fillEnabled = fillEnabled },
                     )
+                    if (fillEnabled) {
+                        Text("채움 색", modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            favorites.forEach { swatch ->
+                                val selected = swatch == (fillColor ?: color)
+                                Box(
+                                    Modifier.size(24.dp).clip(CircleShape).background(Color(swatch))
+                                        .border(if (selected) 2.dp else 1.dp,
+                                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, CircleShape)
+                                        .bounceClick { fillColor = swatch; view?.fillColor = swatch },
+                                )
+                            }
+                        }
+                    }
                 }
-            }
+}
             Box {
                 IconButton(onClick = { strokeDialogOpen = true }) {
                     Canvas(Modifier.size(24.dp)) { drawStrokePreview(strokeEnabled, strokeColor, cap) }
