@@ -112,4 +112,62 @@ class StrokeGeometryTest {
         val bounds = contentBounds(strokes, mapOf("id1" to profile))!!
         assertTrue(bounds.minY < -20f)
     }
+
+    @Test fun crossingSegmentsIntersectAtExpectedPoint() {
+        val hit = segmentIntersection(
+            VectorPoint(0f, 0f, 1f), VectorPoint(10f, 10f, 1f),
+            VectorPoint(0f, 10f, 1f), VectorPoint(10f, 0f, 1f),
+        )
+        assertEquals(Point(5f, 5f), hit)
+    }
+
+    @Test fun parallelSegmentsDoNotIntersect() {
+        val hit = segmentIntersection(
+            VectorPoint(0f, 0f, 1f), VectorPoint(10f, 0f, 1f),
+            VectorPoint(0f, 10f, 1f), VectorPoint(10f, 10f, 1f),
+        )
+        assertEquals(null, hit)
+    }
+
+    @Test fun segmentsThatWouldCrossOnlyIfExtendedDoNotIntersect() {
+        // 두 선분이 놓인 직선끼리는 교차하지만, 그 교차점이 각 선분의 실제 구간(0~1) 밖에 있음.
+        val hit = segmentIntersection(
+            VectorPoint(0f, 0f, 1f), VectorPoint(1f, 1f, 1f),
+            VectorPoint(5f, 0f, 1f), VectorPoint(5f, -1f, 1f),
+        )
+        assertEquals(null, hit)
+    }
+
+    @Test fun selfIntersectionFillsReturnsEmptyForFewerThanFourPoints() {
+        assertEquals(emptyList(), selfIntersectionFills(listOf(VectorPoint(0f, 0f, 1f), VectorPoint(10f, 0f, 1f), VectorPoint(10f, 10f, 1f))))
+    }
+
+    @Test fun selfIntersectionFillsReturnsEmptyWhenNoCrossing() {
+        val points = listOf(VectorPoint(0f, 0f, 1f), VectorPoint(10f, 0f, 1f), VectorPoint(10f, 10f, 1f), VectorPoint(0f, 10f, 1f))
+        assertEquals(emptyList(), selfIntersectionFills(points))
+    }
+
+    @Test fun bowtieShapeProducesOneTriangularFill() {
+        // (0,0)->(10,10)->(0,10)->(10,0): 첫 세그먼트(대각선 /)와 세번째 세그먼트(대각선 \)가
+        // 정확히 (5,5)에서 교차 — 손 계산으로 확인된 값.
+        val points = listOf(VectorPoint(0f, 0f, 1f), VectorPoint(10f, 10f, 1f), VectorPoint(0f, 10f, 1f), VectorPoint(10f, 0f, 1f))
+        val fills = selfIntersectionFills(points)
+        assertEquals(listOf(listOf(Point(5f, 5f), Point(10f, 10f), Point(0f, 10f))), fills)
+    }
+
+    @Test fun twoSequentialBowtiesEachProduceTheirOwnFill() {
+        // 첫 4점이 bowtie 하나(교차 (5,5)), 그다음 4점이 +100 평행이동한 두번째 bowtie(교차 (105,5)).
+        val points = listOf(
+            VectorPoint(0f, 0f, 1f), VectorPoint(10f, 10f, 1f), VectorPoint(0f, 10f, 1f), VectorPoint(10f, 0f, 1f),
+            VectorPoint(100f, 0f, 1f), VectorPoint(110f, 10f, 1f), VectorPoint(100f, 10f, 1f), VectorPoint(110f, 0f, 1f),
+        )
+        val fills = selfIntersectionFills(points)
+        assertEquals(
+            listOf(
+                listOf(Point(5f, 5f), Point(10f, 10f), Point(0f, 10f)),
+                listOf(Point(105f, 5f), Point(110f, 10f), Point(100f, 10f)),
+            ),
+            fills,
+        )
+    }
 }

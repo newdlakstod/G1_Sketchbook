@@ -139,3 +139,52 @@ fun pointsBounds(points: List<Point>): Bounds? {
  *  정확히 완전히 두르기는 어려우니, 살짝 스치기만 해도 선택되는 관대한 판정. */
 fun strokeTouchesLasso(stroke: VectorStroke, lasso: List<Point>): Boolean =
     stroke.points.any { pointInPolygon(it.x, it.y, lasso) }
+
+/** 두 선분(p1→p2, p3→p4)이 교차하면 그 교차 좌표, 아니면 null — 각 선분을 0~1로 매개변수화하는
+ *  표준 공식(t/u)으로 판정, 그 범위(양 끝 포함) 안에서만 교차로 인정한다. 평행하거나(분모가 0에
+ *  가까움) 겹쳐도 교차로 안 본다(길이가 있는 겹침은 이 스펙 범위 밖). [internal]인 이유: 이 파일
+ *  안에서만 쓰지만([selfIntersectionFills]), 유닛 테스트에서 직접 검증하기 위해 `private`이
+ *  아니라 `internal`로 둔다(같은 모듈의 테스트 소스셋에서 접근 가능). */
+internal fun segmentIntersection(p1: VectorPoint, p2: VectorPoint, p3: VectorPoint, p4: VectorPoint): Point? {
+    val d1x = p2.x - p1.x; val d1y = p2.y - p1.y
+    val d2x = p4.x - p3.x; val d2y = p4.y - p3.y
+    val denom = d1x * d2y - d1y * d2x
+    if (kotlin.math.abs(denom) < 1e-6f) return null
+    val t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom
+    val u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom
+    if (t < 0f || t > 1f || u < 0f || u > 1f) return null
+    return Point(p1.x + t * d1x, p1.y + t * d1y)
+}
+
+/** [points](획의 중심선)가 자기 자신과 교차해서 만드는 닫힌 구역들을 찾는다 — 원, 8자, 소용돌이
+ *  등 손으로 닫힌 도형을 그리면 그 구역마다 다각형 하나씩 반환한다(자기 교차가 없으면 빈 목록).
+ *  점 목록을 순서대로 훑으면서, 세그먼트 i가 그 이전(바로 앞 세그먼트는 끝점을 공유하니 제외)의
+ *  아직 안 쓰인 세그먼트 j와 교차하면 그 두 교차점 사이(정확히는 교차점부터 세그먼트 i의 교차점
+ *  까지, 원래 점들은 [j+1..i]) 를 다각형 하나로 만들고, 다음 탐색은 세그먼트 i부터 이어서(j 이전
+ *  구간은 이미 다 쓰였으니 건너뛰고) 계속한다 — 그래서 소용돌이처럼 교차가 여러 번 있어도 구간이
+ *  겹치지 않게 각각 한 번씩만 다각형이 된다. 각 다각형은 [교차점, 원래 점들...]로만 이뤄지며(첫
+ *  점을 마지막에 다시 안 붙임), 마지막 점에서 다시 그 교차점으로 닫는 건 렌더러의 `path.close()`가
+ *  담당한다([strokeOutline]과 같은 컨벤션) — 교차점이 세그먼트 i 위의 한 점이라 이 마지막 변은
+ *  세그먼트 i의 일부 구간일 뿐이라 항상 유효하다. */
+fun selfIntersectionFills(points: List<VectorPoint>): List<List<Point>> {
+    if (points.size < 4) return emptyList()
+    val result = mutableListOf<List<Point>>()
+    var startSeg = 0
+    var i = 0
+    while (i < points.size - 1) {
+        var found: Pair<Int, Point>? = null
+        for (j in startSeg until i - 1) {
+            val hit = segmentIntersection(points[j], points[j + 1], points[i], points[i + 1])
+            if (hit != null) { found = j to hit; break }
+        }
+        if (found != null) {
+            val (j, hit) = found
+            val polygon = mutableListOf(hit)
+            for (k in (j + 1)..i) polygon.add(Point(points[k].x, points[k].y))
+            result.add(polygon)
+            startSeg = i
+        }
+        i++
+    }
+    return result
+}
