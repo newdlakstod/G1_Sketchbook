@@ -207,8 +207,9 @@ class SketchbookRepository(private val context: Context) {
      *  JSON만 진짜 상태다. */
     fun saveVectorCanvas(id: String, page: VectorPage) {
         vectorCanvasFile(id).writeText(page.toJson())
+        val stampBrushes = com.g1.sketchbook.vector.StampBrushRepository(context).list().associateBy { it.id }
         FileOutputStream(vectorPreviewFile(id)).use {
-            renderVectorPage(page, VECTOR_PREVIEW_SIZE).compress(Bitmap.CompressFormat.PNG, 100, it)
+            renderVectorPage(page, VECTOR_PREVIEW_SIZE, stampBrushes).compress(Bitmap.CompressFormat.PNG, 100, it)
         }
     }
 
