@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import org.json.JSONArray
 import org.json.JSONObject
 import com.g1.sketchbook.vector.VectorPage
+import com.g1.sketchbook.vector.VectorDocument
+import com.g1.sketchbook.vector.VectorDocumentStore
 import com.g1.sketchbook.vector.renderVectorPage
 import com.g1.sketchbook.vector.toJson
 import com.g1.sketchbook.vector.vectorPageFromJson
@@ -221,6 +223,24 @@ class SketchbookRepository(private val context: Context) {
     fun vectorCanvasUpdatedAt(id: String): Long = vectorCanvasFile(id).lastModified()
 
     fun setVectorCanvasUpdatedAt(id: String, timestamp: Long) { vectorCanvasFile(id).setLastModified(timestamp) }
+
+    /** v2 stays independent from the deployed v1 canvas file so loading and saving it never migrates v1 in place. */
+    private fun vectorDocumentStore(id: String): VectorDocumentStore {
+        val dir = File(root, id).apply { mkdirs() }
+        return VectorDocumentStore(dir)
+    }
+
+    fun loadVectorDocument(id: String): VectorDocument? = vectorDocumentStore(id).load()
+
+    fun saveVectorDocument(id: String, document: VectorDocument) {
+        vectorDocumentStore(id).saveV2(document)
+    }
+
+    fun vectorDocumentUpdatedAt(id: String): Long = File(File(root, id), "vector_canvas_v2.json").lastModified()
+
+    fun setVectorDocumentUpdatedAt(id: String, timestamp: Long) {
+        File(File(root, id), "vector_canvas_v2.json").setLastModified(timestamp)
+    }
 
     /** 페이지 순서 바꾸기(길게 눌러 드래그) — [order]\[새 위치\] = 그 자리에 와야 할 예전 인덱스.
      *  파일을 직접 맞바꿔서 반영하므로 다른 코드는 그대로 인덱스로 읽기만 하면 된다. 중간에 원본을
