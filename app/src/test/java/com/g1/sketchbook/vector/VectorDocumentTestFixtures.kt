@@ -33,5 +33,5 @@ internal fun legacyLine(id: String, width: Float = 4f) = LegacyStrokeObject(
 )
 
 internal fun appearance(width: Float = 8f) = PathAppearance(stroke = StrokeStyle(width = width))
-internal fun legacyPage() = VectorPage(listOf((legacyLine("legacy") as LegacyStrokeObject).stroke))
+internal fun legacyPage() = VectorPage(listOf(legacyLine("legacy").stroke))
 internal fun twoStrokeLegacyPage() = VectorPage(listOf(legacyLine("a").stroke, legacyLine("b").stroke))

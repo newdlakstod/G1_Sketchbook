@@ -81,7 +81,7 @@ fun convertLegacyObject(legacy: LegacyStrokeObject): EditablePathObject {
         appearance = PathAppearance(
             fill = FillStyle(stroke.fillEnabled, stroke.fillColor ?: stroke.color),
             stroke = StrokeStyle(
-                enabled = true,
+                enabled = stroke.strokeColor != null,
                 color = stroke.strokeColor ?: stroke.color,
                 width = baseWidth,
                 cap = stroke.cap,
