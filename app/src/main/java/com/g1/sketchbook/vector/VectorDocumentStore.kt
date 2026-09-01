@@ -2,9 +2,6 @@ package com.g1.sketchbook.vector
 
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 /** Injectable boundary so failed and interrupted replacement paths are deterministic in unit tests. */
 interface VectorDocumentFileSystem {
@@ -29,11 +26,9 @@ open class DefaultVectorDocumentFileSystem : VectorDocumentFileSystem {
         }
     }
 
-    /** No copy-overwrite fallback: callers keep the previous valid file until this atomic move succeeds. */
-    override fun moveAtomically(source: File, target: File): Boolean = runCatching {
-        Files.move(source.toPath(), target.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
-        true
-    }.getOrDefault(false)
+    /** Every caller first moves an existing target aside, so same-directory rename avoids the
+     * API-26-only java.nio file bridge while preserving the recoverable replacement protocol. */
+    override fun moveAtomically(source: File, target: File): Boolean = source.renameTo(target)
 
     override fun delete(file: File): Boolean = !file.exists() || file.delete()
 }

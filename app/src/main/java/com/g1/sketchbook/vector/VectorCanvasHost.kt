@@ -10,8 +10,8 @@ import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.hypot
 
-/** New editor canvas bridge. It deliberately owns all document drawing and pointer handling; the
- * legacy [VectorBrushView] remains in use only by the pre-Task-13 screen wiring. */
+/** New editor canvas bridge. It deliberately owns all document drawing and pointer handling;
+ * [VectorBrushView] is retained only as a deprecated compatibility class with no screen caller. */
 class VectorCanvasHost(context: Context) : View(context) {
     private var editorState: VectorEditorState? = null
     private var profilesProvider: () -> Map<String, VectorBrushProfile> = { emptyMap() }

@@ -2,8 +2,6 @@ package com.g1.sketchbook.vector
 
 import android.content.Context
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import kotlin.random.Random
 
 private fun String.jsonEscaped(): String = buildString {
@@ -114,8 +112,7 @@ class VectorBrushRepository(context: Context) {
         return runCatching {
             temp.writeText(encodeVectorBrushProfile(profile))
             check(decodeVectorBrushProfile(temp.readText())?.id == profile.id)
-            runCatching { Files.move(temp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING) }
-                .getOrElse { Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING) }
+            check(temp.renameTo(target)) { "Could not install brush profile" }
             true
         }.getOrElse { temp.delete(); false }
     }

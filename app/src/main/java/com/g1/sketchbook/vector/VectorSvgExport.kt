@@ -95,6 +95,18 @@ fun vectorDocumentToSvg(
     return sb.toString()
 }
 
+/** The editor exports exactly the selected rendered extent when there is a selection; otherwise
+ * it exports the complete rendered document. This keeps export framing independent of the UI. */
+fun vectorExportBounds(
+    document: VectorDocument,
+    selectedIds: Set<String>,
+    profiles: Map<String, VectorBrushProfile> = emptyMap(),
+): Bounds? = selectionBounds(
+    objects = document.objects,
+    selectedIds = selectedIds.ifEmpty { document.objects.mapTo(linkedSetOf()) { it.id } },
+    profiles = profiles,
+)
+
 private fun legacySvgInner(
     objectPath: LegacyStrokeObject,
     region: Bounds,

@@ -23,6 +23,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -56,7 +58,7 @@ fun VectorEditorLayout(
     onImportArt: () -> Unit, onImportPattern: () -> Unit, modifier: Modifier = Modifier,
     canvas: @Composable BoxScope.() -> Unit, appearance: @Composable () -> Unit,
 ) {
-    val snapshot = state.snapshot.value
+    val snapshot by state.snapshot.collectAsState()
     Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         VectorTopBar(title, snapshot.canUndo, snapshot.canRedo, onBack, state::undo, state::redo, onExport)
         BoxWithConstraints(Modifier.weight(1f)) {
