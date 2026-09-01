@@ -108,6 +108,18 @@ internal fun reconcileVectorDocument(
     return action
 }
 
+/** The real vector branch selects v2 whenever a recoverable local v2 or a remote v2 sibling exists. */
+internal fun reconcileVectorCanvas(
+    localRecoverableV2At: Long?,
+    remoteV2: RemoteVectorDocument?,
+    reconcileV2: (Long?, RemoteVectorDocument?) -> SyncAction,
+    reconcileV1: () -> SyncAction,
+): SyncAction = if (localRecoverableV2At != null || remoteV2 != null) {
+    reconcileV2(localRecoverableV2At, remoteV2)
+} else {
+    reconcileV1()
+}
+
 private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepository, uid: String, remote: List<RemoteSketchbook>) {
     val local = repo.list().filter { !it.shared }
     val remoteById = remote.associateBy { it.id }
@@ -147,22 +159,27 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
             // `loadVectorDocument()` can return a v1 fallback, so v2 presence comes only from its
             // dedicated file timestamp. A present remote sibling always owns this branch, even when
             // malformed: invalid data must be a no-op rather than accidentally synchronizing v1.
-            val localV2At = repo.vectorDocumentUpdatedAt(id).takeIf { it > 0L }
+            val localV2At = repo.recoverableVectorDocumentUpdatedAt(id).takeIf { it > 0L }
             val remoteV2 = r?.vectorCanvasV2
-            if (localV2At != null || remoteV2 != null) {
-                reconcileVectorDocument(
-                    localV2At = localV2At,
-                    remoteV2 = remoteV2,
-                    loadLocalV2 = { repo.loadVectorDocumentV2(id) },
-                    saveLocal = { document, updatedAt ->
-                        repo.saveVectorDocument(id, document)
-                        repo.setVectorDocumentUpdatedAt(id, updatedAt)
-                    },
-                    pushRemote = { json, updatedAt -> backup.pushVectorDocument(uid, id, json, updatedAt) },
-                )
-            } else {
+            reconcileVectorCanvas(
+                localRecoverableV2At = localV2At,
+                remoteV2 = remoteV2,
+                reconcileV2 = { recoverableV2At, sibling ->
+                    reconcileVectorDocument(
+                        localV2At = recoverableV2At,
+                        remoteV2 = sibling,
+                        loadLocalV2 = { repo.loadVectorDocumentV2(id) },
+                        saveLocal = { document, updatedAt ->
+                            repo.saveVectorDocument(id, document)
+                            repo.setVectorDocumentUpdatedAt(id, updatedAt)
+                        },
+                        pushRemote = { json, updatedAt -> backup.pushVectorDocument(uid, id, json, updatedAt) },
+                    )
+                },
+                reconcileV1 = {
                 val localAt = repo.vectorCanvasUpdatedAt(id).takeIf { it > 0L }
-                when (decideSyncAction(localAt, r?.vectorCanvas?.first)) {
+                val action = decideSyncAction(localAt, r?.vectorCanvas?.first)
+                when (action) {
                     SyncAction.PULL -> r?.vectorCanvas?.let { (remoteAt, strokesJson) ->
                         vectorPageFromJson(strokesJson)?.let { repo.saveVectorCanvas(id, it); repo.setVectorCanvasUpdatedAt(id, remoteAt) }
                     }
@@ -171,7 +188,9 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
                     }
                     else -> {}
                 }
-            }
+                action
+                },
+            )
         } else {
             val pageCount = maxOf(l?.pageCount ?: 0, r?.pageCount ?: MAX_PAGES)
             for (index in 0 until pageCount) {

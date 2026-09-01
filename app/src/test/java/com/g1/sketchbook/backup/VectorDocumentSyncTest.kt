@@ -1,7 +1,9 @@
 package com.g1.sketchbook.backup
 
 import com.g1.sketchbook.vector.VectorDocument
+import com.g1.sketchbook.vector.VectorDocumentStore
 import com.g1.sketchbook.vector.encodeVectorDocument
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -115,6 +117,40 @@ class VectorDocumentSyncTest {
         )
         assertTrue(dedicatedV2Loaded)
         assertFalse(pushed)
+    }
+
+    @Test fun recoveredPreviousV2SelectsV2AndNeverInvokesLegacyV1Sync() {
+        val root = createTempDir(prefix = "vector-sync-")
+        File(root, "vector_canvas.json").writeText("legacy v1 must stay untouched")
+        val recovered = VectorDocument(objects = emptyList())
+        File(root, "vector_canvas_v2.previous").apply {
+            writeText(encodeVectorDocument(recovered))
+            setLastModified(123456L)
+        }
+        val store = VectorDocumentStore(root)
+        val pushes = mutableListOf<Pair<String, Long>>()
+        var legacyV1SyncInvoked = false
+
+        assertEquals(123456L, store.recoverableV2UpdatedAt())
+        assertEquals(
+            SyncAction.PUSH,
+            reconcileVectorCanvas(
+                localRecoverableV2At = store.recoverableV2UpdatedAt().takeIf { it > 0L },
+                remoteV2 = null,
+                reconcileV2 = { localV2At, remoteV2 ->
+                    reconcileVectorDocument(
+                        localV2At = localV2At,
+                        remoteV2 = remoteV2,
+                        loadLocalV2 = { store.loadV2() },
+                        saveLocal = { _, _ -> error("local recovered v2 must not be overwritten") },
+                        pushRemote = { json, updatedAt -> pushes += json to updatedAt },
+                    )
+                },
+                reconcileV1 = { legacyV1SyncInvoked = true; error("legacy v1 sync must not run") },
+            ),
+        )
+        assertEquals(listOf(encodeVectorDocument(recovered) to 123456L), pushes)
+        assertFalse(legacyV1SyncInvoked)
     }
 
     @Test fun validLocalV2PushesTheV2DocumentPayloadOnly() {

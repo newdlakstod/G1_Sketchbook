@@ -48,10 +48,15 @@ class VectorDocumentStore(
     private val previous = File(bookDir, "vector_canvas_v2.previous")
 
     /** Reads only v2 files, including a valid interrupted-replacement backup, never the v1 fallback. */
-    fun loadV2(): VectorDocument? {
-        readDocument(v2)?.let { return it }
+    fun loadV2(): VectorDocument? = recoverableV2Candidate()?.second
+
+    /** Timestamp for the same valid v2 candidate [loadV2] would read; v1 never participates. */
+    fun recoverableV2UpdatedAt(): Long = recoverableV2Candidate()?.first?.lastModified() ?: 0L
+
+    private fun recoverableV2Candidate(): Pair<File, VectorDocument>? {
+        readDocument(v2)?.let { return v2 to it }
         // A process can die after primary -> previous but before tmp -> primary. The valid prior v2 wins over v1.
-        readDocument(previous)?.let { return it }
+        readDocument(previous)?.let { return previous to it }
         return null
     }
 

@@ -235,6 +235,9 @@ class SketchbookRepository(private val context: Context) {
     /** Sync must use this v2-only boundary so a corrupt v2 cannot be replaced remotely by v1 fallback data. */
     fun loadVectorDocumentV2(id: String): VectorDocument? = vectorDocumentStore(id).loadV2()
 
+    /** Sync branch selection follows the same recoverable v2 candidate as [loadVectorDocumentV2]. */
+    fun recoverableVectorDocumentUpdatedAt(id: String): Long = vectorDocumentStore(id).recoverableV2UpdatedAt()
+
     fun saveVectorDocument(id: String, document: VectorDocument) {
         vectorDocumentStore(id).saveV2(document)
     }

@@ -54,6 +54,23 @@ class VectorDocumentStoreTest {
         assertNotNull(store.load())
     }
 
+    @Test fun recoverableV2TimestampUsesValidPreviousWhenPrimaryIsAbsent() {
+        val root = createTempDir(prefix = "vector-store-")
+        File(root, "vector_canvas.json").apply {
+            writeText(VectorPage(emptyList()).toJson())
+            setLastModified(765432L)
+        }
+        val previous = VectorDocument(objects = listOf(editablePath("previous")))
+        File(root, "vector_canvas_v2.previous").apply {
+            writeText(encodeVectorDocument(previous))
+            setLastModified(123456L)
+        }
+        val store = VectorDocumentStore(root)
+
+        assertEquals(previous, store.loadV2())
+        assertEquals(123456L, store.recoverableV2UpdatedAt())
+    }
+
     @Test fun replacementFailureRestoresPriorV2AndNeverAcceptsPartialNewData() {
         val root = createTempDir(prefix = "vector-store-")
         val v1 = File(root, "vector_canvas.json").apply {
