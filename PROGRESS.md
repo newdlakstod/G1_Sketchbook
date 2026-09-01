@@ -4,6 +4,8 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **벡터 Appearance 편집기 Tasks 13–14 — 실제 화면 경로/저장·내보내기/검증 완료** (2026-09-02, Codex): `VectorCanvasScreen(bookId, book, myUid, onBack)`의 기존 공개 시그니처와 `SketchbookScreens.kt` 호출은 유지한 채, 유일한 활성 경로를 `VectorEditorLayout` + 하나의 `AndroidView(VectorCanvasHost)`로 교체했다. 화면은 `loadVectorDocument`의 v2 우선/v1 fallback을 사용하고, 기억된 editor의 committed document callback만 `saveVectorDocumentSynced`에 연결한다. 열기·선택·도구·viewport·패널·내보내기·뒤로가기는 저장하지 않으며, legacy 객체는 실제 Appearance 변경 때 선택한 객체만 v2 편집 객체로 변환한다. 선택이 있으면 선택 렌더 bounds, 없으면 전체 렌더 bounds로 SVG를 내보내며 브러시 library의 Art/Pattern import·선택·이름변경·삭제를 typed profile cache에 연결했다. `VectorBrushView`는 deprecated compatibility class로만 남고 활성 screen call site/pointer event는 0개다. 실제 `VectorEditorLayout` preview를 in-memory flower path로 833×1280/1280×800에 추가했다. minSdk 24에서 `java.nio` API를 쓰던 저장 move를 same-directory rename으로 바꿔 lint 0 errors를 회복했다. Task 13 commit=`e3e877f`.
+- **검증 evidence** (2026-09-02, Codex): Android Studio JBR로 `:app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon` 성공 — 223 tests, failures 0, errors 0; lint errors 0, warnings 72, information 5; APK=`app/build/outputs/apk/debug/app-debug.apk` (33,738,241 bytes). `VectorDocumentStoreTest` + `VectorDocumentSyncTest` + `VectorEditorIntegrationTest`를 별도로 재실행해 23 tests, 0 failures/errors를 확인했다. integration test는 no-save navigation, selected legacy-only conversion, one command/one save, selected/all export bounds, v1 bytes/mtime와 v2 non-creation 계약을 커버한다. 에뮬레이터·실기기·S Pen·Firebase/manual visual verification은 실행하지 않았다.
 - **벡터 Appearance 편집기 Tasks 10–12 — 호스트/적응형 셸/인스펙터 구현 완료** (2026-09-02, Codex): 순수 제스처 reducer와 새 `VectorCanvasHost`를 추가해 새 편집 경로의 포인터·렌더 소유자를 하나로 만들고, geometry cache를 프레임 간 유지한다. 선택 핸들·라쏘·이동/축소/회전·유일 ID 지우개·핀치/팬은 제스처 종료 때만 하나의 편집 명령으로 커밋한다. 화면 폭 720dp 이상 가로에서는 오른쪽 인스펙터, 그 외에는 드래그 가능한 하단 인스펙터를 쓰며 canvas/appearance 슬롯이 같은 editor state를 계속 공유한다. Appearance는 선택/기본/혼합/legacy/누락 브러시/열림 상태를 순수 projection으로 표시하고, 닫기/열기는 사용자가 명시적으로 누른 선택 legacy 객체만 변환해 undo 가능하다. 기존 `VectorCanvasScreen`의 `VectorBrushView` 호출은 Task 13이 v2 load/autosave/export까지 한 번에 연결할 때까지 그대로 두고 compatibility class에 deprecated 표시만 했다. vector 테스트 179개 0 failures 및 `compileDebugKotlin` 성공.
 - **벡터 패스 Appearance 편집기 재설계 승인 및 설계 완료** (2026-09-01, Codex): 현재 벡터
   모드가 Illustrator식 패스 편집기가 아니라 굵기가 구워진 리본, 자기교차 Fill, 반복 스탬프와
@@ -1678,9 +1680,7 @@
   흰색(#FFFFFF)으로 변경(로고가 검정 위주라 대비 확보). `assembleDebug` 빌드 검증 완료.
 
 ## Next (Phase 2~4)
-- 승인된 벡터 Appearance 편집기 설계의 상세 구현 계획은
-  `docs/superpowers/plans/2026-09-01-vector-appearance-editor.md`에 기록한다. 실행 방식이 정해지면
-  v1 불변 테스트부터 TDD로 14개 태스크를 순서대로 수행한다.
+- 벡터 Appearance 편집기는 자동 검증까지 완료됐다. 다음에는 정상 에뮬레이터/실기기에서 portrait bottom sheet, landscape inspector, S Pen, two-finger viewport, SVG selected/all export와 Firebase v1/v2 round trip을 수동 확인한다.
 - 읽기모드 신버전을 에뮬레이터/실기기에서 세로 왕복, 가로 두 페이지 왕복, 각 캔버스 비율별로 시각 확인한다.
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
@@ -1724,6 +1724,7 @@
 - 버전 매 업로드마다 bump + 새 태그(vX.Y.Z), 덮어쓰기 금지.
 
 ## Open / Blockers
+- **벡터 Appearance 수동 검증 미실행**: 이번 rollout은 unit/integration·APK·lint만 검증했다. 에뮬레이터/실기기의 portrait·landscape, S Pen, touch selection/transform, Art/Pattern 실제 SVG, local v1 SHA-256/mtime와 remote `vectorCanvasV2` 생성, Firebase v1/v2 왕복은 아직 실행하지 않았다. 따라서 수동 성공을 주장하지 않는다.
 - **이미 원격까지 덮인 일기**: 잘못된 첫 복구본이 다음 앱 시작 때 Firebase에 이미 push됐다면 RTDB
   현재 노드에는 이전 버전이 없어 자동 rollback으로 되살릴 수 없다. 다른 기기에 남은 로컬 원본이나
   별도 백업이 필요하다. 원격이 아직 이전 합성본이면 이번 1회 rollback이 자동으로 되받는다.
