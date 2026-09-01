@@ -2,6 +2,8 @@ package com.g1.sketchbook.vector
 
 import android.content.Context
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlin.random.Random
 
 private fun String.jsonEscaped(): String = buildString {
@@ -63,15 +65,24 @@ fun decodeVectorBrushProfile(json: String): VectorBrushProfile? = runCatching {
 
 /** Typed profile persistence. Legacy stamps stay in [StampBrushRepository]. */
 class VectorBrushRepository(context: Context) {
+    private val context = context
     private val root = File(context.filesDir, "vector_brushes_v2").apply { mkdirs() }
-    private fun file(id: String) = File(root, "$id.json")
-    fun list(): List<VectorBrushProfile> = root.listFiles()?.mapNotNull { decodeVectorBrushProfile(it.readText()) } ?: emptyList()
+    private fun file(id: String) = File(root, vectorBrushFileName(id))
+    fun list(): List<VectorBrushProfile> {
+        val typed = root.listFiles()?.mapNotNull { decodeVectorBrushProfile(it.readText()) } ?: emptyList()
+        val byId = typed.associateBy { it.id }.toMutableMap()
+        StampBrushRepository(context).list().forEach { legacy ->
+            if (legacy.id !in byId) byId[legacy.id] = legacy.copy(originalSvg = StampBrushRepository(context).originalSvgText(legacy.id).orEmpty())
+        }
+        return byId.values.toList()
+    }
     fun get(id: String): VectorBrushProfile? = file(id).takeIf { it.exists() }?.let { decodeVectorBrushProfile(it.readText()) }
+        ?: StampBrushRepository(context).get(id)?.let { it.copy(originalSvg = StampBrushRepository(context).originalSvgText(id).orEmpty()) }
     fun importArt(name: String, svgText: String): ArtBrushProfile? = parseSvgArtDocument(svgText)?.let { shapes ->
-        ArtBrushProfile(newId("art"), name, normalizeArtBrush(ArtBrushProfile("", name, shapes, svgText)).shapes, svgText).also { file(it.id).writeText(encodeVectorBrushProfile(it)) }
+        ArtBrushProfile(newId("art"), name, normalizeArtBrush(ArtBrushProfile("", name, shapes, svgText)).shapes, svgText).also { writeProfile(it) }
     }
     fun importPattern(name: String, svgText: String): PatternBrushProfile? = parseSvgDocument(svgText)?.let { shapes ->
-        PatternBrushProfile(newId("pattern"), name, shapes, originalSvg = svgText).also { file(it.id).writeText(encodeVectorBrushProfile(it)) }
+        PatternBrushProfile(newId("pattern"), name, shapes, originalSvg = svgText).also { writeProfile(it) }
     }
     fun importFromRemote(id: String, name: String, type: String?, svgText: String, spacingPx: Float = 24f, sizePx: Float = 32f): VectorBrushProfile? {
         val kind = when (type) { null, "PATTERN" -> VectorBrushKind.PATTERN; "ART" -> VectorBrushKind.ART; else -> return null }
@@ -79,7 +90,19 @@ class VectorBrushRepository(context: Context) {
             val normalized = normalizeArtBrush(ArtBrushProfile(id, name, raw, svgText))
             normalized
         } else parseSvgDocument(svgText)?.let { PatternBrushProfile(id, name, it, spacingPx, sizePx, svgText) }
-        return profile?.also { file(id).writeText(encodeVectorBrushProfile(it)) }
+        return profile?.takeIf { writeProfile(it) }
+    }
+    private fun writeProfile(profile: VectorBrushProfile): Boolean {
+        val target = file(profile.id); val temp = File(root, ".${vectorBrushFileName(profile.id)}.tmp")
+        return runCatching {
+            temp.writeText(encodeVectorBrushProfile(profile))
+            check(decodeVectorBrushProfile(temp.readText())?.id == profile.id)
+            runCatching { Files.move(temp.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING) }
+                .getOrElse { Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING) }
+            true
+        }.getOrElse { temp.delete(); false }
     }
     private fun newId(prefix: String) = "${prefix}_" + (1..8).map { "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Random.nextInt(32)] }.joinToString("")
 }
+
+fun vectorBrushFileName(id: String): String = "brush_" + id.toByteArray(Charsets.UTF_8).joinToString("") { "%02x".format(it.toInt() and 0xff) } + ".json"
