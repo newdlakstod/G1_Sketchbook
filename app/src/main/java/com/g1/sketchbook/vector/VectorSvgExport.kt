@@ -69,6 +69,76 @@ fun vectorPageToSvg(page: VectorPage, region: Bounds, stampBrushes: Map<String, 
     return sb.toString()
 }
 
+/**
+ * Exports a mixed v2 document. Legacy objects intentionally delegate to [vectorPageToSvg] and
+ * contribute its unchanged inner markup; editable objects use [renderedPolygons], the same
+ * expanded document-coordinate shapes used for drawing, bounds and hit-testing.
+ */
+fun vectorDocumentToSvg(
+    document: VectorDocument,
+    region: Bounds,
+    profiles: Map<String, VectorBrushProfile> = emptyMap(),
+): String {
+    val width = region.width
+    val height = region.height
+    val sb = StringBuilder()
+    sb.append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"").append(width)
+        .append("\" height=\"").append(height)
+        .append("\" viewBox=\"0 0 ").append(width).append(' ').append(height).append("\">")
+    for (objectPath in document.objects) {
+        when (objectPath) {
+            is LegacyStrokeObject -> sb.append(legacySvgInner(objectPath, region, profiles))
+            is EditablePathObject -> appendEditableSvg(sb, objectPath, region, profiles)
+        }
+    }
+    sb.append("</svg>")
+    return sb.toString()
+}
+
+private fun legacySvgInner(
+    objectPath: LegacyStrokeObject,
+    region: Bounds,
+    profiles: Map<String, VectorBrushProfile>,
+): String = vectorPageToSvg(
+    VectorPage(listOf(objectPath.stroke)),
+    region,
+    profiles.filterValues { it is PatternBrushProfile }.mapValues { it.value as PatternBrushProfile },
+).substringAfter('>').substringBeforeLast("</svg>")
+
+private fun appendEditableSvg(
+    sb: StringBuilder,
+    objectPath: EditablePathObject,
+    region: Bounds,
+    profiles: Map<String, VectorBrushProfile>,
+) {
+    val geometry = renderedPolygons(objectPath, profiles)
+    if (objectPath.appearance.fill.enabled && shapeTouchesRegion(geometry.fill, region)) {
+        appendRolePath(sb, geometry.fill, region, "fill", objectPath.appearance.fill.color)
+    }
+    if (objectPath.appearance.stroke.enabled) {
+        geometry.strokeShapes.filter { shapeTouchesRegion(it, region) }.forEach { shape ->
+            appendRolePath(sb, shape, region, "stroke", objectPath.appearance.stroke.color)
+        }
+    }
+}
+
+private fun appendRolePath(sb: StringBuilder, shape: List<Point>, region: Bounds, role: String, color: Long) {
+    if (shape.size < 2) return
+    sb.append("<path data-role=\"").append(role).append("\" d=\"M")
+    shape.forEachIndexed { index, point ->
+        val x = point.x - region.minX
+        val y = point.y - region.minY
+        if (index == 0) sb.append(x).append(',').append(y) else sb.append(" L").append(x).append(',').append(y)
+    }
+    sb.append(" Z\" fill=\"").append(colorHex(color)).append("\"/>")
+}
+
+private fun shapeTouchesRegion(shape: List<Point>, region: Bounds): Boolean {
+    val bounds = pointsBounds(shape) ?: return false
+    return bounds.maxX >= region.minX && bounds.minX <= region.maxX &&
+        bounds.maxY >= region.minY && bounds.minY <= region.maxY
+}
+
 private fun colorHex(argb: Long): String {
     val rgb = argb.toInt() and 0xFFFFFF
     return "#" + rgb.toString(16).padStart(6, '0')

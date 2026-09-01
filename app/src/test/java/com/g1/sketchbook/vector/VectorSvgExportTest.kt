@@ -5,6 +5,19 @@ import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 
 class VectorSvgExportTest {
+    @Test fun openFillSvgClosesFillButLeavesBasicStrokeOpen() {
+        val openFilled = editablePath("open").copy(
+            geometry = PathGeometry(listOf(PathPoint(0f, 0f, 1f), PathPoint(50f, 0f, 1f), PathPoint(50f, 50f, 1f))),
+            appearance = PathAppearance(fill = FillStyle(true, 0xFFFFFFFF), stroke = StrokeStyle()),
+        )
+
+        val svg = vectorDocumentToSvg(VectorDocument(objects = listOf(openFilled)), Bounds(0f, 0f, 100f, 100f), emptyMap())
+
+        assertTrue(svg.contains("data-role=\"fill\""))
+        assertTrue(svg.contains(" Z\" fill="))
+        assertTrue(svg.contains("data-role=\"stroke\""))
+    }
+
     @Test fun emptyPageIsAnEmptySvgCanvas() {
         val svg = vectorPageToSvg(VectorPage(emptyList()), Bounds(0f, 0f, 1024f, 1024f))
         assertTrue(svg.startsWith("<svg"))
