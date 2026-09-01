@@ -4,6 +4,7 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **벡터 Appearance 편집기 Tasks 10–12 — 호스트/적응형 셸/인스펙터 구현 완료** (2026-09-02, Codex): 순수 제스처 reducer와 새 `VectorCanvasHost`를 추가해 새 편집 경로의 포인터·렌더 소유자를 하나로 만들고, geometry cache를 프레임 간 유지한다. 선택 핸들·라쏘·이동/축소/회전·유일 ID 지우개·핀치/팬은 제스처 종료 때만 하나의 편집 명령으로 커밋한다. 화면 폭 720dp 이상 가로에서는 오른쪽 인스펙터, 그 외에는 드래그 가능한 하단 인스펙터를 쓰며 canvas/appearance 슬롯이 같은 editor state를 계속 공유한다. Appearance는 선택/기본/혼합/legacy/누락 브러시/열림 상태를 순수 projection으로 표시하고, 닫기/열기는 사용자가 명시적으로 누른 선택 legacy 객체만 변환해 undo 가능하다. 기존 `VectorCanvasScreen`의 `VectorBrushView` 호출은 Task 13이 v2 load/autosave/export까지 한 번에 연결할 때까지 그대로 두고 compatibility class에 deprecated 표시만 했다. vector 테스트 179개 0 failures 및 `compileDebugKotlin` 성공.
 - **벡터 패스 Appearance 편집기 재설계 승인 및 설계 완료** (2026-09-01, Codex): 현재 벡터
   모드가 Illustrator식 패스 편집기가 아니라 굵기가 구워진 리본, 자기교차 Fill, 반복 스탬프와
   라쏘 내보내기가 한 화면에 얽힌 구조임을 감사했다. 사용자는 선택 패스와 새 패스 기본값을 같은
