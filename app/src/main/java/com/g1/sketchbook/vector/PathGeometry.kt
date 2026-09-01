@@ -10,8 +10,8 @@ import kotlin.math.sqrt
 
 /** Returns the polygon used for fill. Open paths are closed in this returned value only. */
 fun fillPolygon(geometry: PathGeometry): List<Point> {
-    if (geometry.points.size < 3) return emptyList()
-    val polygon = geometry.points.map { Point(it.x, it.y) }.toMutableList()
+    val polygon = usablePoints(geometry).map(::pointOf).toMutableList()
+    if (polygon.size < 3) return emptyList()
     if (polygon.first() != polygon.last()) polygon += polygon.first()
     return polygon
 }
@@ -33,7 +33,11 @@ fun basicStrokeOutline(geometry: PathGeometry, stroke: StrokeStyle): List<Point>
     val points = usablePoints(geometry)
     if (points.size < 2) return emptyList()
 
-    val closed = geometry.closed && points.size > 2
+    // A two-point cycle has no area and no stable pair of closed boundaries. Returning no outline is
+    // safer than treating the model-closed path as open and accidentally adding endpoint caps.
+    if (geometry.closed && points.size < 3) return emptyList()
+
+    val closed = geometry.closed
     val width = stroke.width.takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
     val tangents = List(if (closed) points.size else points.size - 1) { index ->
         val start = points[index]

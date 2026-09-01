@@ -18,6 +18,21 @@ class PathGeometryTest {
         assertFalse(geometry.closed)
     }
 
+    @Test fun fillPolygonDropsNonFinitePointsBeforeVirtuallyClosing() {
+        val geometry = PathGeometry(
+            listOf(
+                PathPoint(0f, 0f, 1f), PathPoint(Float.NaN, 1f, 1f),
+                PathPoint(10f, 0f, 1f), PathPoint(10f, 10f, 1f),
+                PathPoint(Float.POSITIVE_INFINITY, 2f, 1f),
+            ),
+        )
+
+        assertEquals(
+            listOf(Point(0f, 0f), Point(10f, 0f), Point(10f, 10f), Point(0f, 0f)),
+            fillPolygon(geometry),
+        )
+    }
+
     @Test fun closedPathAddsLastToFirstStrokeSegment() {
         val geometry = PathGeometry(
             listOf(PathPoint(0f, 0f, 1f), PathPoint(10f, 0f, .5f), PathPoint(10f, 10f, 1f)),
@@ -49,6 +64,18 @@ class PathGeometryTest {
 
         assertTrue(outline.contains(Point(12f, -2f)))
         assertFalse(outline.contains(Point(10f, -2f)))
+    }
+
+    @Test fun miterJoinFallsBackToBevelWhenIntersectionExceedsLimit() {
+        val outline = basicStrokeOutline(
+            PathGeometry(
+                listOf(PathPoint(0f, 0f, 1f), PathPoint(10f, 0f, 1f), PathPoint(9.9f, .01f, 1f)),
+            ),
+            StrokeStyle(width = 4f, cap = VectorCap.BUTT, join = VectorJoin.MITER),
+        )
+
+        assertTrue(outline.contains(Point(10f, -2f)))
+        assertTrue(outline.any { abs(it.x - 10.199008f) < .001f && abs(it.y - 1.990074f) < .001f })
     }
 
     @Test fun roundJoinAddsArcPointBetweenOuterCornerEdges() {
@@ -85,6 +112,33 @@ class PathGeometryTest {
 
         assertEquals(butt, square)
         assertEquals(butt, round)
+    }
+
+    @Test fun closedTwoPointPathHasNoRoundOrSquareEndpointCaps() {
+        val geometry = PathGeometry(listOf(PathPoint(0f, 0f, 1f), PathPoint(10f, 0f, 1f)), closed = true)
+        val closedButt = basicStrokeOutline(geometry, StrokeStyle(width = 4f, cap = VectorCap.BUTT))
+        val closedSquare = basicStrokeOutline(geometry, StrokeStyle(width = 4f, cap = VectorCap.SQUARE))
+        val closedRound = basicStrokeOutline(geometry, StrokeStyle(width = 4f, cap = VectorCap.ROUND))
+        val openSquare = basicStrokeOutline(geometry.copy(closed = false), StrokeStyle(width = 4f, cap = VectorCap.SQUARE))
+
+        assertEquals(emptyList(), closedButt)
+        assertEquals(closedButt, closedSquare)
+        assertEquals(closedButt, closedRound)
+        assertTrue(openSquare.isNotEmpty())
+    }
+
+    @Test fun openOutlineDoesNotUseLastPointAsAClosingStrokeEdge() {
+        val outline = basicStrokeOutline(
+            PathGeometry(
+                listOf(PathPoint(0f, 0f, 1f), PathPoint(10f, 0f, 1f), PathPoint(10f, 10f, 1f)),
+                closed = false,
+            ),
+            StrokeStyle(width = 4f, cap = VectorCap.BUTT, join = VectorJoin.BEVEL),
+        )
+
+        assertTrue(outline.contains(Point(0f, 2f)))
+        assertTrue(outline.contains(Point(0f, -2f)))
+        assertFalse(outline.any { it.x < 0f && it.y > 0f })
     }
 
     @Test fun duplicatePointsProduceOnlyFiniteOutlineCoordinates() {
