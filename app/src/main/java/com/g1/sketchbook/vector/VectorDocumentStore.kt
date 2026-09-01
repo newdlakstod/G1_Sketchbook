@@ -65,7 +65,9 @@ class VectorDocumentStore(
             // Move the known-good primary aside first. A failed final move can then restore it or load it from .previous.
             check(fileSystem.moveAtomically(v2, previous)) { "Could not preserve existing v2" }
             if (!fileSystem.moveAtomically(temporary, v2)) {
-                fileSystem.moveAtomically(previous, v2)
+                // Cleanup is safe only once the prior file is back at primary. If restore is interrupted,
+                // retain both artifacts so load() can recover the valid .previous document.
+                if (fileSystem.moveAtomically(previous, v2)) fileSystem.delete(temporary)
                 throw IllegalStateException("Could not atomically replace v2")
             }
             check(readDocument(v2) == document) { "Replaced v2 failed validation" }
@@ -78,7 +80,7 @@ class VectorDocumentStore(
 
     private fun readDocument(file: File, legacy: Boolean = false): VectorDocument? = runCatching {
         if (!fileSystem.exists(file)) null
-        else if (legacy) vectorPageFromJson(fileSystem.readText(file))?.let(::legacyPageAsDocument)
+        else if (legacy) decodeCanonicalLegacyPage(fileSystem.readText(file))?.let(::legacyPageAsDocument)
         else decodeVectorDocument(fileSystem.readText(file))
     }.getOrNull()
 }

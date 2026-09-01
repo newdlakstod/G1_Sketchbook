@@ -48,17 +48,31 @@ class VectorDocumentCodecTest {
         assertEquals(legacyPageAsDocument(legacy), decodeStoredVectorDocument("{broken", legacy.toJson()))
     }
 
-    @Test fun decoderRejectsInvalidVersionsIdsAndLegacyPointCounts() {
+    @Test fun decoderRejectsInvalidVersionsBlankIdsAndLegacyPointCounts() {
         assertNull(decodeVectorDocument("{\"version\":3,\"objects\":[]}"))
         assertNull(decodeVectorDocument("{\"version\":2,\"objects\":[{\"type\":\"legacy\",\"id\":\"\",\"stroke\":{\"color\":1,\"points\":[{\"x\":0,\"y\":0,\"w\":1},{\"x\":1,\"y\":1,\"w\":1}],\"cap\":\"ROUND\",\"fillEnabled\":true,\"strokeColor\":null,\"strokeWidthPx\":2,\"brushProfileId\":null,\"fillColor\":null}}]}"))
         assertNull(decodeVectorDocument("{\"version\":2,\"objects\":[{\"type\":\"legacy\",\"id\":\"one\",\"stroke\":{\"color\":1,\"points\":[{\"x\":0,\"y\":0,\"w\":1}],\"cap\":\"ROUND\",\"fillEnabled\":true,\"strokeColor\":null,\"strokeWidthPx\":2,\"brushProfileId\":null,\"fillColor\":null}}]}"))
     }
 
-    @Test fun decoderRejectsNonFiniteNumbersAndInvalidEditableWidthFactors() {
-        val valid = encodeVectorDocument(VectorDocument(objects = listOf(editablePath("editable"))))
+    @Test fun decoderRejectsDuplicateObjectIds() {
+        assertNull(decodeVectorDocument("""{"version":2,"objects":[{"type":"legacy","id":"same","stroke":{"color":1,"points":[{"x":0,"y":0,"w":1},{"x":1,"y":1,"w":1}],"cap":"ROUND","fillEnabled":true,"strokeColor":null,"strokeWidthPx":2,"brushProfileId":null,"fillColor":null}},{"type":"legacy","id":"same","stroke":{"color":2,"points":[{"x":2,"y":2,"w":1},{"x":3,"y":3,"w":1}],"cap":"ROUND","fillEnabled":true,"strokeColor":null,"strokeWidthPx":2,"brushProfileId":null,"fillColor":null}}]}"""))
+    }
 
-        assertNull(decodeVectorDocument(valid.replace("\"widthFactor\":1.0", "\"widthFactor\":1e999")))
-        assertNull(decodeVectorDocument(valid.replace("\"widthFactor\":1.0", "\"widthFactor\":0.01")))
-        assertTrue(decodeVectorDocument(valid) != null)
+    @Test fun decoderRejectsMissingRequiredFieldsUnknownObjectTypesAndEnums() {
+        assertNull(decodeVectorDocument("""{"version":2,"objects":[{"type":"editable","id":"path","geometry":{"points":[{"x":0,"y":0,"widthFactor":1},{"x":1,"y":1,"widthFactor":0.5}],"closed":false},"appearance":{"fill":{"enabled":false,"color":1},"stroke":{"enabled":true,"color":1,"width":8,"cap":"ROUND","join":"ROUND"},"brush":{"kind":"BASIC","profileId":null}}}]}"""))
+        assertNull(decodeVectorDocument("""{"version":2,"objects":[{"type":"future","id":"path"}]}"""))
+        assertNull(decodeVectorDocument("""{"version":2,"objects":[{"type":"legacy","id":"old","stroke":{"color":1,"points":[{"x":0,"y":0,"w":1},{"x":1,"y":1,"w":1}],"cap":"TRIANGLE","fillEnabled":true,"strokeColor":null,"strokeWidthPx":2,"brushProfileId":null,"fillColor":null}}]}"""))
+    }
+
+    @Test fun decoderRejectsNonFiniteNumbersOutsideWidthFactorAndInvalidEditableWidthFactors() {
+        assertNull(decodeVectorDocument("""{"version":2,"objects":[{"type":"editable","id":"path","geometry":{"points":[{"x":0,"y":0,"widthFactor":1},{"x":1,"y":1,"widthFactor":0.01}],"closed":false},"appearance":{"fill":{"enabled":false,"color":1},"stroke":{"enabled":true,"color":1,"width":8,"cap":"ROUND","join":"ROUND"},"brush":{"kind":"BASIC","profileId":null}},"transform":{"translateX":0,"translateY":0,"scaleX":1,"scaleY":1,"rotationDegrees":0}}]}"""))
+        assertNull(decodeVectorDocument("""{"version":2,"objects":[{"type":"editable","id":"path","geometry":{"points":[{"x":0,"y":0,"widthFactor":1},{"x":1,"y":1,"widthFactor":0.5}],"closed":false},"appearance":{"fill":{"enabled":false,"color":1},"stroke":{"enabled":true,"color":1,"width":1e999,"cap":"ROUND","join":"ROUND"},"brush":{"kind":"BASIC","profileId":null}},"transform":{"translateX":0,"translateY":0,"scaleX":1,"scaleY":1,"rotationDegrees":0}}]}"""))
+        assertNull(decodeVectorDocument("""{"version":2,"objects":[{"type":"legacy","id":"old","stroke":{"color":1,"points":[{"x":1e999,"y":0,"w":1},{"x":1,"y":1,"w":1}],"cap":"ROUND","fillEnabled":true,"strokeColor":null,"strokeWidthPx":2,"brushProfileId":null,"fillColor":null}}]}"""))
+    }
+
+    @Test fun storedDecoderRejectsNonCanonicalOrInvalidLegacyBeforeFallback() {
+        assertNull(decodeStoredVectorDocument(null, "not-json-but-contains-\"strokes\""))
+        assertNull(decodeStoredVectorDocument(null, """{"strokes":[{"color":1,"points":[{"x":0,"y":0,"w":1}],"cap":"BUTT","fillEnabled":true,"strokeColor":-9223372036854775808,"strokeWidthPx":2.0}]}"""))
+        assertEquals(VectorDocument(objects = emptyList()), decodeStoredVectorDocument(null, "{\"strokes\":[]}"))
     }
 }

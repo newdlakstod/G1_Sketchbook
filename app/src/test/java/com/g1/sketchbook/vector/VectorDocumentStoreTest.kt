@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -24,6 +25,10 @@ class VectorDocumentStoreTest {
 
     @Test fun loadUsesPreviousValidV2WhenInterruptedReplacementLeavesPrimaryMissing() {
         val root = createTempDir(prefix = "vector-store-")
+        val v1 = File(root, "vector_canvas.json").apply {
+            writeText("interrupted legacy source")
+            setLastModified(765432L)
+        }
         val old = VectorDocument(objects = listOf(editablePath("old")))
         val new = VectorDocument(objects = listOf(editablePath("new")))
         VectorDocumentStore(root).saveV2(old)
@@ -35,6 +40,8 @@ class VectorDocumentStoreTest {
         assertEquals(old, VectorDocumentStore(root).load())
         assertNull(File(root, "vector_canvas_v2.json").takeIf { it.exists() })
         assertEquals(old, decodeVectorDocument(File(root, "vector_canvas_v2.previous").readText()))
+        assertEquals("interrupted legacy source", v1.readText())
+        assertEquals(765432L, v1.lastModified())
     }
 
     @Test fun replacementFailureRestoresPriorV2AndNeverAcceptsPartialNewData() {
@@ -53,6 +60,7 @@ class VectorDocumentStoreTest {
 
         assertEquals(old, VectorDocumentStore(root).load())
         assertEquals(old, decodeVectorDocument(File(root, "vector_canvas_v2.json").readText()))
+        assertFalse(File(root, "vector_canvas_v2.json.tmp").exists())
         assertEquals("legacy source", v1.readText())
         assertEquals(456789L, v1.lastModified())
     }

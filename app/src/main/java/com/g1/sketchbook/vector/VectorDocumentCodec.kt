@@ -41,7 +41,23 @@ fun decodeVectorDocument(text: String): VectorDocument? = runCatching {
 /** A valid v2 document always wins; invalid or missing v2 never causes a write to either source. */
 fun decodeStoredVectorDocument(v2Text: String?, legacyText: String?): VectorDocument? {
     v2Text?.let(::decodeVectorDocument)?.let { return it }
-    return legacyText?.let(::vectorPageFromJson)?.let(::legacyPageAsDocument)
+    return legacyText?.let(::decodeCanonicalLegacyPage)?.let(::legacyPageAsDocument)
+}
+
+/**
+ * v1's deployed parser intentionally accepts some incomplete input for historical compatibility.
+ * The v2 fallback boundary is stricter: only its byte-for-byte canonical source representation is
+ * admitted, and every rendered legacy stroke must contain finite geometry with two or more points.
+ */
+internal fun decodeCanonicalLegacyPage(text: String): VectorPage? {
+    val page = vectorPageFromJson(text) ?: return null
+    if (page.toJson() != text) return null
+    if (page.strokes.any { stroke ->
+            stroke.points.size < 2 || stroke.points.any { point ->
+                !point.x.isFinite() || !point.y.isFinite() || !point.w.isFinite()
+            }
+        }) return null
+    return page
 }
 
 private fun StringBuilder.appendLegacyObject(value: LegacyStrokeObject) {
