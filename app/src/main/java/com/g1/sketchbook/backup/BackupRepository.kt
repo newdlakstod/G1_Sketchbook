@@ -12,6 +12,15 @@ import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.min
 
+/** The exact relative Firebase write exercised by [BackupRepository.pushVectorDocument]. */
+internal data class VectorDocumentRemoteWrite(val path: String, val payload: Map<String, Any>)
+
+internal fun vectorDocumentRemoteWrite(bookId: String, documentJson: String, updatedAt: Long): VectorDocumentRemoteWrite =
+    VectorDocumentRemoteWrite(
+        path = "sketchbooks/$bookId/vectorCanvasV2",
+        payload = mapOf("updatedAt" to updatedAt, "document" to documentJson),
+    )
+
 /**
  * Google-account backup: personal sketchbooks, diary, and settings synced across a user's devices
  * via Firebase Realtime Database (base64-encoded JPEGs — no Firebase Storage, see
@@ -78,8 +87,8 @@ class BackupRepository {
 
     /** v2 remains a sibling of the deployed v1 `vectorCanvas` node. */
     fun pushVectorDocument(uid: String, bookId: String, documentJson: String, updatedAt: Long) {
-        root.child(uid).child("sketchbooks").child(bookId).child("vectorCanvasV2")
-            .setValue(mapOf("updatedAt" to updatedAt, "document" to documentJson))
+        val write = vectorDocumentRemoteWrite(bookId, documentJson, updatedAt)
+        root.child(uid).child(write.path).setValue(write.payload)
     }
 
     /** No tombstone needed here (unlike [deleteSketchbookCover]): the only caller is a page reorder,

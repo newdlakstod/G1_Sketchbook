@@ -44,6 +44,16 @@ class VectorDocumentStoreTest {
         assertEquals(765432L, v1.lastModified())
     }
 
+    @Test fun v2OnlyLoadNeverFallsBackToLegacyWhenPrimaryV2IsCorrupt() {
+        val root = createTempDir(prefix = "vector-store-")
+        File(root, "vector_canvas.json").writeText(VectorPage(emptyList()).toJson())
+        File(root, "vector_canvas_v2.json").writeText("{corrupt")
+        val store = VectorDocumentStore(root)
+
+        assertNull(store.loadV2())
+        assertNotNull(store.load())
+    }
+
     @Test fun replacementFailureRestoresPriorV2AndNeverAcceptsPartialNewData() {
         val root = createTempDir(prefix = "vector-store-")
         val v1 = File(root, "vector_canvas.json").apply {

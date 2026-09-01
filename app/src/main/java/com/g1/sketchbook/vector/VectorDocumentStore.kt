@@ -47,10 +47,16 @@ class VectorDocumentStore(
     private val temporary = File(bookDir, "vector_canvas_v2.json.tmp")
     private val previous = File(bookDir, "vector_canvas_v2.previous")
 
-    fun load(): VectorDocument? {
+    /** Reads only v2 files, including a valid interrupted-replacement backup, never the v1 fallback. */
+    fun loadV2(): VectorDocument? {
         readDocument(v2)?.let { return it }
         // A process can die after primary -> previous but before tmp -> primary. The valid prior v2 wins over v1.
         readDocument(previous)?.let { return it }
+        return null
+    }
+
+    fun load(): VectorDocument? {
+        loadV2()?.let { return it }
         return readDocument(v1, legacy = true)
     }
 

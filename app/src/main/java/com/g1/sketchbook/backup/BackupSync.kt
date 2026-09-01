@@ -91,7 +91,7 @@ private fun reconcileStampBrushes(context: Context, backup: BackupRepository, ui
 internal fun reconcileVectorDocument(
     localV2At: Long?,
     remoteV2: RemoteVectorDocument?,
-    loadLocal: () -> VectorDocument?,
+    loadLocalV2: () -> VectorDocument?,
     saveLocal: (VectorDocument, Long) -> Unit,
     pushRemote: (String, Long) -> Unit,
 ): SyncAction {
@@ -100,9 +100,9 @@ internal fun reconcileVectorDocument(
     val action = decideVectorDocumentSyncAction(localV2At, remoteV2?.updatedAt, remoteIsValid)
     when (action) {
         SyncAction.PULL -> saveLocal(requireNotNull(decodedRemote), requireNotNull(remoteV2).updatedAt)
-        SyncAction.PUSH -> loadLocal()?.let { document ->
+        SyncAction.PUSH -> loadLocalV2()?.let { document ->
             pushRemote(encodeVectorDocument(document), requireNotNull(localV2At))
-        }
+        } ?: return SyncAction.NOOP
         SyncAction.DELETE_LOCAL, SyncAction.NOOP -> {}
     }
     return action
@@ -153,7 +153,7 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
                 reconcileVectorDocument(
                     localV2At = localV2At,
                     remoteV2 = remoteV2,
-                    loadLocal = { repo.loadVectorDocument(id) },
+                    loadLocalV2 = { repo.loadVectorDocumentV2(id) },
                     saveLocal = { document, updatedAt ->
                         repo.saveVectorDocument(id, document)
                         repo.setVectorDocumentUpdatedAt(id, updatedAt)
