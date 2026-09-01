@@ -11,11 +11,18 @@ import kotlin.math.sin
  *  [normalizeShapes]로 정규화(경계상자 중심 원점, 가장 긴 변 길이 1)해서 반환 — 도형이 하나도
  *  없거나 `<svg` 태그 자체가 없으면 null. */
 fun parseSvgDocument(svgText: String): List<List<Point>>? {
+    return parseSvgArtDocument(svgText)?.let(::normalizeShapes)
+}
+
+/**
+ * Parses the same supported SVG subset as [parseSvgDocument], but preserves the source coordinate
+ * system for Art-brush import. Legacy stamp parsing remains normalized by [parseSvgDocument].
+ */
+fun parseSvgArtDocument(svgText: String): List<List<Point>>? {
     if (!svgText.contains("<svg")) return null
     val shapes = mutableListOf<List<Point>>()
     parseElements(svgText, 1f, 0f, 0f, shapes)
-    if (shapes.isEmpty()) return null
-    return normalizeShapes(shapes)
+    return shapes.takeIf { it.isNotEmpty() }
 }
 
 private val startTagRegex = Regex("<(path|rect|circle|ellipse|g)\\b([^>]*?)(/?)>")
