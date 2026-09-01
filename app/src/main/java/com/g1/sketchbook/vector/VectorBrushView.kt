@@ -18,6 +18,7 @@ import kotlin.math.min
  *  [tool]에 따라 지우기/라쏘 선택 또는 이동), 두 손가락은 핀치 확대·축소와 패닝(단, 라쏘로 선택한
  *  영역 안을 누른 채면 캔버스가 아니라 그 선택을 크기조절·이동한다) — 기존 래스터 `BrushView`의
  *  Matrix 기반 팬/줌·올가미 선택 이동 패턴(disp/inv/userM/selectionTransform)을 그대로 이식했다. */
+@Deprecated("Use VectorCanvasHost for new editor wiring; retained until Task 13 migrates the screen")
 class VectorBrushView(context: Context) : View(context) {
     /** [LASSO_RESIZE]는 이번 스펙(캔버스 구조 개편)에서는 자리만 마련해 두는 도구 모드다 — 실제
      *  동작(선택한 획들의 굵기를 균일하게 만들고 슬라이더로 조절)은 다음 스펙(편집 기능)에서

@@ -44,6 +44,14 @@ class VectorEditorState(initialDocument: VectorDocument) {
 
     fun setTool(tool: VectorTool) = updateSnapshot(tool = tool)
 
+    /** Mixed selected paths deterministically move toward closed; only an all-closed selection opens. */
+    fun toggleSelectedClosed() {
+        val selected = _snapshot.value.document.objects.filter { it.id in _snapshot.value.selectedIds }
+        if (selected.isEmpty()) return
+        val target = selected.any { (it as? EditablePathObject)?.geometry?.closed != true }
+        dispatch(ChangeClosedState(_snapshot.value.selectedIds, target))
+    }
+
     fun applyAppearance(edit: AppearanceEdit) {
         if (_snapshot.value.selectedIds.isEmpty()) {
             val updated = applyAppearanceEdit(_snapshot.value.defaultAppearance, edit)

@@ -30,7 +30,14 @@ data class ChangeAppearance(val ids: Set<String>, val edit: AppearanceEdit) : Ed
 
 data class ChangeClosedState(val ids: Set<String>, val closed: Boolean) : EditorCommand {
     override fun apply(document: VectorDocument): VectorDocument = document.copy(objects = document.objects.map { objectPath ->
-        if (objectPath is EditablePathObject && objectPath.id in ids) objectPath.copy(geometry = objectPath.geometry.copy(closed = closed)) else objectPath
+        if (objectPath.id !in ids) objectPath else when (objectPath) {
+            is EditablePathObject -> objectPath.copy(geometry = objectPath.geometry.copy(closed = closed))
+            // Legacy data is intentionally preserved until this explicit user command requests a
+            // closed-state edit. The conversion retains the stable object ID.
+            is LegacyStrokeObject -> convertLegacyObject(objectPath).let { editable ->
+                editable.copy(geometry = editable.geometry.copy(closed = closed))
+            }
+        }
     })
     override fun revert(document: VectorDocument): VectorDocument = document
 }

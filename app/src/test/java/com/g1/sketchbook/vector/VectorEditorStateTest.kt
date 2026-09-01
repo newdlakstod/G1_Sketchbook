@@ -97,4 +97,14 @@ class VectorEditorStateTest {
         assertFalse(state.snapshot.value.canRedo)
         assertTrue(state.snapshot.value.document.objects.any { it.id == "c" })
     }
+
+    @Test fun closeActionConvertsOnlySelectedLegacyObjectsAndUndoRestoresThem() {
+        val state = VectorEditorState(VectorDocument(objects = listOf(legacyLine("a"), legacyLine("b"))))
+        state.select(setOf("a")); state.toggleSelectedClosed()
+
+        assertTrue(assertIs<EditablePathObject>(state.snapshot.value.document.objects[0]).geometry.closed)
+        assertIs<LegacyStrokeObject>(state.snapshot.value.document.objects[1])
+        state.undo()
+        assertIs<LegacyStrokeObject>(state.snapshot.value.document.objects[0])
+    }
 }
