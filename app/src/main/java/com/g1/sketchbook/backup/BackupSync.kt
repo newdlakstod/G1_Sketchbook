@@ -9,6 +9,9 @@ import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.vector.StampBrushRepository
+import com.g1.sketchbook.vector.VectorDocument
+import com.g1.sketchbook.vector.decodeVectorDocument
+import com.g1.sketchbook.vector.encodeVectorDocument
 import com.g1.sketchbook.vector.toJson
 import com.g1.sketchbook.vector.vectorPageFromJson
 
@@ -80,6 +83,31 @@ private fun reconcileStampBrushes(context: Context, backup: BackupRepository, ui
     }
 }
 
+/**
+ * Reconciles the independent v2 sibling without ever consulting the v1 fallback. The callbacks
+ * keep this policy pure and make the ordering guarantee testable: a malformed remote payload is
+ * rejected before a local document is loaded, saved, or pushed.
+ */
+internal fun reconcileVectorDocument(
+    localV2At: Long?,
+    remoteV2: RemoteVectorDocument?,
+    loadLocal: () -> VectorDocument?,
+    saveLocal: (VectorDocument, Long) -> Unit,
+    pushRemote: (String, Long) -> Unit,
+): SyncAction {
+    val decodedRemote = remoteV2?.let { decodeVectorDocument(it.json) }
+    val remoteIsValid = remoteV2 == null || (remoteV2.updatedAt > 0L && decodedRemote != null)
+    val action = decideVectorDocumentSyncAction(localV2At, remoteV2?.updatedAt, remoteIsValid)
+    when (action) {
+        SyncAction.PULL -> saveLocal(requireNotNull(decodedRemote), requireNotNull(remoteV2).updatedAt)
+        SyncAction.PUSH -> loadLocal()?.let { document ->
+            pushRemote(encodeVectorDocument(document), requireNotNull(localV2At))
+        }
+        SyncAction.DELETE_LOCAL, SyncAction.NOOP -> {}
+    }
+    return action
+}
+
 private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepository, uid: String, remote: List<RemoteSketchbook>) {
     val local = repo.list().filter { !it.shared }
     val remoteById = remote.associateBy { it.id }
@@ -116,15 +144,33 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
         }
 
         if (l?.vector == true || r?.vector == true) {
-            val localAt = repo.vectorCanvasUpdatedAt(id).takeIf { it > 0L }
-            when (decideSyncAction(localAt, r?.vectorCanvas?.first)) {
-                SyncAction.PULL -> r?.vectorCanvas?.let { (remoteAt, strokesJson) ->
-                    vectorPageFromJson(strokesJson)?.let { repo.saveVectorCanvas(id, it); repo.setVectorCanvasUpdatedAt(id, remoteAt) }
+            // `loadVectorDocument()` can return a v1 fallback, so v2 presence comes only from its
+            // dedicated file timestamp. A present remote sibling always owns this branch, even when
+            // malformed: invalid data must be a no-op rather than accidentally synchronizing v1.
+            val localV2At = repo.vectorDocumentUpdatedAt(id).takeIf { it > 0L }
+            val remoteV2 = r?.vectorCanvasV2
+            if (localV2At != null || remoteV2 != null) {
+                reconcileVectorDocument(
+                    localV2At = localV2At,
+                    remoteV2 = remoteV2,
+                    loadLocal = { repo.loadVectorDocument(id) },
+                    saveLocal = { document, updatedAt ->
+                        repo.saveVectorDocument(id, document)
+                        repo.setVectorDocumentUpdatedAt(id, updatedAt)
+                    },
+                    pushRemote = { json, updatedAt -> backup.pushVectorDocument(uid, id, json, updatedAt) },
+                )
+            } else {
+                val localAt = repo.vectorCanvasUpdatedAt(id).takeIf { it > 0L }
+                when (decideSyncAction(localAt, r?.vectorCanvas?.first)) {
+                    SyncAction.PULL -> r?.vectorCanvas?.let { (remoteAt, strokesJson) ->
+                        vectorPageFromJson(strokesJson)?.let { repo.saveVectorCanvas(id, it); repo.setVectorCanvasUpdatedAt(id, remoteAt) }
+                    }
+                    SyncAction.PUSH -> repo.loadVectorCanvas(id)?.let {
+                        backup.pushVectorCanvas(uid, id, it.toJson(), repo.vectorCanvasUpdatedAt(id))
+                    }
+                    else -> {}
                 }
-                SyncAction.PUSH -> repo.loadVectorCanvas(id)?.let {
-                    backup.pushVectorCanvas(uid, id, it.toJson(), repo.vectorCanvasUpdatedAt(id))
-                }
-                else -> {}
             }
         } else {
             val pageCount = maxOf(l?.pageCount ?: 0, r?.pageCount ?: MAX_PAGES)

@@ -18,7 +18,12 @@ data class RemoteSketchbook(
     val vectorCanvasH: Int? = null,
     /** 벡터 책 하나 = 캔버스 하나이므로 더 이상 페이지 인덱스가 없다. */
     val vectorCanvas: Pair<Long, String>? = null, // (updatedAt, strokes json)
+    /** v1 [vectorCanvas]와 독립적으로 보관하는 편집 가능한 v2 문서. */
+    val vectorCanvasV2: RemoteVectorDocument? = null,
 )
+
+/** Firebase `vectorCanvasV2` sibling payload. */
+data class RemoteVectorDocument(val updatedAt: Long, val json: String)
 
 /** 공유 스케치북은 실제 그림이 아니라 "이 계정이 이 코드에 참여 중"이라는 사실만 계정 전체에
  *  동기화한다 — 그림 자체는 이미 ShareRepository의 실시간 세션으로 기기와 무관하게 공유되므로,
@@ -86,6 +91,18 @@ fun decideSyncAction(localUpdatedAt: Long?, remoteUpdatedAt: Long?, remoteDelete
         remoteUpdatedAt == localUpdatedAt -> SyncAction.NOOP
         else -> SyncAction.PUSH
     }
+}
+
+/** v2 vector documents never infer their local existence from a v1 fallback. An invalid remote
+ *  document is deliberately a no-op so it cannot overwrite local v2 data or wake the v1 branch. */
+fun decideVectorDocumentSyncAction(
+    localV2At: Long?,
+    remoteV2At: Long?,
+    remoteV2Valid: Boolean = true,
+): SyncAction {
+    if (!remoteV2Valid) return SyncAction.NOOP
+    if (localV2At == null && remoteV2At == null) return SyncAction.NOOP
+    return decideSyncAction(localV2At, remoteV2At)
 }
 
 /**

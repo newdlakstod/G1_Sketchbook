@@ -2,7 +2,9 @@ package com.g1.sketchbook.sketchbook
 
 import android.graphics.Bitmap
 import com.g1.sketchbook.backup.BackupRepository
+import com.g1.sketchbook.vector.VectorDocument
 import com.g1.sketchbook.vector.VectorPage
+import com.g1.sketchbook.vector.encodeVectorDocument
 import com.g1.sketchbook.vector.toJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -103,6 +105,24 @@ fun saveVectorCanvasSynced(scope: CoroutineScope, repo: SketchbookRepository, ba
     scope.launch(Dispatchers.IO) {
         repo.saveVectorCanvas(bookId, page)
         if (uid.isNotBlank()) backup.pushVectorCanvas(uid, bookId, page.toJson(), repo.vectorCanvasUpdatedAt(bookId))
+    }
+}
+
+/** v2 documents write their own local file and Firebase sibling, leaving v1 bytes and its remote
+ *  `vectorCanvas` node untouched. */
+fun saveVectorDocumentSynced(
+    scope: CoroutineScope,
+    repo: SketchbookRepository,
+    backup: BackupRepository,
+    uid: String,
+    bookId: String,
+    document: VectorDocument,
+) {
+    scope.launch(Dispatchers.IO) {
+        repo.saveVectorDocument(bookId, document)
+        if (uid.isNotBlank()) {
+            backup.pushVectorDocument(uid, bookId, encodeVectorDocument(document), repo.vectorDocumentUpdatedAt(bookId))
+        }
     }
 }
 

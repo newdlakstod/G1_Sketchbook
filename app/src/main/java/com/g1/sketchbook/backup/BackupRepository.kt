@@ -76,6 +76,12 @@ class BackupRepository {
             .setValue(mapOf("updatedAt" to updatedAt, "strokes" to strokesJson))
     }
 
+    /** v2 remains a sibling of the deployed v1 `vectorCanvas` node. */
+    fun pushVectorDocument(uid: String, bookId: String, documentJson: String, updatedAt: Long) {
+        root.child(uid).child("sketchbooks").child(bookId).child("vectorCanvasV2")
+            .setValue(mapOf("updatedAt" to updatedAt, "document" to documentJson))
+    }
+
     /** No tombstone needed here (unlike [deleteSketchbookCover]): the only caller is a page reorder,
      *  which immediately re-pushes the full new page set from the same device in the same operation —
      *  there's no window for another device to see a bare absence and misread it. */
@@ -167,6 +173,14 @@ class BackupRepository {
                 val strokes = vc.child("strokes").getValue(String::class.java)
                 if (updatedAt != null && strokes != null) updatedAt to strokes else null
             }
+            val vectorCanvasV2 = c.child("vectorCanvasV2").takeIf { it.exists() }?.let { vc ->
+                // Retain a present-but-malformed sibling as an invalid payload so reconciliation
+                // can make it a safe no-op rather than falling through to the v1 branch.
+                RemoteVectorDocument(
+                    updatedAt = vc.child("updatedAt").getValue(Long::class.java) ?: 0L,
+                    json = vc.child("document").getValue(String::class.java).orEmpty(),
+                )
+            }
             RemoteSketchbook(
                 id = id,
                 name = meta.child("name").getValue(String::class.java) ?: "",
@@ -187,6 +201,7 @@ class BackupRepository {
                 vectorCanvasW = meta.child("vectorCanvasW").getValue(Int::class.java)?.takeIf { it > 0 },
                 vectorCanvasH = meta.child("vectorCanvasH").getValue(Int::class.java)?.takeIf { it > 0 },
                 vectorCanvas = vectorCanvas,
+                vectorCanvasV2 = vectorCanvasV2,
             )
         }
 
