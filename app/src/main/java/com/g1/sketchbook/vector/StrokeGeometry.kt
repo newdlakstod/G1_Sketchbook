@@ -57,12 +57,16 @@ fun strokeOutline(points: List<VectorPoint>, cap: VectorCap = VectorCap.BUTT): L
  *  중간점 없이 바로 이어짐(직선), [VectorCap.SQUARE]는 바깥으로 [outward]만큼 나간 모서리 2개,
  *  [VectorCap.ROUND]는 매끄러운 호. */
 private fun capArc(p: VectorPoint, fromEdge: FloatArray, outward: FloatArray, cap: VectorCap): List<Point> {
-    val half = p.w / 2f
+    return capArc(Point(p.x, p.y), p.w / 2f, Point(fromEdge[0], fromEdge[1]), Point(outward[0], outward[1]), cap)
+}
+
+/** Shared by legacy and v2 Basic stroke outlines so open-path caps keep one exact construction. */
+internal fun capArc(p: Point, half: Float, fromEdge: Point, outward: Point, cap: VectorCap): List<Point> {
     return when (cap) {
         VectorCap.BUTT -> emptyList()
         VectorCap.SQUARE -> listOf(
-            Point(p.x + half * (fromEdge[0] + outward[0]), p.y + half * (fromEdge[1] + outward[1])),
-            Point(p.x + half * (-fromEdge[0] + outward[0]), p.y + half * (-fromEdge[1] + outward[1])),
+            Point(p.x + half * (fromEdge.x + outward.x), p.y + half * (fromEdge.y + outward.y)),
+            Point(p.x + half * (-fromEdge.x + outward.x), p.y + half * (-fromEdge.y + outward.y)),
         )
         VectorCap.ROUND -> {
             val steps = 8
@@ -70,8 +74,8 @@ private fun capArc(p: VectorPoint, fromEdge: FloatArray, outward: FloatArray, ca
                 val t = (i.toFloat() / steps) * Math.PI.toFloat()
                 val cosT = cos(t); val sinT = sin(t)
                 Point(
-                    p.x + half * (fromEdge[0] * cosT + outward[0] * sinT),
-                    p.y + half * (fromEdge[1] * cosT + outward[1] * sinT),
+                    p.x + half * (fromEdge.x * cosT + outward.x * sinT),
+                    p.y + half * (fromEdge.y * cosT + outward.y * sinT),
                 )
             }
         }
