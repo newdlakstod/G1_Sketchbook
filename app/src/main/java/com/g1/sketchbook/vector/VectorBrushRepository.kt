@@ -92,6 +92,23 @@ class VectorBrushRepository(context: Context) {
         } else parseSvgDocument(svgText)?.let { PatternBrushProfile(id, name, it, spacingPx, sizePx, svgText) }
         return profile?.takeIf { writeProfile(it) }
     }
+    /** Safe metadata mutations used by the appearance library. Legacy stamp profiles delegate to
+     * their existing repository; typed profiles retain their exact type and SVG data. */
+    fun rename(id: String, name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return false
+        val profile = file(id).takeIf { it.exists() }?.let { decodeVectorBrushProfile(it.readText()) }
+        if (profile != null) return when (profile) {
+            is ArtBrushProfile -> writeProfile(profile.copy(name = trimmed))
+            is PatternBrushProfile -> writeProfile(profile.copy(name = trimmed))
+        }
+        return StampBrushRepository(context).get(id)?.let { StampBrushRepository(context).rename(id, trimmed); true } ?: false
+    }
+    fun delete(id: String): Boolean {
+        val target = file(id)
+        if (target.exists()) return target.delete()
+        return StampBrushRepository(context).get(id)?.let { StampBrushRepository(context).delete(id); true } ?: false
+    }
     private fun writeProfile(profile: VectorBrushProfile): Boolean {
         val target = file(profile.id); val temp = File(root, ".${vectorBrushFileName(profile.id)}.tmp")
         return runCatching {
