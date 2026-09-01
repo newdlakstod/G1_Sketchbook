@@ -124,6 +124,7 @@ class BackupRepository {
             mapOf(
                 "name" to brush.name, "svgText" to brush.svgText,
                 "spacingPx" to brush.spacingPx, "sizePx" to brush.sizePx,
+                "type" to (brush.type ?: "PATTERN"),
                 "updatedAt" to brush.updatedAt, "deleted" to false,
             ),
         )
@@ -268,6 +269,7 @@ class BackupRepository {
                 sizePx = c.child("sizePx").getValue(Double::class.java)?.toFloat() ?: 32f,
                 updatedAt = c.child("updatedAt").getValue(Long::class.java) ?: 0L,
                 deleted = c.child("deleted").getValue(Boolean::class.java) ?: false,
+                type = c.child("type").getValue(String::class.java),
             )
         }
 

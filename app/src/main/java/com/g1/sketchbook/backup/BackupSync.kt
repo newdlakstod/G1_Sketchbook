@@ -9,6 +9,7 @@ import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
 import com.g1.sketchbook.vector.StampBrushRepository
+import com.g1.sketchbook.vector.VectorBrushRepository
 import com.g1.sketchbook.vector.VectorDocument
 import com.g1.sketchbook.vector.decodeVectorDocument
 import com.g1.sketchbook.vector.encodeVectorDocument
@@ -30,6 +31,7 @@ suspend fun reconcileBackup(context: Context, uid: String, backup: BackupReposit
     reconcileSettings(session, backup, uid, remote.settings)
     reconcileSharedBooks(sketchbookRepo, backup, uid, remote.sharedBooks)
     reconcileStampBrushes(context, backup, uid, remote.stampBrushes)
+    reconcileTypedBrushes(context, backup, uid, remote.stampBrushes)
 }
 
 /** 공유 스케치북은 그림이 아니라 "참여 중"이라는 사실만 동기화한다(계정의 다른 기기에 같은 코드의
@@ -70,7 +72,7 @@ private fun reconcileStampBrushes(context: Context, backup: BackupRepository, ui
     for (r in remote) {
         if (r.deleted) {
             if (r.id in localIds) local.delete(r.id)
-        } else if (r.id !in localIds) {
+        } else if (r.type != "ART" && r.id !in localIds) {
             local.importFromRemote(r.id, r.name, r.svgText, r.spacingPx, r.sizePx)
         }
     }
@@ -80,6 +82,24 @@ private fun reconcileStampBrushes(context: Context, backup: BackupRepository, ui
             val svgText = local.originalSvgText(profile.id) ?: continue
             backup.pushStampBrush(uid, RemoteStampBrush(profile.id, profile.name, svgText, profile.spacingPx, profile.sizePx, System.currentTimeMillis(), false))
         }
+    }
+}
+
+private fun reconcileTypedBrushes(context: Context, backup: BackupRepository, uid: String, remote: List<RemoteStampBrush>) {
+    val local = VectorBrushRepository(context)
+    val remoteById = remote.associateBy { it.id }
+    val localIds = local.list().map { it.id }.toSet()
+    for (r in remote) {
+        if (r.deleted) continue
+        if (r.id !in localIds) local.importFromRemote(r.id, r.name, r.type, r.svgText, r.spacingPx, r.sizePx)
+    }
+    for (profile in local.list()) {
+        val svg = profile.originalSvg.takeIf { it.isNotEmpty() } ?: continue
+        val type = if (profile is com.g1.sketchbook.vector.ArtBrushProfile) "ART" else "PATTERN"
+        val spacing = (profile as? com.g1.sketchbook.vector.PatternBrushProfile)?.spacingPx ?: 24f
+        val size = (profile as? com.g1.sketchbook.vector.PatternBrushProfile)?.sizePx ?: 32f
+        val r = remoteById[profile.id]
+        if (r == null || r.deleted) backup.pushStampBrush(uid, RemoteStampBrush(profile.id, profile.name, svg, spacing, size, System.currentTimeMillis(), false, type))
     }
 }
 

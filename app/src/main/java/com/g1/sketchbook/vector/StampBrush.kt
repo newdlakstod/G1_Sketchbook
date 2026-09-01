@@ -7,13 +7,7 @@ import kotlin.math.sin
 /** 사용자가 임포트한 SVG 하나 = 스탬프 브러시 프로필 하나. [shapes]는 이미 [parseSvgDocument]로
  *  정규화(경계상자 중심 원점, 가장 긴 변 길이 1)된 다각형 목록 — 찍을 때 [sizePx]만큼 스케일만
  *  하면 된다. [spacingPx]/[sizePx] 둘 다 그리는 속도와 무관한 고정값. */
-data class StampBrushProfile(
-    val id: String,
-    val name: String,
-    val shapes: List<List<Point>>,
-    val spacingPx: Float = 24f,
-    val sizePx: Float = 32f,
-)
+typealias StampBrushProfile = PatternBrushProfile
 
 /** [VectorPage.toJson]과 같은 손수 문자열 조립 방식(이 프로젝트는 범용 JSON 파서를 안 씀) —
  *  `shapes`의 각 도형을 `{"points":[...]}` 하나로 감싸서, [VectorPage.strokeRegex]와 똑같은

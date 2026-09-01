@@ -44,6 +44,8 @@ data class RemoteStampBrush(
     val sizePx: Float,
     val updatedAt: Long,
     val deleted: Boolean,
+    /** Null is the legacy stamp shape and therefore means Pattern. */
+    val type: String? = null,
 )
 
 /** [contentBase64] is the separate stroke-only transparent layer (same file [DiaryRepository.loadContent]
