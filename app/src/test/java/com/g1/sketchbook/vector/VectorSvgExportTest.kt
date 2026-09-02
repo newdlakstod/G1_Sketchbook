@@ -3,8 +3,21 @@ package com.g1.sketchbook.vector
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class VectorSvgExportTest {
+    @Test fun selectedExportSerializesOnlySelectedObjects() {
+        val document = VectorDocument(objects = listOf(
+            editablePath("red").copy(appearance = PathAppearance(stroke = StrokeStyle(color = 0xFFAA0000))),
+            editablePath("green").copy(appearance = PathAppearance(stroke = StrokeStyle(color = 0xFF00AA00))),
+        ))
+
+        val selected = vectorExportDocument(document, setOf("red"))
+        val svg = vectorDocumentToSvg(selected, vectorExportBounds(selected, emptySet())!!)
+
+        assertTrue("#aa0000" in svg)
+        assertFalse("#00aa00" in svg)
+    }
     @Test fun openFillSvgClosesFillButLeavesBasicStrokeOpen() {
         val openFilled = editablePath("open").copy(
             geometry = PathGeometry(listOf(PathPoint(0f, 0f, 1f), PathPoint(50f, 0f, 1f), PathPoint(50f, 50f, 1f))),

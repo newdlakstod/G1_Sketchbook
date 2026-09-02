@@ -53,6 +53,12 @@ class VectorEditorState(initialDocument: VectorDocument) {
     }
 
     fun applyAppearance(edit: AppearanceEdit) {
+        // Slider callbacks use the same edit surface as taps. Once a slider begins, route its
+        // successive values through the transient gesture instead of rejecting them in dispatch.
+        if (appearanceGesture != null) {
+            previewAppearance(edit)
+            return
+        }
         if (_snapshot.value.selectedIds.isEmpty()) {
             val updated = applyAppearanceEdit(_snapshot.value.defaultAppearance, edit)
             if (updated != _snapshot.value.defaultAppearance) updateSnapshot(defaultAppearance = updated)
@@ -98,12 +104,14 @@ class VectorEditorState(initialDocument: VectorDocument) {
         val entry = undo.removeLastOrNull() ?: return
         redo.addLast(entry)
         updateSnapshot(document = entry.before, selectedIds = sanitizedSelection(_snapshot.value.selectedIds, entry.before))
+        onDocumentCommitted?.invoke(entry.before)
     }
 
     fun redo() {
         val entry = redo.removeLastOrNull() ?: return
         undo.addLast(entry)
         updateSnapshot(document = entry.after, selectedIds = sanitizedSelection(_snapshot.value.selectedIds, entry.after))
+        onDocumentCommitted?.invoke(entry.after)
     }
 
     private fun commit(before: VectorDocument, after: VectorDocument) {

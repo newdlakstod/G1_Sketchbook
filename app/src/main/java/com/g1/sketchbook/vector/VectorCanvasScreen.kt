@@ -1,6 +1,7 @@
 package com.g1.sketchbook.vector
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,11 +9,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -20,8 +23,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.g1.sketchbook.backup.BackupRepository
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
-import com.g1.sketchbook.sketchbook.saveVectorDocumentSynced
+import com.g1.sketchbook.sketchbook.VectorDocumentPersistenceRegistry
 import com.g1.sketchbook.ui.saveSvgToGallery
+import com.g1.sketchbook.vector.encodeVectorDocument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,18 +38,24 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
     val scope = rememberCoroutineScope()
     val repository = remember { SketchbookRepository(context) }
     val backup = remember { BackupRepository() }
+    val currentUid by rememberUpdatedState(myUid)
     val brushRepository = remember { VectorBrushRepository(context) }
     var profiles by remember { mutableStateOf(brushRepository.list()) }
     val profileMap = remember(profiles) { profiles.associateBy { it.id } }
     val document = remember(bookId) { repository.loadVectorDocument(bookId) ?: VectorDocument(objects = emptyList()) }
+    val persistence = remember(bookId) { VectorDocumentPersistenceRegistry.forBook(bookId) }
     val editor = remember(bookId) {
         VectorEditorState(document).also { state ->
             state.onDocumentCommitted = { changed ->
-                saveVectorDocumentSynced(scope, repository, backup, myUid, bookId, changed)
+                persistence.enqueue(changed) { committed ->
+                    repository.saveVectorDocument(bookId, committed)
+                    if (currentUid.isNotBlank()) backup.pushVectorDocument(currentUid, bookId, encodeVectorDocument(committed), repository.vectorDocumentUpdatedAt(bookId))
+                }
             }
         }
     }
     val snapshot by editor.snapshot.collectAsState()
+    val persistenceFailure by persistence.lastFailure.collectAsState()
     var libraryOpen by remember { mutableStateOf(false) }
     var renameId by remember { mutableStateOf<String?>(null) }
     var renameDraft by remember { mutableStateOf("") }
@@ -71,23 +81,35 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
     }
 
     fun exportCurrentDocument() {
-        val region = vectorExportBounds(snapshot.document, snapshot.selectedIds, profileMap)
+        val documentToExport = vectorExportDocument(snapshot.document, snapshot.selectedIds)
+        val region = vectorExportBounds(documentToExport, emptySet(), profileMap)
         if (region == null) {
             Toast.makeText(context, "내보낼 패스가 없어요", Toast.LENGTH_SHORT).show()
             return
         }
-        val documentToExport = snapshot.document
         scope.launch(Dispatchers.IO) {
             val status = saveSvgToGallery(context, vectorDocumentToSvg(documentToExport, region, profileMap), book.name)
             withContext(Dispatchers.Main) { Toast.makeText(context, status, Toast.LENGTH_SHORT).show() }
         }
     }
 
+    LaunchedEffect(persistenceFailure) {
+        persistenceFailure?.let { Toast.makeText(context, "벡터 저장에 실패했습니다", Toast.LENGTH_LONG).show() }
+    }
+
+    val flushAndBack: () -> Unit = {
+        scope.launch {
+            persistence.flush().onFailure { Toast.makeText(context, "벡터 저장에 실패했습니다", Toast.LENGTH_LONG).show() }
+            onBack()
+        }
+    }
+    BackHandler(onBack = flushAndBack)
+
     VectorEditorLayout(
         title = book.name,
         state = editor,
         profiles = profiles,
-        onBack = onBack,
+        onBack = flushAndBack,
         onExport = ::exportCurrentDocument,
         onImportArt = { importKind = VectorBrushKind.ART; importLauncher.launch("image/svg+xml") },
         onImportPattern = { importKind = VectorBrushKind.PATTERN; importLauncher.launch("image/svg+xml") },
@@ -108,7 +130,13 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
                     onImportArt = { importKind = VectorBrushKind.ART; importLauncher.launch("image/svg+xml") },
                     onImportPattern = { importKind = VectorBrushKind.PATTERN; importLauncher.launch("image/svg+xml") },
                     onRename = { id, name -> renameId = id; renameDraft = name },
-                    onDelete = { id -> brushRepository.delete(id); profiles = brushRepository.list() },
+                    onDelete = { id ->
+                        if (brushRepository.delete(id) && currentUid.isNotBlank()) {
+                            backup.deleteStampBrush(currentUid, id, System.currentTimeMillis())
+                        }
+                        profiles = brushRepository.list()
+                    },
+                    onClose = { libraryOpen = false },
                 )
             } else {
                 VectorAppearancePanel(

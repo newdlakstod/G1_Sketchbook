@@ -2,6 +2,7 @@ package com.g1.sketchbook.vector
 
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
 
 /** Injectable boundary so failed and interrupted replacement paths are deterministic in unit tests. */
 interface VectorDocumentFileSystem {
@@ -60,7 +61,9 @@ class VectorDocumentStore(
         return readDocument(v1, legacy = true)
     }
 
-    fun saveV2(document: VectorDocument) {
+    private val writeLock = writeLocks.computeIfAbsent(bookDir.absolutePath) { Any() }
+
+    fun saveV2(document: VectorDocument) = synchronized(writeLock) {
         val encoded = encodeVectorDocument(document)
         require(fileSystem.ensureDirectory(bookDir)) { "Could not create vector document directory" }
         fileSystem.writeTextAndSync(temporary, encoded)
@@ -82,6 +85,10 @@ class VectorDocumentStore(
             check(fileSystem.moveAtomically(temporary, v2)) { "Could not atomically install v2" }
             check(readDocument(v2) == document) { "Installed v2 failed validation" }
         }
+    }
+
+    private companion object {
+        val writeLocks = ConcurrentHashMap<String, Any>()
     }
 
     private fun readDocument(file: File, legacy: Boolean = false): VectorDocument? = runCatching {

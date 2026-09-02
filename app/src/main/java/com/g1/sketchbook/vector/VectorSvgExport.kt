@@ -107,6 +107,11 @@ fun vectorExportBounds(
     profiles = profiles,
 )
 
+/** Export serializes the selected objects themselves, not merely an all-document SVG clipped to
+ * their bounds. An empty selection deliberately means the complete document. */
+fun vectorExportDocument(document: VectorDocument, selectedIds: Set<String>): VectorDocument =
+    if (selectedIds.isEmpty()) document else document.copy(objects = document.objects.filter { it.id in selectedIds })
+
 private fun legacySvgInner(
     objectPath: LegacyStrokeObject,
     region: Bounds,

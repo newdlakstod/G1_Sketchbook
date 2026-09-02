@@ -69,9 +69,20 @@ class VectorEditorStateTest {
 
         assertEquals(8f, assertIs<EditablePathObject>(state.snapshot.value.document.objects.single()).appearance.stroke.width)
         assertFalse(state.snapshot.value.canUndo)
-        assertEquals(1, commits)
+        assertEquals(2, commits)
         state.redo()
         assertEquals(18f, assertIs<EditablePathObject>(state.snapshot.value.document.objects.single()).appearance.stroke.width)
+        assertEquals(3, commits)
+    }
+
+    @Test fun applyAppearancePreviewsInsteadOfBeingRejectedDuringAnActiveSliderGesture() {
+        val state = VectorEditorState(VectorDocument(objects = listOf(editablePath("a"))))
+        state.select(setOf("a")); state.beginAppearanceGesture()
+
+        state.applyAppearance(AppearanceEdit.StrokeWidth(18f))
+        assertEquals(18f, assertIs<EditablePathObject>(state.snapshot.value.document.objects.single()).appearance.stroke.width)
+        state.commitAppearanceGesture()
+        assertTrue(state.snapshot.value.canUndo)
     }
 
     @Test fun transformCommandDispatchesTaskEightEngineAndUndoRedoAreExact() {
@@ -84,6 +95,21 @@ class VectorEditorStateTest {
         assertEquals(4f, assertIs<EditablePathObject>(state.snapshot.value.document.objects.single()).geometry.points.first().x)
         state.undo(); assertEquals(original, state.snapshot.value.document)
         state.redo(); assertEquals(4f, assertIs<EditablePathObject>(state.snapshot.value.document.objects.single()).geometry.points.first().x)
+    }
+
+    @Test fun undoAndRedoEachCommitTheirRestoredDocumentExactlyOnce() {
+        val state = VectorEditorState(VectorDocument(objects = listOf(editablePath("a"))))
+        val committed = mutableListOf<VectorDocument>()
+        state.onDocumentCommitted = committed::add
+
+        state.dispatch(DeleteObjects(setOf("a")))
+        state.undo()
+        state.redo()
+
+        assertEquals(3, committed.size)
+        assertEquals(emptyList(), committed[0].objects)
+        assertEquals(listOf("a"), committed[1].objects.map { it.id })
+        assertEquals(emptyList(), committed[2].objects)
     }
 
     @Test fun deleteSanitizesSelectionAndNewCommandClearsRedo() {
