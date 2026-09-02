@@ -46,18 +46,47 @@ fun decodeStoredVectorDocument(v2Text: String?, legacyText: String?): VectorDocu
 
 /**
  * v1's deployed parser intentionally accepts some incomplete input for historical compatibility.
- * The v2 fallback boundary is stricter: only its byte-for-byte canonical source representation is
- * admitted, and every rendered legacy stroke must contain finite geometry with two or more points.
+ * The v2 fallback boundary keeps its historical optional fields while rejecting trailing, unknown,
+ * malformed, duplicate-key, and non-finite input before adapting it to a v2 document.
  */
-internal fun decodeCanonicalLegacyPage(text: String): VectorPage? {
-    val page = vectorPageFromJson(text) ?: return null
-    if (page.toJson() != text) return null
-    if (page.strokes.any { stroke ->
-            stroke.points.size < 2 || stroke.points.any { point ->
-                !point.x.isFinite() || !point.y.isFinite() || !point.w.isFinite()
-            }
-        }) return null
-    return page
+internal fun decodeCanonicalLegacyPage(text: String): VectorPage? = runCatching {
+    val root = JsonReader(text).read().asObject()
+    root.requireOnly("strokes")
+    VectorPage(root.required("strokes").asArray().values.map { value ->
+        decodeStrictLegacyStroke(value.asObject())
+    })
+}.getOrNull()
+
+private fun decodeStrictLegacyStroke(source: JsonObject): VectorStroke {
+    source.requireOnly(
+        "color", "points", "cap", "fillEnabled", "strokeColor", "strokeWidthPx",
+        "brushProfileId", "fillColor",
+    )
+    val points = source.required("points").asArray().values.map { value ->
+        val point = value.asObject()
+        point.requireOnly("x", "y", "w")
+        VectorPoint(
+            point.required("x").asFiniteFloat(),
+            point.required("y").asFiniteFloat(),
+            point.required("w").asFiniteFloat(),
+        )
+    }
+    require(points.size >= 2) { "Legacy strokes need at least two points" }
+
+    val hasOutlineFields = listOf("fillEnabled", "strokeColor", "strokeWidthPx").any(source.values::containsKey)
+    require(!hasOutlineFields || listOf("fillEnabled", "strokeColor", "strokeWidthPx").all(source.values::containsKey)) {
+        "Legacy outline fields must be complete"
+    }
+    return VectorStroke(
+        color = source.required("color").asLong(),
+        points = points,
+        cap = source.optional("cap")?.asString()?.enumValue<VectorCap>() ?: VectorCap.BUTT,
+        fillEnabled = source.optional("fillEnabled")?.asBoolean() ?: true,
+        strokeColor = source.optional("strokeColor")?.asLong()?.takeIf { it != Long.MIN_VALUE },
+        strokeWidthPx = source.optional("strokeWidthPx")?.asFiniteFloat() ?: 2f,
+        brushProfileId = source.optional("brushProfileId")?.asString()?.ifBlank { null },
+        fillColor = source.optional("fillColor")?.asLong(),
+    )
 }
 
 private fun StringBuilder.appendLegacyObject(value: LegacyStrokeObject) {
@@ -221,6 +250,10 @@ private fun decodeEditableObject(id: String, source: JsonObject): EditablePathOb
 }
 
 private fun JsonObject.required(name: String): JsonValue = values[name] ?: error("Missing $name")
+private fun JsonObject.optional(name: String): JsonValue? = values[name]
+private fun JsonObject.requireOnly(vararg names: String) {
+    require(values.keys.all { it in names }) { "Unknown JSON field" }
+}
 private fun JsonValue.asObject(): JsonObject = this as? JsonObject ?: error("Expected object")
 private fun JsonValue.asArray(): JsonArray = this as? JsonArray ?: error("Expected array")
 private fun JsonValue.asString(): String = (this as? JsonString)?.value ?: error("Expected string")

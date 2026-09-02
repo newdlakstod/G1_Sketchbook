@@ -73,6 +73,42 @@ class VectorDocumentCodecTest {
     @Test fun storedDecoderRejectsNonCanonicalOrInvalidLegacyBeforeFallback() {
         assertNull(decodeStoredVectorDocument(null, "not-json-but-contains-\"strokes\""))
         assertNull(decodeStoredVectorDocument(null, """{"strokes":[{"color":1,"points":[{"x":0,"y":0,"w":1}],"cap":"BUTT","fillEnabled":true,"strokeColor":-9223372036854775808,"strokeWidthPx":2.0}]}"""))
+        assertNull(decodeStoredVectorDocument(null, """{"strokes":[],"future":true}"""))
+        assertNull(decodeStoredVectorDocument(null, "{\"strokes\":[]} trailing"))
         assertEquals(VectorDocument(objects = emptyList()), decodeStoredVectorDocument(null, "{\"strokes\":[]}"))
+    }
+
+    @Test fun storedDecoderAcceptsHistoricalV1WithoutOptionalStrokeFields() {
+        val source = """{"strokes":[{"color":1,"points":[{"x":0,"y":0,"w":2},{"x":2,"y":2,"w":1}]}]}"""
+        val expected = VectorPage(listOf(VectorStroke(1, listOf(
+            VectorPoint(0f, 0f, 2f), VectorPoint(2f, 2f, 1f),
+        ))))
+
+        assertEquals(legacyPageAsDocument(expected), decodeStoredVectorDocument(null, source))
+    }
+
+    @Test fun storedDecoderAcceptsHistoricalV1WithCapBeforeOutlineFields() {
+        val source = """{"strokes":[{"color":2,"points":[{"x":1,"y":2,"w":3},{"x":4,"y":5,"w":6}],"cap":"SQUARE"}]}"""
+        val expected = VectorPage(listOf(VectorStroke(2, listOf(
+            VectorPoint(1f, 2f, 3f), VectorPoint(4f, 5f, 6f),
+        ), cap = VectorCap.SQUARE)))
+
+        assertEquals(legacyPageAsDocument(expected), decodeStoredVectorDocument(null, source))
+    }
+
+    @Test fun storedDecoderAcceptsHistoricalV1WithOutlineAndBrushFields() {
+        val source = """{"strokes":[{"color":3,"points":[{"x":1,"y":1,"w":4},{"x":5,"y":5,"w":2}],"cap":"ROUND","fillEnabled":false,"strokeColor":7,"strokeWidthPx":3.5,"brushProfileId":"pattern","fillColor":9}]}"""
+        val expected = VectorPage(listOf(VectorStroke(
+            color = 3,
+            points = listOf(VectorPoint(1f, 1f, 4f), VectorPoint(5f, 5f, 2f)),
+            cap = VectorCap.ROUND,
+            fillEnabled = false,
+            strokeColor = 7,
+            strokeWidthPx = 3.5f,
+            brushProfileId = "pattern",
+            fillColor = 9,
+        )))
+
+        assertEquals(legacyPageAsDocument(expected), decodeStoredVectorDocument(null, source))
     }
 }
