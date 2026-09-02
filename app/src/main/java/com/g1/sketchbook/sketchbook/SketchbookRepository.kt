@@ -9,6 +9,8 @@ import com.g1.sketchbook.vector.VectorPage
 import com.g1.sketchbook.vector.VectorDocument
 import com.g1.sketchbook.vector.VectorDocumentStore
 import com.g1.sketchbook.vector.renderVectorPage
+import com.g1.sketchbook.vector.renderVectorDocument
+import com.g1.sketchbook.vector.VectorBrushRepository
 import com.g1.sketchbook.vector.toJson
 import com.g1.sketchbook.vector.vectorPageFromJson
 import java.io.File
@@ -217,6 +219,10 @@ class SketchbookRepository(private val context: Context) {
 
     fun loadVectorPreview(id: String): Bitmap? {
         val f = vectorPreviewFile(id)
+        val v2 = File(File(root, id), "vector_canvas_v2.json")
+        if (v2.exists() && (!f.exists() || v2.lastModified() > f.lastModified())) {
+            loadVectorDocumentV2(id)?.let { refreshVectorPreview(id, it) }
+        }
         return if (f.exists()) BitmapFactory.decodeFile(f.absolutePath) else null
     }
 
@@ -240,6 +246,18 @@ class SketchbookRepository(private val context: Context) {
 
     fun saveVectorDocument(id: String, document: VectorDocument) {
         vectorDocumentStore(id).saveV2(document)
+        refreshVectorPreview(id, document)
+    }
+
+    private fun refreshVectorPreview(id: String, document: VectorDocument) {
+        // Preview is a cache. A render failure must never turn a successful durable JSON save into
+        // a reported document-save failure or trigger a retry that can reorder snapshots.
+        runCatching {
+            val profiles = VectorBrushRepository(context).list().associateBy { it.id }
+            FileOutputStream(vectorPreviewFile(id)).use {
+                renderVectorDocument(document, VECTOR_PREVIEW_SIZE, profiles).compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+        }
     }
 
     fun vectorDocumentUpdatedAt(id: String): Long = File(File(root, id), "vector_canvas_v2.json").lastModified()

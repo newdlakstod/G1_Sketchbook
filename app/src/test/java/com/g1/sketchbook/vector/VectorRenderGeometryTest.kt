@@ -75,6 +75,39 @@ class VectorRenderGeometryTest {
         assertFalse(pointInRenderedObject(Point(50f, 0f), objectPath, mapOf("p" to profile), tolerance = 20f))
     }
 
+    @Test fun closedPatternIncludesTheLastToFirstSegment() {
+        val geometry = PathGeometry(
+            points = listOf(PathPoint(0f, 0f, 1f), PathPoint(20f, 0f, 1f), PathPoint(20f, 20f, 1f)),
+            closed = true,
+        )
+        val profile = PatternBrushProfile(
+            "p", "closed", listOf(listOf(Point(-0.5f, -0.5f), Point(0.5f, -0.5f), Point(0f, 0.5f))),
+            spacingPx = 5f, sizePx = 2f,
+        )
+
+        val stamped = mapPatternBrush(profile, geometry, StrokeStyle(width = 2f))
+
+        assertTrue(stamped.flatten().any { it.x in 8f..12f && it.y in 8f..12f })
+    }
+
+    @Test fun legacyFillRegionsStaySeparateForBoundsAndHitTesting() {
+        val stroke = legacyLine("legacy").stroke.copy(
+            fillEnabled = true,
+            points = listOf(
+                VectorPoint(0f, 0f, 1f), VectorPoint(10f, 10f, 1f), VectorPoint(0f, 10f, 1f), VectorPoint(10f, 0f, 1f),
+                VectorPoint(100f, 0f, 1f), VectorPoint(110f, 10f, 1f), VectorPoint(100f, 10f, 1f), VectorPoint(110f, 0f, 1f),
+            ),
+        )
+        val legacy = LegacyStrokeObject("legacy", stroke)
+
+        val bounds = renderedObjectBounds(legacy, emptyMap())!!
+
+        assertTrue(bounds.maxX >= 110f)
+        assertTrue(pointInRenderedObject(Point(5f, 8f), legacy, emptyMap(), tolerance = 0f))
+        assertTrue(pointInRenderedObject(Point(105f, 8f), legacy, emptyMap(), tolerance = 0f))
+        assertFalse(pointInRenderedObject(Point(50f, 7.5f), legacy, emptyMap(), tolerance = 0f))
+    }
+
     @Test fun cacheKeyChangesForAppearanceButNotViewport() {
         val objectPath = editablePath("a", width = 8f)
         val first = geometryCacheKey(objectPath, profile = null)

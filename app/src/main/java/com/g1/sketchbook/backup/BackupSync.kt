@@ -78,7 +78,7 @@ private fun reconcileStampBrushes(context: Context, backup: BackupRepository, ui
     }
     for (profile in local.list()) {
         val r = remoteById[profile.id]
-        if (r == null || r.deleted) {
+        if (shouldPushLocalBrush(r)) {
             val svgText = local.originalSvgText(profile.id) ?: continue
             backup.pushStampBrush(uid, RemoteStampBrush(profile.id, profile.name, svgText, profile.spacingPx, profile.sizePx, System.currentTimeMillis(), false))
         }
@@ -90,7 +90,10 @@ private fun reconcileTypedBrushes(context: Context, backup: BackupRepository, ui
     val remoteById = remote.associateBy { it.id }
     val localIds = local.list().map { it.id }.toSet()
     for (r in remote) {
-        if (r.deleted) continue
+        if (r.deleted) {
+            if (r.id in localIds) local.delete(r.id)
+            continue
+        }
         if (r.id !in localIds) local.importFromRemote(r.id, r.name, r.type, r.svgText, r.spacingPx, r.sizePx)
     }
     for (profile in local.list()) {
@@ -99,9 +102,13 @@ private fun reconcileTypedBrushes(context: Context, backup: BackupRepository, ui
         val spacing = (profile as? com.g1.sketchbook.vector.PatternBrushProfile)?.spacingPx ?: 24f
         val size = (profile as? com.g1.sketchbook.vector.PatternBrushProfile)?.sizePx ?: 32f
         val r = remoteById[profile.id]
-        if (r == null || r.deleted) backup.pushStampBrush(uid, RemoteStampBrush(profile.id, profile.name, svg, spacing, size, System.currentTimeMillis(), false, type))
+        if (shouldPushLocalBrush(r)) backup.pushStampBrush(uid, RemoteStampBrush(profile.id, profile.name, svg, spacing, size, System.currentTimeMillis(), false, type))
     }
 }
+
+/** A remote tombstone owns reconciliation until an explicit new import creates a newer remote
+ * record. Treating it as "missing" here would resurrect a brush from the stale local snapshot. */
+internal fun shouldPushLocalBrush(remote: RemoteStampBrush?): Boolean = remote == null
 
 /**
  * Reconciles the independent v2 sibling without ever consulting the v1 fallback. The callbacks

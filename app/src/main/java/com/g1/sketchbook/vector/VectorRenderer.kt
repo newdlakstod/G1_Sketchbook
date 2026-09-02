@@ -17,7 +17,13 @@ enum class RenderRoute { BASIC, ART, PATTERN }
 data class RenderedObjectGeometry(
     val fill: List<Point>,
     val strokeShapes: List<List<Point>>,
-)
+    val additionalFillShapes: List<List<Point>> = emptyList(),
+) {
+    /** Legacy self-intersection fills are distinct polygons. Keeping them separate prevents a
+     * synthetic bridge between regions from affecting bounds or hit testing. */
+    val fillShapes: List<List<Point>>
+        get() = listOf(fill).filter { it.isNotEmpty() } + additionalFillShapes.filter { it.isNotEmpty() }
+}
 
 fun renderRoute(brush: BrushStyle, profiles: Map<String, VectorBrushProfile>): RenderRoute {
     val profile = brush.profileId?.takeIf { it.isNotBlank() }?.let(profiles::get)
@@ -53,7 +59,8 @@ fun renderedPolygons(
 fun mapPatternBrush(profile: PatternBrushProfile, geometry: PathGeometry, stroke: StrokeStyle): List<List<Point>> {
     val points = geometry.points.filter { it.x.isFinite() && it.y.isFinite() && it.widthFactor.isFinite() }
     if (points.size < 2) return emptyList()
-    return stampPolygons(profile, points.map { VectorPoint(it.x, it.y, stroke.width * it.widthFactor.coerceAtLeast(0f)) })
+    val centerline = points.map { VectorPoint(it.x, it.y, stroke.width * it.widthFactor.coerceAtLeast(0f)) }
+    return stampPolygons(profile, if (geometry.closed && points.size >= 3) centerline + centerline.first() else centerline)
 }
 
 fun renderedObjectBounds(objectPath: VectorObject, profiles: Map<String, VectorBrushProfile>): Bounds? = when (objectPath) {
@@ -99,6 +106,33 @@ fun drawVectorDocument(
     }
 }
 
+/** Renders the mixed v2 document into the same square preview cache consumed by home and reading
+ * screens. The v2 JSON remains authoritative; this bitmap is always disposable. */
+fun renderVectorDocument(
+    document: VectorDocument,
+    sizePx: Int,
+    profiles: Map<String, VectorBrushProfile> = emptyMap(),
+): Bitmap {
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(android.graphics.Color.WHITE)
+    val bounds = vectorExportBounds(document, emptySet(), profiles) ?: return bitmap
+    val contentWidth = bounds.width.coerceAtLeast(1f)
+    val contentHeight = bounds.height.coerceAtLeast(1f)
+    val padX = contentWidth * PREVIEW_PADDING_RATIO
+    val padY = contentHeight * PREVIEW_PADDING_RATIO
+    val framedWidth = contentWidth + padX * 2f
+    val framedHeight = contentHeight + padY * 2f
+    val scale = min(sizePx / framedWidth, sizePx / framedHeight)
+    canvas.save()
+    canvas.translate((sizePx - framedWidth * scale) / 2f, (sizePx - framedHeight * scale) / 2f)
+    canvas.scale(scale, scale)
+    canvas.translate(-(bounds.minX - padX), -(bounds.minY - padY))
+    drawVectorDocument(canvas, document, profiles)
+    canvas.restore()
+    return bitmap
+}
+
 private fun Canvas.drawPolygon(points: List<Point>, paint: Paint) {
     val path = Path()
     points.forEachIndexed { index, point -> if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y) }
@@ -107,7 +141,7 @@ private fun Canvas.drawPolygon(points: List<Point>, paint: Paint) {
 }
 
 internal fun boundsFor(geometry: RenderedObjectGeometry): Bounds? =
-    pointsBounds(geometry.fill + geometry.strokeShapes.flatten())
+    pointsBounds(geometry.fillShapes.flatten() + geometry.strokeShapes.flatten())
 
 private fun pointInEditableGeometry(point: Point, objectPath: EditablePathObject, profiles: Map<String, VectorBrushProfile>, tolerance: Float): Boolean {
     val geometry = renderedPolygons(objectPath, profiles)
@@ -123,12 +157,17 @@ private fun legacyRenderedGeometry(objectPath: LegacyStrokeObject, profiles: Map
     val stroke = objectPath.stroke
     val profile = stroke.brushProfileId?.let { legacyStampBrushes(profiles)[it] }
     val shapes = if (profile == null) listOf(strokeOutline(stroke.points, stroke.cap)) else stampPolygons(profile, stroke.points)
-    return RenderedObjectGeometry(if (stroke.fillEnabled) stroke.fills.flatten() else emptyList(), shapes.filter { it.isNotEmpty() })
+    val fills = if (stroke.fillEnabled) stroke.fills.map { region -> region.map { Point(it.x, it.y) } } else emptyList()
+    return RenderedObjectGeometry(
+        fill = fills.firstOrNull().orEmpty(),
+        strokeShapes = shapes.filter { it.isNotEmpty() },
+        additionalFillShapes = fills.drop(1),
+    )
 }
 
 private fun pointInLegacyGeometry(point: Point, objectPath: LegacyStrokeObject, profiles: Map<String, VectorBrushProfile>, tolerance: Float): Boolean {
     val geometry = legacyRenderedGeometry(objectPath, profiles)
-    if (geometry.fill.size >= 3 && pointInPolygon(point.x, point.y, geometry.fill)) return true
+    if (geometry.fillShapes.any { it.size >= 3 && pointInPolygon(point.x, point.y, it) }) return true
     if (geometry.strokeShapes.any { it.size >= 3 && pointInPolygon(point.x, point.y, it) }) return true
     if (objectPath.stroke.brushProfileId?.let { legacyStampBrushes(profiles)[it] } != null) return false
     return objectPath.stroke.points.zipWithNext().any { (start, end) ->
