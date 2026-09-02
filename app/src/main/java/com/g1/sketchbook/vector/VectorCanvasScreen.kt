@@ -99,8 +99,9 @@ fun VectorCanvasScreen(bookId: String, book: Sketchbook, myUid: String, onBack: 
 
     val flushAndBack: () -> Unit = {
         scope.launch {
-            persistence.flush().onFailure { Toast.makeText(context, "벡터 저장에 실패했습니다", Toast.LENGTH_LONG).show() }
-            onBack()
+            val result = persistence.flush()
+            if (result.isSuccess) onBack()
+            else Toast.makeText(context, "저장하지 못했습니다. 다시 시도해 주세요.", Toast.LENGTH_LONG).show()
         }
     }
     BackHandler(onBack = flushAndBack)

@@ -79,6 +79,10 @@ fun reduceCanvasInput(input: CanvasInput, state: InteractionState): InteractionR
 
 fun uniqueEraseIds(hitIds: List<String>): Set<String> = hitIds.filter(String::isNotBlank).toSet()
 
+/** A selected body owns a move only when it is the visible topmost hit. */
+fun selectedTopmostOwnsGesture(topmostId: String?, selectedIds: Set<String>): Boolean =
+    topmostId != null && topmostId in selectedIds
+
 /** Keeps a press on an object selectable; a real drag is the only path that becomes a lasso. */
 fun isShortSelectionGesture(start: Point, end: Point, thresholdPx: Float = 8f): Boolean {
     if (!start.x.isFinite() || !start.y.isFinite() || !end.x.isFinite() || !end.y.isFinite() || !thresholdPx.isFinite()) return false

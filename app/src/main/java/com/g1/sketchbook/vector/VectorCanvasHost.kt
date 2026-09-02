@@ -38,16 +38,17 @@ class VectorCanvasHost(context: Context) : View(context) {
         super.onDraw(canvas)
         val current = editorState?.snapshot?.value ?: snapshot ?: return
         snapshot = current
+        val displayed = current.copy(document = previewDocument ?: current.document)
         canvas.save()
         canvas.translate(viewport.translateX, viewport.translateY)
         canvas.scale(viewport.scale, viewport.scale)
-        drawVectorDocument(canvas, previewDocument ?: current.document, profilesProvider(), geometryCache)
+        drawVectorDocument(canvas, displayed.document, profilesProvider(), geometryCache)
         draft.takeIf { it.size > 1 }?.let { points ->
             val appearance = current.defaultAppearance
             drawVectorDocument(canvas, VectorDocument(objects = listOf(EditablePathObject("draft", PathGeometry(points.map { PathPoint(it.x, it.y, 1f) }), appearance))), profilesProvider(), geometryCache)
         }
         canvas.restore()
-        drawSelection(canvas, current)
+        drawSelection(canvas, displayed)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -58,7 +59,8 @@ class VectorCanvasHost(context: Context) : View(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val overlay = selectionOverlay(current)
-                val body = current.selectedIds.isNotEmpty() && topmostObjectAt(current.document.objects.filter { it.id in current.selectedIds }, canvasPoint, profilesProvider(), viewport.scale) != null
+                val topmostHit = topmostObjectAt(current.document.objects, canvasPoint, profilesProvider(), viewport.scale)
+                val body = selectedTopmostOwnsGesture(topmostHit?.id, current.selectedIds)
                 interaction = reduceCanvasInput(CanvasInput.PointerDown(screen), InteractionState(current.tool, overlay = overlay, selectedBodyHit = body)).state
                 if (interaction?.gesture == CanvasGesture.DRAW) draft = mutableListOf(canvasPoint)
                 if (interaction?.gesture == CanvasGesture.LASSO) { lasso = mutableListOf(canvasPoint); lassoStartScreen = screen }

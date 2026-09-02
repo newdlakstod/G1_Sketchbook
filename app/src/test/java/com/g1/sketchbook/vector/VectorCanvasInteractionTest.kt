@@ -56,6 +56,12 @@ class VectorCanvasInteractionTest {
         assertFalse(isShortSelectionGesture(Point(10f, 10f), Point(30f, 10f)))
     }
 
+    @Test fun selectedLowerObjectDoesNotOwnGestureWhenAnUnselectedObjectIsTopmost() {
+        assertFalse(selectedTopmostOwnsGesture("top", setOf("lower")))
+        assertTrue(selectedTopmostOwnsGesture("top", setOf("top")))
+        assertFalse(selectedTopmostOwnsGesture(null, setOf("lower")))
+    }
+
     @Test fun fourEdgeCenterHandlesAreHitBeforeTheBody() {
         val overlay = SelectionOverlay(Bounds(20f, 20f, 120f, 120f), Point(70f, 0f), 12f)
         assertEquals(SelectionHandle.TOP, hitSelectionHandle(Point(70f, 20f), overlay))
