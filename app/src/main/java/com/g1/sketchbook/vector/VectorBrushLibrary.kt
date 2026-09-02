@@ -17,10 +17,12 @@ import androidx.compose.ui.unit.dp
 fun VectorBrushLibrary(
     profiles: List<VectorBrushProfile>, selected: BrushStyle, onSelect: (BrushStyle) -> Unit,
     onImportArt: () -> Unit, onImportPattern: () -> Unit, onRename: (String, String) -> Unit, onDelete: (String) -> Unit,
+    onClose: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("브러시 라이브러리", style = MaterialTheme.typography.titleMedium)
+        Button(onClick = onClose) { Text("닫기") }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = onImportArt) { Text("Art 가져오기") }; Button(onClick = onImportPattern) { Text("Pattern 가져오기") } }
         profiles.forEach { profile ->
             val kind = if (profile is ArtBrushProfile) VectorBrushKind.ART else VectorBrushKind.PATTERN

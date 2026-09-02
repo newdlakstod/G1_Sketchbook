@@ -7,12 +7,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -102,10 +100,9 @@ fun VectorAppearancePanel(
         }
         if (projection.missingProfile) Text("브러시를 찾을 수 없어 기본 미리보기로 표시합니다.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Swatch(projection.fillColor.value, "채움", projection.fillEnabled.value) { onEdit(AppearanceEdit.FillEnabled(!projection.fillEnabled.value)) }
-            Spacer(Modifier.width((-10).dp))
-            Swatch(projection.strokeColor.value, "획", projection.strokeEnabled.value) { onEdit(AppearanceEdit.StrokeEnabled(!projection.strokeEnabled.value)) }
-            Spacer(Modifier.width(16.dp)); Text("채움 / 획")
+            Swatch(projection.fillColor.value, "채움", projection.fillEnabled.value)
+            Swatch(projection.strokeColor.value, "획", projection.strokeEnabled.value)
+            Text("채움 / 획")
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("채움", modifier = Modifier.weight(1f)); Switch(projection.fillEnabled.value, { onEdit(AppearanceEdit.FillEnabled(it)) })
@@ -113,6 +110,8 @@ fun VectorAppearancePanel(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("획", modifier = Modifier.weight(1f)); Switch(projection.strokeEnabled.value, { onEdit(AppearanceEdit.StrokeEnabled(it)) })
         }
+        ColorPickerRow("채움 색", projection.fillColor.value) { onEdit(AppearanceEdit.FillColor(it)) }
+        ColorPickerRow("획 색", projection.strokeColor.value) { onEdit(AppearanceEdit.StrokeColor(it)) }
         Text("굵기 ${if (projection.strokeWidth.mixed) "혼합" else projection.strokeWidth.value.toInt()}")
         Slider(
             value = projection.strokeWidth.value.coerceIn(0f, 200f), valueRange = 0f..200f,
@@ -136,8 +135,20 @@ fun VectorAppearancePanel(
     }
 }
 
-@Composable private fun Swatch(color: Long, label: String, enabled: Boolean, onClick: () -> Unit) {
-    Box(Modifier.size(42.dp).background(Color(color), RoundedCornerShape(8.dp)).clickable(onClick = onClick), contentAlignment = Alignment.Center) { Text(label, color = if (enabled) Color.White else Color.Gray, style = MaterialTheme.typography.labelSmall) }
+@Composable private fun Swatch(color: Long, label: String, enabled: Boolean) {
+    Box(Modifier.size(42.dp).background(Color(color), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) { Text(label, color = if (enabled) Color.White else Color.Gray, style = MaterialTheme.typography.labelSmall) }
+}
+
+@Composable private fun ColorPickerRow(label: String, selected: Long, onChoose: (Long) -> Unit) {
+    val choices = listOf(0xFF172E58L, 0xFF000000L, 0xFFFFFFFFL, 0xFFC65D4BL, 0xFF4E8B70L)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, modifier = Modifier.weight(1f))
+        choices.forEach { color ->
+            Box(Modifier.size(28.dp).background(Color(color), RoundedCornerShape(14.dp)).clickable { onChoose(color) }, contentAlignment = Alignment.Center) {
+                if (color == selected) Text("✓", color = if (color == 0xFFFFFFFFL) Color.Black else Color.White)
+            }
+        }
+    }
 }
 
 @Composable private fun SegmentedOption(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {

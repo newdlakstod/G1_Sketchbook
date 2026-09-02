@@ -5,8 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.view.MotionEvent
 import android.view.View
-import kotlin.math.abs
-import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.hypot
 
@@ -21,6 +19,9 @@ class VectorCanvasHost(context: Context) : View(context) {
     private var interaction: InteractionState? = null
     private var draft = mutableListOf<Point>()
     private var lasso = mutableListOf<Point>()
+    private var lassoStartScreen = Point(0f, 0f)
+    private var gestureStartScreen = Point(0f, 0f)
+    private var previewDocument: VectorDocument? = null
     private var lastScreen = Point(0f, 0f)
     private var transformStart: Point? = null
     private var pinchDistance = 0f
@@ -40,7 +41,7 @@ class VectorCanvasHost(context: Context) : View(context) {
         canvas.save()
         canvas.translate(viewport.translateX, viewport.translateY)
         canvas.scale(viewport.scale, viewport.scale)
-        drawVectorDocument(canvas, current.document, profilesProvider(), geometryCache)
+        drawVectorDocument(canvas, previewDocument ?: current.document, profilesProvider(), geometryCache)
         draft.takeIf { it.size > 1 }?.let { points ->
             val appearance = current.defaultAppearance
             drawVectorDocument(canvas, VectorDocument(objects = listOf(EditablePathObject("draft", PathGeometry(points.map { PathPoint(it.x, it.y, 1f) }), appearance))), profilesProvider(), geometryCache)
@@ -59,10 +60,10 @@ class VectorCanvasHost(context: Context) : View(context) {
                 val overlay = selectionOverlay(current)
                 val body = current.selectedIds.isNotEmpty() && topmostObjectAt(current.document.objects.filter { it.id in current.selectedIds }, canvasPoint, profilesProvider(), viewport.scale) != null
                 interaction = reduceCanvasInput(CanvasInput.PointerDown(screen), InteractionState(current.tool, overlay = overlay, selectedBodyHit = body)).state
-                if (current.tool == VectorTool.SELECT && interaction?.gesture == CanvasGesture.LASSO) state.select(emptySet())
                 if (interaction?.gesture == CanvasGesture.DRAW) draft = mutableListOf(canvasPoint)
-                if (interaction?.gesture == CanvasGesture.LASSO) lasso = mutableListOf(canvasPoint)
+                if (interaction?.gesture == CanvasGesture.LASSO) { lasso = mutableListOf(canvasPoint); lassoStartScreen = screen }
                 transformStart = canvasPoint
+                gestureStartScreen = screen
                 lastScreen = screen
             }
             MotionEvent.ACTION_POINTER_DOWN -> interaction?.let {
@@ -76,6 +77,21 @@ class VectorCanvasHost(context: Context) : View(context) {
             MotionEvent.ACTION_MOVE -> when (interaction?.gesture) {
                 CanvasGesture.DRAW -> draft.add(canvasPoint)
                 CanvasGesture.LASSO -> lasso.add(canvasPoint)
+                CanvasGesture.MOVE_SELECTION -> transformStart?.let { start ->
+                    if (!isShortSelectionGesture(gestureStartScreen, screen)) {
+                        previewDocument = previewSelectionTransform(current.document, current.selectedIds, SelectionTransform(canvasPoint.x - start.x, canvasPoint.y - start.y, pivot = start))
+                    }
+                }
+                CanvasGesture.SCALE_SELECTION -> transformStart?.let { start ->
+                    selectionBounds(current.document.objects, current.selectedIds, profilesProvider())?.let { bounds ->
+                        previewDocument = previewSelectionTransform(current.document, current.selectedIds, selectionScaleTransform(start, canvasPoint, bounds, interaction?.selectionHandle ?: SelectionHandle.NONE))
+                    }
+                }
+                CanvasGesture.ROTATE_SELECTION -> transformStart?.let { start ->
+                    selectionBounds(current.document.objects, current.selectedIds, profilesProvider())?.let { bounds ->
+                        previewDocument = previewSelectionTransform(current.document, current.selectedIds, selectionRotationTransform(start, canvasPoint, bounds))
+                    }
+                }
                 CanvasGesture.ERASE -> topmostObjectAt(current.document.objects, canvasPoint, profilesProvider(), viewport.scale)?.let { hit ->
                     interaction = interaction?.let { reduceCanvasInput(CanvasInput.EraseHit(hit.id), it).state }
                 }
@@ -92,44 +108,42 @@ class VectorCanvasHost(context: Context) : View(context) {
                 } else viewport = viewport.copy(translateX = viewport.translateX + screen.x - lastScreen.x, translateY = viewport.translateY + screen.y - lastScreen.y)
                 else -> Unit
             }
-            MotionEvent.ACTION_UP -> finishGesture(state, current)
-            MotionEvent.ACTION_CANCEL -> { interaction = interaction?.let { reduceCanvasInput(CanvasInput.Cancel, it).state }; draft.clear(); lasso.clear() }
+            MotionEvent.ACTION_UP -> {
+                if (interaction?.gesture == CanvasGesture.LASSO) lasso.add(canvasPoint)
+                finishGesture(state, current, canvasPoint)
+            }
+            MotionEvent.ACTION_CANCEL -> { interaction = interaction?.let { reduceCanvasInput(CanvasInput.Cancel, it).state }; draft.clear(); lasso.clear(); previewDocument = null }
         }
         lastScreen = screen
         invalidate()
         return true
     }
 
-    private fun finishGesture(state: VectorEditorState, current: VectorEditorSnapshot) {
+    private fun finishGesture(state: VectorEditorState, current: VectorEditorSnapshot, releasePoint: Point) {
         val active = interaction ?: return
+        val releaseScreen = canvasToScreen(releasePoint, viewport) ?: lastScreen
         when (active.gesture) {
             CanvasGesture.DRAW -> if (draft.size >= 2) state.dispatch(AddObject(EditablePathObject(
                 id = "path-${System.nanoTime()}", geometry = PathGeometry(draft.map { PathPoint(it.x, it.y, 1f) }), appearance = current.defaultAppearance,
             )))
             CanvasGesture.MOVE_SELECTION -> transformStart?.let { start ->
-                val end = screenToCanvas(lastScreen, viewport) ?: start
-                if (start != end && current.selectedIds.isNotEmpty()) state.dispatch(TransformObjects(current.selectedIds, SelectionTransform(end.x - start.x, end.y - start.y, pivot = start)))
+                if (!isShortSelectionGesture(gestureStartScreen, releaseScreen) && start != releasePoint && current.selectedIds.isNotEmpty()) state.dispatch(TransformObjects(current.selectedIds, SelectionTransform(releasePoint.x - start.x, releasePoint.y - start.y, pivot = start)))
             }
             CanvasGesture.SCALE_SELECTION -> transformStart?.let { start ->
-                val end = screenToCanvas(lastScreen, viewport) ?: start
+                val end = releasePoint
                 val bounds = selectionBounds(current.document.objects, current.selectedIds, profilesProvider()) ?: return@let
-                val pivot = Point((bounds.minX + bounds.maxX) / 2f, (bounds.minY + bounds.maxY) / 2f)
-                val sx = ratio(end.x - pivot.x, start.x - pivot.x); val sy = ratio(end.y - pivot.y, start.y - pivot.y)
-                val transform = when (active.selectionHandle) {
-                    SelectionHandle.TOP, SelectionHandle.BOTTOM -> SelectionTransform(scaleY = sy, pivot = pivot)
-                    SelectionHandle.LEFT, SelectionHandle.RIGHT -> SelectionTransform(scaleX = sx, pivot = pivot)
-                    else -> { val uniform = if (abs(sx - 1f) >= abs(sy - 1f)) sx else sy; SelectionTransform(scaleX = uniform, scaleY = uniform, pivot = pivot) }
-                }
+                val transform = selectionScaleTransform(start, end, bounds, active.selectionHandle)
                 if ((transform.scaleX != 1f || transform.scaleY != 1f) && current.selectedIds.isNotEmpty()) state.dispatch(TransformObjects(current.selectedIds, transform))
             }
             CanvasGesture.ROTATE_SELECTION -> transformStart?.let { start ->
-                val end = screenToCanvas(lastScreen, viewport) ?: start
+                val end = releasePoint
                 val bounds = selectionBounds(current.document.objects, current.selectedIds, profilesProvider()) ?: return@let
-                val pivot = Point((bounds.minX + bounds.maxX) / 2f, (bounds.minY + bounds.maxY) / 2f)
-                val degrees = Math.toDegrees((atan2((end.y - pivot.y).toDouble(), (end.x - pivot.x).toDouble()) - atan2((start.y - pivot.y).toDouble(), (start.x - pivot.x).toDouble()))).toFloat()
-                if (degrees.isFinite() && degrees != 0f && current.selectedIds.isNotEmpty()) state.dispatch(TransformObjects(current.selectedIds, SelectionTransform(rotationDegrees = degrees, pivot = pivot)))
+                val transform = selectionRotationTransform(start, end, bounds)
+                if (transform.rotationDegrees != 0f && current.selectedIds.isNotEmpty()) state.dispatch(TransformObjects(current.selectedIds, transform))
             }
-            CanvasGesture.LASSO -> if (lasso.size >= 3) state.select(objectsTouchingLasso(current.document.objects, lasso, profilesProvider(), viewport.scale))
+            CanvasGesture.LASSO -> if (isShortSelectionGesture(lassoStartScreen, releaseScreen)) {
+                state.select(topmostObjectAt(current.document.objects, releasePoint, profilesProvider(), viewport.scale)?.let { setOf(it.id) } ?: emptySet())
+            } else if (lasso.size >= 3) state.select(objectsTouchingLasso(current.document.objects, lasso, profilesProvider(), viewport.scale))
             else -> Unit
         }
         val result = reduceCanvasInput(CanvasInput.PointerUp, active)
@@ -137,10 +151,8 @@ class VectorCanvasHost(context: Context) : View(context) {
         interaction = result.state
         draft.clear()
         lasso.clear()
+        previewDocument = null
     }
-
-    private fun ratio(numerator: Float, denominator: Float): Float =
-        if (numerator.isFinite() && denominator.isFinite() && abs(denominator) > .0001f) (numerator / denominator).coerceIn(.01f, 100f) else 1f
 
     private fun pointerDistance(event: MotionEvent): Float = hypot(
         (event.getX(0) - event.getX(1)).toDouble(), (event.getY(0) - event.getY(1)).toDouble(),
@@ -163,6 +175,10 @@ class VectorCanvasHost(context: Context) : View(context) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF172E58.toInt(); style = Paint.Style.STROKE; strokeWidth = 2f }
         canvas.drawRect(overlay.bounds.minX, overlay.bounds.minY, overlay.bounds.maxX, overlay.bounds.maxY, paint)
         paint.style = Paint.Style.FILL
-        listOf(Point(overlay.bounds.minX, overlay.bounds.minY), Point(overlay.bounds.maxX, overlay.bounds.minY), Point(overlay.bounds.maxX, overlay.bounds.maxY), Point(overlay.bounds.minX, overlay.bounds.maxY), overlay.rotationHandle).forEach { canvas.drawCircle(it.x, it.y, 7f, paint) }
+        listOf(
+            Point(overlay.bounds.minX, overlay.bounds.minY), Point((overlay.bounds.minX + overlay.bounds.maxX) / 2f, overlay.bounds.minY), Point(overlay.bounds.maxX, overlay.bounds.minY),
+            Point(overlay.bounds.maxX, (overlay.bounds.minY + overlay.bounds.maxY) / 2f), Point(overlay.bounds.maxX, overlay.bounds.maxY), Point((overlay.bounds.minX + overlay.bounds.maxX) / 2f, overlay.bounds.maxY),
+            Point(overlay.bounds.minX, overlay.bounds.maxY), Point(overlay.bounds.minX, (overlay.bounds.minY + overlay.bounds.maxY) / 2f), overlay.rotationHandle,
+        ).forEach { canvas.drawCircle(it.x, it.y, 7f, paint) }
     }
 }

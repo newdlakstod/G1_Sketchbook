@@ -1,6 +1,7 @@
 package com.g1.sketchbook.vector
 
 import kotlin.math.abs
+import kotlin.math.atan2
 
 enum class SelectionHandle { BODY, TOP_LEFT, TOP, TOP_RIGHT, RIGHT, BOTTOM_RIGHT, BOTTOM, BOTTOM_LEFT, LEFT, ROTATE, NONE }
 enum class CanvasGesture { NONE, DRAW, ERASE, MOVE_SELECTION, SCALE_SELECTION, ROTATE_SELECTION, VIEWPORT, LASSO }
@@ -77,6 +78,35 @@ fun reduceCanvasInput(input: CanvasInput, state: InteractionState): InteractionR
 }
 
 fun uniqueEraseIds(hitIds: List<String>): Set<String> = hitIds.filter(String::isNotBlank).toSet()
+
+/** Keeps a press on an object selectable; a real drag is the only path that becomes a lasso. */
+fun isShortSelectionGesture(start: Point, end: Point, thresholdPx: Float = 8f): Boolean {
+    if (!start.x.isFinite() || !start.y.isFinite() || !end.x.isFinite() || !end.y.isFinite() || !thresholdPx.isFinite()) return false
+    val dx = end.x - start.x; val dy = end.y - start.y
+    return dx * dx + dy * dy <= thresholdPx.coerceAtLeast(0f) * thresholdPx.coerceAtLeast(0f)
+}
+
+fun selectionScaleTransform(start: Point, end: Point, bounds: Bounds, handle: SelectionHandle): SelectionTransform {
+    val pivot = Point((bounds.minX + bounds.maxX) / 2f, (bounds.minY + bounds.maxY) / 2f)
+    val sx = scaleRatio(end.x - pivot.x, start.x - pivot.x); val sy = scaleRatio(end.y - pivot.y, start.y - pivot.y)
+    return when (handle) {
+        SelectionHandle.TOP, SelectionHandle.BOTTOM -> SelectionTransform(scaleY = sy, pivot = pivot)
+        SelectionHandle.LEFT, SelectionHandle.RIGHT -> SelectionTransform(scaleX = sx, pivot = pivot)
+        else -> { val uniform = if (abs(sx - 1f) >= abs(sy - 1f)) sx else sy; SelectionTransform(scaleX = uniform, scaleY = uniform, pivot = pivot) }
+    }
+}
+
+fun selectionRotationTransform(start: Point, end: Point, bounds: Bounds): SelectionTransform {
+    val pivot = Point((bounds.minX + bounds.maxX) / 2f, (bounds.minY + bounds.maxY) / 2f)
+    val degrees = Math.toDegrees(atan2((end.y - pivot.y).toDouble(), (end.x - pivot.x).toDouble()) - atan2((start.y - pivot.y).toDouble(), (start.x - pivot.x).toDouble())).toFloat()
+    return SelectionTransform(rotationDegrees = degrees.takeIf(Float::isFinite) ?: 0f, pivot = pivot)
+}
+
+fun previewSelectionTransform(document: VectorDocument, ids: Set<String>, transform: SelectionTransform): VectorDocument =
+    TransformObjects(ids, transform).apply(document)
+
+private fun scaleRatio(numerator: Float, denominator: Float): Float =
+    if (numerator.isFinite() && denominator.isFinite() && abs(denominator) > .0001f) (numerator / denominator).coerceIn(.01f, 100f) else 1f
 
 fun screenToCanvas(point: Point, viewport: CanvasViewport): Point? {
     if (!viewport.isUsable() || !point.x.isFinite() || !point.y.isFinite()) return null

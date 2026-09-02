@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlin.math.min
@@ -72,8 +73,8 @@ fun VectorEditorLayout(
                 Box(Modifier.weight(1f).fillMaxHeight(), content = canvas)
                 Column(Modifier.width(rightInspectorWidthDp(availableWidth.value).dp).fillMaxHeight().verticalScroll(rememberScrollState())) { appearance() }
             } else Box(Modifier.fillMaxSize()) {
-                Row(Modifier.align(Alignment.CenterStart).padding(8.dp)) { VectorToolRail(snapshot.tool, true, state::setTool) }
                 Box(Modifier.fillMaxSize(), content = canvas)
+                Row(Modifier.align(Alignment.CenterStart).zIndex(1f).padding(8.dp)) { VectorToolRail(snapshot.tool, true, state::setTool) }
                 Column(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(availableHeight * bottomPanelFraction)
                         .draggable(
