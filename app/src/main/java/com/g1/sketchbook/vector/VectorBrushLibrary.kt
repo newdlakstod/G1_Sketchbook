@@ -17,8 +17,8 @@ import androidx.compose.ui.unit.dp
 fun VectorBrushLibrary(
     profiles: List<VectorBrushProfile>, selected: BrushStyle, onSelect: (BrushStyle) -> Unit,
     onImportArt: () -> Unit, onImportPattern: () -> Unit, onRename: (String, String) -> Unit, onDelete: (String) -> Unit,
-    onClose: () -> Unit = {},
     modifier: Modifier = Modifier,
+    onClose: () -> Unit = {},
 ) {
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("브러시 라이브러리", style = MaterialTheme.typography.titleMedium)
