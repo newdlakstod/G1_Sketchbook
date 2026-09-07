@@ -4,6 +4,9 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **v2.17.0 배포 준비 — 벡터 Appearance 편집기 개편** (2026-09-07, Codex): versionCode 146,
+  versionName 2.17.0. Basic/Art/Pattern Appearance, 선택·이동·크기·회전, 적응형 세로/가로 UI,
+  v1 비파괴 v2 저장·Firebase 동기화와 최종 데이터 보존 수정 전체를 포함한다.
 - **벡터 Appearance 편집기 최종 결함 수정 및 독립 재검토 통과** (2026-09-07, Codex): 과거 v1
   선택 필드가 없는 유효한 캔버스를 엄격 파서가 거부해 그림을 숨길 수 있던 문제를 수정하고 역사적
   JSON fixture를 추가했다. v2 저장은 책별 process-owned queue와 store lock으로 직렬화하며 시스템
