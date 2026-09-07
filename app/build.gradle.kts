@@ -91,4 +91,5 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(kotlin("test"))
+    testImplementation("org.json:json:20240303")
 }

@@ -94,6 +94,10 @@ private const val VECTOR_PREVIEW_SIZE = 512
  * images as PNG files under filesDir/sketchbooks/{id}/page_{i}.png.
  */
 class SketchbookRepository(private val context: Context) {
+    init {
+        LegacyVectorCleanup(context).run()
+    }
+
     private val prefs = context.getSharedPreferences("g1_sketchbooks", Context.MODE_PRIVATE)
     private val root = File(context.filesDir, "sketchbooks").apply { mkdirs() }
 
