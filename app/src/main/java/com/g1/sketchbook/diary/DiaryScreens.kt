@@ -163,8 +163,11 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var quickFavorites by remember(session) {
         mutableStateOf(session?.quickFavorites ?: com.g1.sketchbook.data.SessionStore.DefaultFavorites.take(com.g1.sketchbook.data.SessionStore.QuickFavoritesCount))
     }
-    var palette by remember(session) {
-        mutableStateOf(session?.paletteColors ?: com.g1.sketchbook.data.SessionStore.DefaultFavorites)
+    var libraries by remember(session) {
+        mutableStateOf(session?.libraries ?: emptyList())
+    }
+    var activeLibraryIds by remember(session) {
+        mutableStateOf(session?.activeLibraryIds ?: emptyList())
     }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
@@ -330,10 +333,30 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                 val nf = quickFavorites.toMutableList(); nf[i] = c; quickFavorites = nf
                 session?.let { it.quickFavorites = nf }
             },
-            palette = palette,
-            onEditPalette = { i, c ->
-                val nf = palette.toMutableList(); nf[i] = c; palette = nf
-                session?.let { it.paletteColors = nf }
+            libraries = libraries,
+            activeLibraryIds = activeLibraryIds,
+            onToggleActiveLibrary = { id ->
+                val next = com.g1.sketchbook.data.toggleActiveLibrary(activeLibraryIds, id)
+                activeLibraryIds = next; session?.let { it.activeLibraryIds = next }
+            },
+            onCreateLibrary = { name ->
+                val next = com.g1.sketchbook.data.addLibrary(libraries, name)
+                libraries = next; session?.let { it.libraries = next }
+            },
+            onRenameLibrary = { id, name ->
+                val next = com.g1.sketchbook.data.renameLibrary(libraries, id, name)
+                libraries = next; session?.let { it.libraries = next }
+            },
+            onDeleteLibrary = { id ->
+                libraries = com.g1.sketchbook.data.removeLibrary(libraries, id); session?.let { it.libraries = libraries }
+                if (id in activeLibraryIds) {
+                    activeLibraryIds = activeLibraryIds - id
+                    session?.let { it.activeLibraryIds = activeLibraryIds }
+                }
+            },
+            onEditLibraryColor = { id, i, c ->
+                val next = com.g1.sketchbook.data.updateLibraryColor(libraries, id, i, c)
+                libraries = next; session?.let { it.libraries = next }
             },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             lassoActive = lassoActive,

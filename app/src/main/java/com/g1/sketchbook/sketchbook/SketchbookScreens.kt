@@ -1092,7 +1092,8 @@ fun SketchbookCanvasScreen(
     val sizeDp = if (erasing) eraserSize else sizeByBrush[brush] ?: 10f
     val opacity = if (erasing) eraserOpacity else opacityByBrush[brush] ?: 100f
     var quickFavorites by remember { mutableStateOf(session.quickFavorites) }
-    var palette by remember { mutableStateOf(session.paletteColors) }
+    var libraries by remember { mutableStateOf(session.libraries) }
+    var activeLibraryIds by remember { mutableStateOf(session.activeLibraryIds) }
     var eyedropArmed by remember { mutableStateOf(false) }
     var eyedropPreview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
     var page by remember { mutableIntStateOf(startPage.coerceIn(0, book.pageCount - 1)) }
@@ -1221,8 +1222,28 @@ fun SketchbookCanvasScreen(
             onUndo = { view?.undo() }, onRedo = { view?.redo() }, onClear = { view?.clearCanvas(); saveCurrent() },
             quickFavorites = quickFavorites,
             onEditQuickFavorite = { i, c -> val nf = quickFavorites.toMutableList(); nf[i] = c; quickFavorites = nf; session.quickFavorites = nf },
-            palette = palette,
-            onEditPalette = { i, c -> val nf = palette.toMutableList(); nf[i] = c; palette = nf; session.paletteColors = nf },
+            libraries = libraries,
+            activeLibraryIds = activeLibraryIds,
+            onToggleActiveLibrary = { id ->
+                val next = com.g1.sketchbook.data.toggleActiveLibrary(activeLibraryIds, id)
+                activeLibraryIds = next; session.activeLibraryIds = next
+            },
+            onCreateLibrary = { name ->
+                val next = com.g1.sketchbook.data.addLibrary(libraries, name)
+                libraries = next; session.libraries = next
+            },
+            onRenameLibrary = { id, name ->
+                val next = com.g1.sketchbook.data.renameLibrary(libraries, id, name)
+                libraries = next; session.libraries = next
+            },
+            onDeleteLibrary = { id ->
+                libraries = com.g1.sketchbook.data.removeLibrary(libraries, id); session.libraries = libraries
+                if (id in activeLibraryIds) { activeLibraryIds = activeLibraryIds - id; session.activeLibraryIds = activeLibraryIds }
+            },
+            onEditLibraryColor = { id, i, c ->
+                val next = com.g1.sketchbook.data.updateLibraryColor(libraries, id, i, c)
+                libraries = next; session.libraries = next
+            },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             lassoActive = lassoActive,
             onToggleLasso = {
