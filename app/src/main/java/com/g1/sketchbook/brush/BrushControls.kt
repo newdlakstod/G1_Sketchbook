@@ -666,14 +666,14 @@ fun BrushControls(
                         ColorLibraryManagerPopup(libraries, activeLibraryIds,
                             onToggleActive = onToggleActiveLibrary,
                             onCreate = onCreateLibrary,
-                            onOpenLibrary = { lib -> libraryManagerOpen = false; editingLibraryId = lib.id })
+                            onOpenLibrary = { lib -> libraryManagerOpen = false; editingLibraryId = lib.id; editingColorAt = -1 })
                     }
                     editingLibrary?.let { lib ->
                         Popup(popupAnchor, { editingLibraryId = null; editingColorAt = -1 }, PopupProperties(focusable = true)) {
                             ColorLibraryDetailPopup(lib,
                                 onColorTap = { i -> editingColorAt = i },
                                 onRename = { newName -> onRenameLibrary(lib.id, newName) },
-                                onDelete = { onDeleteLibrary(lib.id); editingLibraryId = null },
+                                onDelete = { onDeleteLibrary(lib.id); editingLibraryId = null; editingColorAt = -1 },
                                 onClose = { editingLibraryId = null; editingColorAt = -1 })
                         }
                     }
