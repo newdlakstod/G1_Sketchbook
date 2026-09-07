@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -52,12 +53,14 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -99,6 +102,9 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.g1.sketchbook.R
+import com.g1.sketchbook.data.ColorLibrary
+import com.g1.sketchbook.data.MaxLibraries
+import com.g1.sketchbook.data.deriveLibraryPalette
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlin.math.abs
@@ -285,12 +291,18 @@ fun BrushControls(
     /** 지우개 전용 경계 블러(부드러움) 정도 — 브러시에는 없는 지우개만의 슬라이더. 0이면 또렷한 경계. */
     eraserBlur: Float = 0f,
     onEraserBlur: (Float) -> Unit = {},
-    quickFavorites: List<Long> = BrushPalette.take(5),
+    quickFavorites: List<Long> = BrushPalette.take(3),
     onEditQuickFavorite: (Int, Long) -> Unit = { _, _ -> },
-    /** "즐겨찾기 전체" 그리드에 보이는 21색 — [quickFavorites]와 독립(2026-08-31 분리, 예전엔 같은
-     *  리스트의 앞 5개를 인라인으로 보여줬었음). */
-    palette: List<Long> = BrushPalette,
-    onEditPalette: (Int, Long) -> Unit = { _, _ -> },
+    /** 팔레트를 구성하는 색상 라이브러리 전체 — [activeLibraryIds]가 가리키는 최대 3개를 이어붙인
+     *  게 실제 팔레트다(2026-09-08, 21색 고정 리스트에서 라이브러리 여러 개 중 3개 선택 방식으로
+     *  바뀜). */
+    libraries: List<ColorLibrary> = emptyList(),
+    activeLibraryIds: List<String> = emptyList(),
+    onToggleActiveLibrary: (String) -> Unit = {},
+    onCreateLibrary: (String) -> Unit = {},
+    onRenameLibrary: (String, String) -> Unit = { _, _ -> },
+    onDeleteLibrary: (String) -> Unit = {},
+    onEditLibraryColor: (String, Int, Long) -> Unit = { _, _, _ -> },
     eyedropArmed: Boolean = false,
     onToggleEyedrop: () -> Unit = {},
     /** 올가미(라소) 선택 도구 — 켜져 있으면 손가락으로 영역을 그려 선택하고, 안쪽을 드래그해서
@@ -322,6 +334,11 @@ fun BrushControls(
     dock: ToolbarDock = ToolbarDock.TOP,
     modifier: Modifier = Modifier.fillMaxWidth(),
 ) {
+    val palette = remember(libraries, activeLibraryIds) { deriveLibraryPalette(libraries, activeLibraryIds) }
+    var libraryManagerOpen by remember { mutableStateOf(false) }
+    var editingLibraryId by remember { mutableStateOf<String?>(null) }
+    var editingColorAt by remember { mutableIntStateOf(-1) }
+    val editingLibrary = libraries.firstOrNull { it.id == editingLibraryId }
     var colorWheelOpen by remember { mutableStateOf(false) }
     var editFavAt by remember { mutableIntStateOf(-1) } // -1 none, else favourites index being edited
     var favoritesGridOpen by remember { mutableStateOf(false) }
@@ -633,14 +650,39 @@ fun BrushControls(
                             onEyedrop = { colorWheelOpen = false; onToggleEyedrop() })
                     }
                 }
-                // 팔레트(21개) 그리드 — 즐겨찾기 5개와는 별개인 색상 모음, 여기서 고르거나 등록.
+                // 팔레트 — 선택된 라이브러리(최대 3개)의 색을 이어붙인 목록에서 고른다. "관리"
+                // 버튼으로 라이브러리 목록(체크박스로 최대 3개 선택)을 열고, 그 안에서 라이브러리
+                // 하나를 탭하면 그 7색을 편집(색 바꾸기/이름 변경/삭제)할 수 있다.
                 Box {
                     IconBtn(Icons.Filled.Palette, "팔레트",
                         tint = if (favoritesGridOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = { favoritesGridOpen = !favoritesGridOpen })
                     if (favoritesGridOpen) Popup(popupAnchor, { favoritesGridOpen = false }, PopupProperties(focusable = true)) {
-                        FavoritesGridPopup(palette, color, erasing, onColor, onEditPalette,
-                            onEyedrop = { favoritesGridOpen = false; onToggleEyedrop() })
+                        FavoritesGridPopup(palette, color, erasing, onColor,
+                            onEyedrop = { favoritesGridOpen = false; onToggleEyedrop() },
+                            onManage = { favoritesGridOpen = false; libraryManagerOpen = true })
+                    }
+                    if (libraryManagerOpen) Popup(popupAnchor, { libraryManagerOpen = false }, PopupProperties(focusable = true)) {
+                        ColorLibraryManagerPopup(libraries, activeLibraryIds,
+                            onToggleActive = onToggleActiveLibrary,
+                            onCreate = onCreateLibrary,
+                            onOpenLibrary = { lib -> libraryManagerOpen = false; editingLibraryId = lib.id })
+                    }
+                    editingLibrary?.let { lib ->
+                        Popup(popupAnchor, { editingLibraryId = null; editingColorAt = -1 }, PopupProperties(focusable = true)) {
+                            ColorLibraryDetailPopup(lib,
+                                onColorTap = { i -> editingColorAt = i },
+                                onRename = { newName -> onRenameLibrary(lib.id, newName) },
+                                onDelete = { onDeleteLibrary(lib.id); editingLibraryId = null },
+                                onClose = { editingLibraryId = null; editingColorAt = -1 })
+                        }
+                    }
+                    if (editingColorAt >= 0 && editingLibrary != null) {
+                        Popup(popupAnchor, { editingColorAt = -1 }, PopupProperties(focusable = true)) {
+                            ColorPickerCard(editingLibrary.colors[editingColorAt],
+                                onColor = { newColor -> onEditLibraryColor(editingLibrary.id, editingColorAt, newColor) },
+                                onEyedrop = { editingColorAt = -1; onToggleEyedrop() })
+                        }
                     }
                 }
                 // Eyedropper: arm it, then the next tap on the canvas picks that colour instead of drawing.
@@ -1448,35 +1490,116 @@ private fun hslToRgb(h: Float, s: Float, l: Float): Triple<Int, Int, Int> {
     return Triple(r, g, b)
 }
 
-/** 팔레트 21개를 [ColorPickerCard]와 같은 폭(260dp)의 그리드로 보여주는 팝업 — 즐겨찾기 5개와는
- *  독립된 [palette] 리스트(2026-08-31 분리). 탭하면 선택, 이미 선택된 칸을 다시 탭하면 그 칸의
- *  색을 바꾸는 색상휠이 뜬다(즐겨찾기 인라인 스와치와 동일한 편집 방식). */
+/** 팔레트(활성 라이브러리 최대 3개를 이어붙인 색상)를 [ColorPickerCard]와 같은 폭(260dp)의
+ *  그리드로 보여주는 팝업 — 탭하면 그 색을 고른다. 색상 자체를 편집하거나 어떤 라이브러리를
+ *  쓸지 고르려면 위쪽 "관리" 버튼으로 [ColorLibraryManagerPopup]을 연다(2026-09-08, 예전엔 이
+ *  팝업 안에서 칸을 다시 탭해 바로 편집했는데, 라이브러리 개념이 생기면서 편집은 그쪽으로 옮김). */
 @Composable
 private fun FavoritesGridPopup(
     palette: List<Long>, color: Long, erasing: Boolean,
-    onColor: (Long) -> Unit, onEditPalette: (Int, Long) -> Unit, onEyedrop: () -> Unit,
+    onColor: (Long) -> Unit, onEyedrop: () -> Unit, onManage: () -> Unit,
 ) {
-    var editAt by remember { mutableIntStateOf(-1) }
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
-        Box(Modifier.width(260.dp).padding(16.dp)) {
-            FavoritesGrid(palette) { i, c ->
-                val on = !erasing && c == color
-                val interaction = remember { MutableInteractionSource() }
-                Box {
+        Column(Modifier.width(260.dp).padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("팔레트", style = MaterialTheme.typography.labelLarge)
+                IconBtn(Icons.Filled.Tune, "라이브러리 관리", onClick = onManage)
+            }
+            Spacer(Modifier.height(8.dp))
+            if (palette.isEmpty()) {
+                Text("선택된 라이브러리가 없어요 — \"관리\"에서 최대 3개를 골라주세요.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                FavoritesGrid(palette) { i, c ->
+                    val on = !erasing && c == color
                     Box(
-                        Modifier.size(FavoriteSwatchSize).clip(CircleShape).indication(interaction, LocalIndication.current)
+                        Modifier.size(FavoriteSwatchSize).clip(CircleShape)
                             .background(Color(c))
                             .border(if (on) 2.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else Color(0x33000000), CircleShape)
-                            .clickable(interactionSource = interaction, indication = null, onClickLabel = "팔레트 색상 ${i + 1}") {
-                                if (on) editAt = i else onColor(c)
-                            },
+                            .clickable(onClickLabel = "팔레트 색상 ${i + 1}") { onColor(c) },
                     )
-                    if (editAt == i) Popup(AboveAnchor(0, 0), { editAt = -1 }, PopupProperties(focusable = true)) {
-                        ColorPickerCard(c,
-                            onColor = { newColor -> onColor(newColor); onEditPalette(i, newColor) },
-                            onEyedrop = { editAt = -1; onEyedrop() })
+                }
+            }
+        }
+    }
+}
+
+/** 색상 라이브러리 목록 — 체크박스로 최대 [com.g1.sketchbook.data.ActiveLibraryCount]개를 골라
+ *  팔레트를 구성한다. 각 줄을 탭하면 그 라이브러리의 7색 편집 화면([ColorLibraryDetailPopup])이
+ *  열린다. 맨 아래 "새 라이브러리" 버튼은 [MaxLibraries]에 도달하면 비활성화된다. */
+@Composable
+private fun ColorLibraryManagerPopup(
+    libraries: List<ColorLibrary>, activeLibraryIds: List<String>,
+    onToggleActive: (String) -> Unit, onCreate: (String) -> Unit, onOpenLibrary: (ColorLibrary) -> Unit,
+) {
+    var createOpen by remember { mutableStateOf(false) }
+    var nameDraft by remember { mutableStateOf("") }
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
+        Column(Modifier.width(260.dp).padding(16.dp)) {
+            Text("색상 라이브러리 (${activeLibraryIds.size}/3 선택됨)", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                libraries.forEach { lib ->
+                    val active = lib.id in activeLibraryIds
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable { onOpenLibrary(lib) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = active, onCheckedChange = { onToggleActive(lib.id) })
+                        Spacer(Modifier.width(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            lib.colors.forEach { c -> Box(Modifier.size(12.dp).clip(CircleShape).background(Color(c))) }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(lib.name, modifier = Modifier.weight(1f))
                     }
                 }
+            }
+            Spacer(Modifier.height(8.dp))
+            if (createOpen) {
+                TextField(value = nameDraft, onValueChange = { nameDraft = it }, singleLine = true, placeholder = { Text("라이브러리 이름") })
+                Row {
+                    TextButton(onClick = {
+                        onCreate(nameDraft.ifBlank { "라이브러리 ${libraries.size + 1}" })
+                        nameDraft = ""; createOpen = false
+                    }) { Text("추가") }
+                    TextButton(onClick = { createOpen = false; nameDraft = "" }) { Text("취소") }
+                }
+            } else {
+                TextButton(onClick = { createOpen = true }, enabled = libraries.size < MaxLibraries) {
+                    Text(if (libraries.size < MaxLibraries) "+ 새 라이브러리" else "최대 ${MaxLibraries}개까지 만들 수 있어요")
+                }
+            }
+        }
+    }
+}
+
+/** 라이브러리 하나의 7색 편집 화면 — 이름 변경(입력하는 즉시 반영), 색상 하나씩 탭해서 바꾸기,
+ *  삭제. */
+@Composable
+private fun ColorLibraryDetailPopup(
+    library: ColorLibrary, onColorTap: (Int) -> Unit, onRename: (String) -> Unit, onDelete: () -> Unit, onClose: () -> Unit,
+) {
+    var nameDraft by remember(library.id) { mutableStateOf(library.name) }
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
+        Column(Modifier.width(260.dp).padding(16.dp)) {
+            TextField(
+                value = nameDraft, onValueChange = { nameDraft = it; onRename(it) }, singleLine = true,
+                textStyle = MaterialTheme.typography.labelLarge,
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                library.colors.forEachIndexed { i, c ->
+                    Box(
+                        Modifier.size(FavoriteSwatchSize).clip(CircleShape).background(Color(c))
+                            .border(1.dp, Color(0x33000000), CircleShape)
+                            .clickable(onClickLabel = "${i + 1}번째 색") { onColorTap(i) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row {
+                TextButton(onClick = onDelete) { Text("삭제", color = Color(0xFFE85555)) }
+                TextButton(onClick = onClose) { Text("닫기") }
             }
         }
     }
