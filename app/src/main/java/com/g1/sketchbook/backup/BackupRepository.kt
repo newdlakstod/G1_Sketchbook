@@ -12,15 +12,6 @@ import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.min
 
-/** The exact relative Firebase write exercised by [BackupRepository.pushVectorDocument]. */
-internal data class VectorDocumentRemoteWrite(val path: String, val payload: Map<String, Any>)
-
-internal fun vectorDocumentRemoteWrite(bookId: String, documentJson: String, updatedAt: Long): VectorDocumentRemoteWrite =
-    VectorDocumentRemoteWrite(
-        path = "sketchbooks/$bookId/vectorCanvasV2",
-        payload = mapOf("updatedAt" to updatedAt, "document" to documentJson),
-    )
-
 /**
  * Google-account backup: personal sketchbooks, diary, and settings synced across a user's devices
  * via Firebase Realtime Database (base64-encoded JPEGs — no Firebase Storage, see
@@ -54,8 +45,6 @@ class BackupRepository {
                 "name" to book.name, "sizeKey" to book.sizeKey, "bgKey" to book.bgKey,
                 "createdAt" to book.createdAt, "pageCount" to book.pageCount, "fav" to book.fav,
                 "coverColor" to (book.coverColor ?: Long.MIN_VALUE), "updatedAt" to book.updatedAt,
-                "vector" to book.vector, "vectorInfinite" to book.vectorInfinite,
-                "vectorCanvasW" to (book.vectorCanvasW ?: -1), "vectorCanvasH" to (book.vectorCanvasH ?: -1),
             ),
         )
     }
@@ -78,17 +67,16 @@ class BackupRepository {
             .setValue(mapOf("updatedAt" to updatedAt, "image" to encode(bmp, preserveAlpha = true)))
     }
 
-    /** 벡터 캔버스는 이미 텍스트(JSON)라 base64 인코딩 없이 그대로 올린다 — 이미지보다 훨씬
-     *  가볍다. [pushSketchbookPage]와 나란한 벡터 전용 경로. 책 하나당 캔버스 하나라 인덱스가 없다. */
+    /** Transitional API removed with the remaining vector screen call sites. */
     fun pushVectorCanvas(uid: String, bookId: String, strokesJson: String, updatedAt: Long) {
         root.child(uid).child("sketchbooks").child(bookId).child("vectorCanvas")
             .setValue(mapOf("updatedAt" to updatedAt, "strokes" to strokesJson))
     }
 
-    /** v2 remains a sibling of the deployed v1 `vectorCanvas` node. */
+    /** Transitional API removed with the remaining vector screen call sites. */
     fun pushVectorDocument(uid: String, bookId: String, documentJson: String, updatedAt: Long) {
-        val write = vectorDocumentRemoteWrite(bookId, documentJson, updatedAt)
-        root.child(uid).child(write.path).setValue(write.payload)
+        root.child(uid).child("sketchbooks").child(bookId).child("vectorCanvasV2")
+            .setValue(mapOf("updatedAt" to updatedAt, "document" to documentJson))
     }
 
     /** No tombstone needed here (unlike [deleteSketchbookCover]): the only caller is a page reorder,
@@ -117,20 +105,7 @@ class BackupRepository {
         root.child(uid).child("sharedBooks").child(code).setValue(mapOf("deleted" to true))
     }
 
-    /** 원본 SVG 텍스트만 올린다(파싱된 다각형은 안 올림 — 받는 기기가 [com.g1.sketchbook.vector.parseSvgDocument]로
-     *  다시 파싱). */
-    fun pushStampBrush(uid: String, brush: RemoteStampBrush) {
-        root.child(uid).child("stampBrushes").child(brush.id).setValue(
-            mapOf(
-                "name" to brush.name, "svgText" to brush.svgText,
-                "spacingPx" to brush.spacingPx, "sizePx" to brush.sizePx,
-                "type" to (brush.type ?: "PATTERN"),
-                "updatedAt" to brush.updatedAt, "deleted" to false,
-            ),
-        )
-    }
-
-    /** 툼스톤 — 하드 삭제하면 다른 기기가 "원래 없었음"으로 잘못 읽고 되살린다([deleteSharedBookRef]와 동일 이유). */
+    /** Transitional API removed with the remaining vector brush screen call sites. */
     fun deleteStampBrush(uid: String, id: String, updatedAt: Long) {
         root.child(uid).child("stampBrushes").child(id).setValue(
             mapOf("deleted" to true, "updatedAt" to updatedAt),
@@ -166,6 +141,20 @@ class BackupRepository {
         root.child(uid).child("settings").updateChildren(payload)
     }
 
+    /** Permanently removes retired vector books and brush profiles for this authenticated owner. */
+    suspend fun removeLegacyVectorData(uid: String): Result<Unit> = runCatching {
+        val userRoot = root.child(uid)
+        val snapshot = userRoot.get().await()
+        val legacyBooks = snapshot.child("sketchbooks").children.mapNotNull { child ->
+            val id = child.key ?: return@mapNotNull null
+            if (child.child("meta").child("vector").getValue(Boolean::class.java) == true) id else null
+        }
+        val updates = linkedMapOf<String, Any?>()
+        legacyBooks.forEach { id -> updates["sketchbooks/$id"] = null }
+        if (snapshot.child("stampBrushes").exists()) updates["stampBrushes"] = null
+        if (updates.isNotEmpty()) userRoot.updateChildren(updates).await()
+    }
+
     suspend fun pullAll(uid: String): RemoteSnapshot {
         val snap = root.child(uid).get().await()
 
@@ -178,19 +167,6 @@ class BackupRepository {
                 val image = pc.child("image").getValue(String::class.java) ?: return@mapNotNull null
                 idx to (updatedAt to image)
             }.toMap()
-            val vectorCanvas = c.child("vectorCanvas").let { vc ->
-                val updatedAt = vc.child("updatedAt").getValue(Long::class.java)
-                val strokes = vc.child("strokes").getValue(String::class.java)
-                if (updatedAt != null && strokes != null) updatedAt to strokes else null
-            }
-            val vectorCanvasV2 = c.child("vectorCanvasV2").takeIf { it.exists() }?.let { vc ->
-                // Retain a present-but-malformed sibling as an invalid payload so reconciliation
-                // can make it a safe no-op rather than falling through to the v1 branch.
-                RemoteVectorDocument(
-                    updatedAt = vc.child("updatedAt").getValue(Long::class.java) ?: 0L,
-                    json = vc.child("document").getValue(String::class.java).orEmpty(),
-                )
-            }
             RemoteSketchbook(
                 id = id,
                 name = meta.child("name").getValue(String::class.java) ?: "",
@@ -206,12 +182,7 @@ class BackupRepository {
                 coverUpdatedAt = c.child("cover").child("updatedAt").getValue(Long::class.java),
                 coverRemoved = c.child("cover").child("removed").getValue(Boolean::class.java) ?: false,
                 pages = pages,
-                vector = meta.child("vector").getValue(Boolean::class.java) ?: false,
-                vectorInfinite = meta.child("vectorInfinite").getValue(Boolean::class.java) ?: false,
-                vectorCanvasW = meta.child("vectorCanvasW").getValue(Int::class.java)?.takeIf { it > 0 },
-                vectorCanvasH = meta.child("vectorCanvasH").getValue(Int::class.java)?.takeIf { it > 0 },
-                vectorCanvas = vectorCanvas,
-                vectorCanvasV2 = vectorCanvasV2,
+                legacyVector = meta.child("vector").getValue(Boolean::class.java) ?: false,
             )
         }
 
@@ -259,20 +230,6 @@ class BackupRepository {
             )
         }
 
-        val stampBrushes = snap.child("stampBrushes").children.mapNotNull { c ->
-            val id = c.key ?: return@mapNotNull null
-            RemoteStampBrush(
-                id = id,
-                name = c.child("name").getValue(String::class.java) ?: "",
-                svgText = c.child("svgText").getValue(String::class.java) ?: "",
-                spacingPx = c.child("spacingPx").getValue(Double::class.java)?.toFloat() ?: 24f,
-                sizePx = c.child("sizePx").getValue(Double::class.java)?.toFloat() ?: 32f,
-                updatedAt = c.child("updatedAt").getValue(Long::class.java) ?: 0L,
-                deleted = c.child("deleted").getValue(Boolean::class.java) ?: false,
-                type = c.child("type").getValue(String::class.java),
-            )
-        }
-
-        return RemoteSnapshot(sketchbooks, diary, settings, sharedBooks, stampBrushes)
+        return RemoteSnapshot(sketchbooks, diary, settings, sharedBooks)
     }
 }

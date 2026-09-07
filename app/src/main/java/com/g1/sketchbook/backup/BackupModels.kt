@@ -10,20 +10,9 @@ data class RemoteSketchbook(
     /** 표지 삭제 툼스톤 — 노드를 지우면 "원래 표지가 없었음"과 구분이 안 돼서 다른 기기가 되살린다. */
     val coverRemoved: Boolean = false,
     val pages: Map<Int, Pair<Long, String>>, // index -> (updatedAt, base64)
-    /** 벡터 스케치북 여부·캔버스(텍스트 그대로, base64 인코딩 없음) — [pages]와 상호 배타적으로
-     *  쓰인다: vector=true인 책은 항상 pages가 비어 있고 [vectorCanvas] 단일 필드만 쓴다. */
-    val vector: Boolean = false,
-    val vectorInfinite: Boolean = false,
-    val vectorCanvasW: Int? = null,
-    val vectorCanvasH: Int? = null,
-    /** 벡터 책 하나 = 캔버스 하나이므로 더 이상 페이지 인덱스가 없다. */
-    val vectorCanvas: Pair<Long, String>? = null, // (updatedAt, strokes json)
-    /** v1 [vectorCanvas]와 독립적으로 보관하는 편집 가능한 v2 문서. */
-    val vectorCanvasV2: RemoteVectorDocument? = null,
+    /** Cleanup-only marker for retired vector books. Such rows never enter normal reconciliation. */
+    val legacyVector: Boolean = false,
 )
-
-/** Firebase `vectorCanvasV2` sibling payload. */
-data class RemoteVectorDocument(val updatedAt: Long, val json: String)
 
 /** 공유 스케치북은 실제 그림이 아니라 "이 계정이 이 코드에 참여 중"이라는 사실만 계정 전체에
  *  동기화한다 — 그림 자체는 이미 ShareRepository의 실시간 세션으로 기기와 무관하게 공유되므로,
@@ -31,21 +20,6 @@ data class RemoteVectorDocument(val updatedAt: Long, val json: String)
 data class RemoteSharedBookRef(
     val code: String, val name: String, val sizeKey: String, val bgKey: String,
     val createdAt: Long, val deleted: Boolean,
-)
-
-/** 스탬프 브러시 하나의 백업용 표현 — 파싱된 다각형([com.g1.sketchbook.vector.StampBrushProfile.shapes])은
- *  안 올리고 원본 [svgText]만 올려서 페이로드를 가볍게 유지한다(받는 기기가 다시 파싱). [deleted]는
- *  툼스톤 — 이 기기에서 지운 항목을 다른 기기에도 지우라고 알리는 용도([RemoteSharedBookRef]와 같은 패턴). */
-data class RemoteStampBrush(
-    val id: String,
-    val name: String,
-    val svgText: String,
-    val spacingPx: Float,
-    val sizePx: Float,
-    val updatedAt: Long,
-    val deleted: Boolean,
-    /** Null is the legacy stamp shape and therefore means Pattern. */
-    val type: String? = null,
 )
 
 /** [contentBase64] is the separate stroke-only transparent layer (same file [DiaryRepository.loadContent]
@@ -59,7 +33,6 @@ data class RemoteSnapshot(
     val diary: Map<String, RemoteDiaryDay>,
     val settings: RemoteSettings?,
     val sharedBooks: List<RemoteSharedBookRef>,
-    val stampBrushes: List<RemoteStampBrush>,
 )
 
 data class RemoteSettings(
@@ -93,18 +66,6 @@ fun decideSyncAction(localUpdatedAt: Long?, remoteUpdatedAt: Long?, remoteDelete
         remoteUpdatedAt == localUpdatedAt -> SyncAction.NOOP
         else -> SyncAction.PUSH
     }
-}
-
-/** v2 vector documents never infer their local existence from a v1 fallback. An invalid remote
- *  document is deliberately a no-op so it cannot overwrite local v2 data or wake the v1 branch. */
-fun decideVectorDocumentSyncAction(
-    localV2At: Long?,
-    remoteV2At: Long?,
-    remoteV2Valid: Boolean = true,
-): SyncAction {
-    if (!remoteV2Valid) return SyncAction.NOOP
-    if (localV2At == null && remoteV2At == null) return SyncAction.NOOP
-    return decideSyncAction(localV2At, remoteV2At)
 }
 
 /**

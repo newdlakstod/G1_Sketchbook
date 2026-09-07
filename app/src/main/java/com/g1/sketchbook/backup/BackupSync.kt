@@ -8,13 +8,6 @@ import com.g1.sketchbook.diary.DiaryRepository
 import com.g1.sketchbook.sketchbook.MAX_PAGES
 import com.g1.sketchbook.sketchbook.Sketchbook
 import com.g1.sketchbook.sketchbook.SketchbookRepository
-import com.g1.sketchbook.vector.StampBrushRepository
-import com.g1.sketchbook.vector.VectorBrushRepository
-import com.g1.sketchbook.vector.VectorDocument
-import com.g1.sketchbook.vector.decodeVectorDocument
-import com.g1.sketchbook.vector.encodeVectorDocument
-import com.g1.sketchbook.vector.toJson
-import com.g1.sketchbook.vector.vectorPageFromJson
 
 /** Runs one full reconcile pass: pulls everything from the cloud, compares against local state
  *  item-by-item via [decideSyncAction], and applies whichever side is newer. Called on sign-in and
@@ -24,14 +17,13 @@ suspend fun reconcileBackup(context: Context, uid: String, backup: BackupReposit
     val sketchbookRepo = SketchbookRepository(context)
     val diaryRepo = DiaryRepository(context)
     val session = SessionStore(context)
+    backup.removeLegacyVectorData(uid)
     val remote = backup.pullAll(uid)
 
-    reconcileSketchbooks(sketchbookRepo, backup, uid, remote.sketchbooks)
+    reconcileSketchbooks(sketchbookRepo, backup, uid, nonVectorRemoteBooks(remote.sketchbooks))
     reconcileDiary(diaryRepo, backup, uid, remote.diary)
     reconcileSettings(session, backup, uid, remote.settings)
     reconcileSharedBooks(sketchbookRepo, backup, uid, remote.sharedBooks)
-    reconcileStampBrushes(context, backup, uid, remote.stampBrushes)
-    reconcileTypedBrushes(context, backup, uid, remote.stampBrushes)
 }
 
 /** 공유 스케치북은 그림이 아니라 "참여 중"이라는 사실만 동기화한다(계정의 다른 기기에 같은 코드의
@@ -60,95 +52,8 @@ private fun reconcileSharedBooks(repo: SketchbookRepository, backup: BackupRepos
     }
 }
 
-/** [com.g1.sketchbook.vector.StampBrushRepository]의 로컬 스탬프 브러시 목록과 원격 `stampBrushes`를
- *  맞춘다 — [reconcileSharedBooks]와 같은 툼스톤 방식: 원격에만 있고 로컬에 없으면 받아서 임포트,
- *  원격에서 지워졌으면(deleted=true) 로컬에서도 지움, 로컬에만 있으면(또는 원격이 이미 지운 걸
- *  로컬은 아직 갖고 있으면) 원격에 올린다. */
-private fun reconcileStampBrushes(context: Context, backup: BackupRepository, uid: String, remote: List<RemoteStampBrush>) {
-    val local = StampBrushRepository(context)
-    val remoteById = remote.associateBy { it.id }
-    val localIds = local.list().map { it.id }.toSet()
-
-    for (r in remote) {
-        if (r.deleted) {
-            if (r.id in localIds) local.delete(r.id)
-        } else if (r.type != "ART" && r.id !in localIds) {
-            local.importFromRemote(r.id, r.name, r.svgText, r.spacingPx, r.sizePx)
-        }
-    }
-    for (profile in local.list()) {
-        val r = remoteById[profile.id]
-        if (shouldPushLocalBrush(r)) {
-            val svgText = local.originalSvgText(profile.id) ?: continue
-            backup.pushStampBrush(uid, RemoteStampBrush(profile.id, profile.name, svgText, profile.spacingPx, profile.sizePx, System.currentTimeMillis(), false))
-        }
-    }
-}
-
-private fun reconcileTypedBrushes(context: Context, backup: BackupRepository, uid: String, remote: List<RemoteStampBrush>) {
-    val local = VectorBrushRepository(context)
-    val remoteById = remote.associateBy { it.id }
-    val localIds = local.list().map { it.id }.toSet()
-    for (r in remote) {
-        if (r.deleted) {
-            if (r.id in localIds) local.delete(r.id)
-            continue
-        }
-        if (r.id !in localIds) local.importFromRemote(r.id, r.name, r.type, r.svgText, r.spacingPx, r.sizePx)
-    }
-    for (profile in local.list()) {
-        val svg = profile.originalSvg.takeIf { it.isNotEmpty() } ?: continue
-        val type = if (profile is com.g1.sketchbook.vector.ArtBrushProfile) "ART" else "PATTERN"
-        val spacing = (profile as? com.g1.sketchbook.vector.PatternBrushProfile)?.spacingPx ?: 24f
-        val size = (profile as? com.g1.sketchbook.vector.PatternBrushProfile)?.sizePx ?: 32f
-        val r = remoteById[profile.id]
-        if (shouldPushLocalBrush(r)) backup.pushStampBrush(uid, RemoteStampBrush(profile.id, profile.name, svg, spacing, size, System.currentTimeMillis(), false, type))
-    }
-}
-
-/** A remote tombstone owns reconciliation until an explicit new import creates a newer remote
- * record. Treating it as "missing" here would resurrect a brush from the stale local snapshot. */
-internal fun shouldPushLocalBrush(remote: RemoteStampBrush?): Boolean = remote == null
-
-/**
- * Reconciles the independent v2 sibling without ever consulting the v1 fallback. The callbacks
- * keep this policy pure and make the ordering guarantee testable: a malformed remote payload is
- * rejected before a local document is loaded, saved, or pushed.
- */
-internal fun reconcileVectorDocument(
-    localV2At: Long?,
-    remoteV2: RemoteVectorDocument?,
-    loadLocalV2: () -> VectorDocument?,
-    saveLocal: (VectorDocument, Long) -> Unit,
-    pushRemote: (String, Long) -> Unit,
-): SyncAction {
-    val decodedRemote = remoteV2?.let { decodeVectorDocument(it.json) }
-    val remoteIsValid = remoteV2 == null || (remoteV2.updatedAt > 0L && decodedRemote != null)
-    val action = decideVectorDocumentSyncAction(localV2At, remoteV2?.updatedAt, remoteIsValid)
-    when (action) {
-        SyncAction.PULL -> saveLocal(requireNotNull(decodedRemote), requireNotNull(remoteV2).updatedAt)
-        SyncAction.PUSH -> loadLocalV2()?.let { document ->
-            pushRemote(encodeVectorDocument(document), requireNotNull(localV2At))
-        } ?: return SyncAction.NOOP
-        SyncAction.DELETE_LOCAL, SyncAction.NOOP -> {}
-    }
-    return action
-}
-
-/** The real vector branch selects v2 whenever a recoverable local v2 or a remote v2 sibling exists. */
-internal fun reconcileVectorCanvas(
-    localRecoverableV2At: Long?,
-    remoteV2: RemoteVectorDocument?,
-    reconcileV2: (Long?, RemoteVectorDocument?) -> SyncAction,
-    reconcileV1: () -> SyncAction,
-): SyncAction = if (localRecoverableV2At != null || remoteV2 != null) {
-    reconcileV2(localRecoverableV2At, remoteV2)
-} else {
-    reconcileV1()
-}
-
 private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepository, uid: String, remote: List<RemoteSketchbook>) {
-    val local = repo.list().filter { !it.shared }
+    val local = repo.list().filter { !it.shared && !it.vector }
     val remoteById = remote.associateBy { it.id }
     val allIds = (local.map { it.id } + remote.map { it.id }).toSet()
 
@@ -160,8 +65,7 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
             SyncAction.DELETE_LOCAL -> repo.delete(id)
             SyncAction.PULL -> if (r != null) {
                 repo.upsert(Sketchbook(id, r.name, r.sizeKey, r.bgKey, r.createdAt, r.pageCount, r.fav,
-                    coverColor = r.coverColor, vector = r.vector, vectorInfinite = r.vectorInfinite,
-                    vectorCanvasW = r.vectorCanvasW, vectorCanvasH = r.vectorCanvasH, updatedAt = r.updatedAt))
+                    coverColor = r.coverColor, updatedAt = r.updatedAt))
             }
             SyncAction.PUSH -> if (l != null) backup.pushSketchbookMeta(uid, l)
             SyncAction.NOOP -> {}
@@ -182,54 +86,16 @@ private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepos
             SyncAction.NOOP -> {}
         }
 
-        if (l?.vector == true || r?.vector == true) {
-            // `loadVectorDocument()` can return a v1 fallback, so v2 presence comes only from its
-            // dedicated file timestamp. A present remote sibling always owns this branch, even when
-            // malformed: invalid data must be a no-op rather than accidentally synchronizing v1.
-            val localV2At = repo.recoverableVectorDocumentUpdatedAt(id).takeIf { it > 0L }
-            val remoteV2 = r?.vectorCanvasV2
-            reconcileVectorCanvas(
-                localRecoverableV2At = localV2At,
-                remoteV2 = remoteV2,
-                reconcileV2 = { recoverableV2At, sibling ->
-                    reconcileVectorDocument(
-                        localV2At = recoverableV2At,
-                        remoteV2 = sibling,
-                        loadLocalV2 = { repo.loadVectorDocumentV2(id) },
-                        saveLocal = { document, updatedAt ->
-                            repo.saveVectorDocument(id, document)
-                            repo.setVectorDocumentUpdatedAt(id, updatedAt)
-                        },
-                        pushRemote = { json, updatedAt -> backup.pushVectorDocument(uid, id, json, updatedAt) },
-                    )
-                },
-                reconcileV1 = {
-                val localAt = repo.vectorCanvasUpdatedAt(id).takeIf { it > 0L }
-                val action = decideSyncAction(localAt, r?.vectorCanvas?.first)
-                when (action) {
-                    SyncAction.PULL -> r?.vectorCanvas?.let { (remoteAt, strokesJson) ->
-                        vectorPageFromJson(strokesJson)?.let { repo.saveVectorCanvas(id, it); repo.setVectorCanvasUpdatedAt(id, remoteAt) }
-                    }
-                    SyncAction.PUSH -> repo.loadVectorCanvas(id)?.let {
-                        backup.pushVectorCanvas(uid, id, it.toJson(), repo.vectorCanvasUpdatedAt(id))
-                    }
-                    else -> {}
+        val pageCount = maxOf(l?.pageCount ?: 0, r?.pageCount ?: MAX_PAGES)
+        for (index in 0 until pageCount) {
+            val localPageAt = repo.pageUpdatedAt(id, index).takeIf { it > 0L }
+            val remotePage = r?.pages?.get(index)
+            when (decideSyncAction(localPageAt, remotePage?.first)) {
+                SyncAction.PULL -> if (remotePage != null) {
+                    backup.decodeImage(remotePage.second)?.let { repo.savePage(id, index, it); repo.setPageUpdatedAt(id, index, remotePage.first) }
                 }
-                action
-                },
-            )
-        } else {
-            val pageCount = maxOf(l?.pageCount ?: 0, r?.pageCount ?: MAX_PAGES)
-            for (index in 0 until pageCount) {
-                val localPageAt = repo.pageUpdatedAt(id, index).takeIf { it > 0L }
-                val remotePage = r?.pages?.get(index)
-                when (decideSyncAction(localPageAt, remotePage?.first)) {
-                    SyncAction.PULL -> if (remotePage != null) {
-                        backup.decodeImage(remotePage.second)?.let { repo.savePage(id, index, it); repo.setPageUpdatedAt(id, index, remotePage.first) }
-                    }
-                    SyncAction.PUSH -> repo.loadPage(id, index)?.let { backup.pushSketchbookPage(uid, id, index, it, repo.pageUpdatedAt(id, index)) }
-                    else -> {}
-                }
+                SyncAction.PUSH -> repo.loadPage(id, index)?.let { backup.pushSketchbookPage(uid, id, index, it, repo.pageUpdatedAt(id, index)) }
+                else -> {}
             }
         }
     }

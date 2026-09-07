@@ -36,13 +36,6 @@ class BackupModelsTest {
         assertEquals(SyncAction.NOOP, decideSyncAction(null, 999L, remoteDeleted = true))
     }
 
-    @Test fun remoteBrushTombstoneIsNotRepushedFromAStaleLocalSnapshot() {
-        val tombstone = RemoteStampBrush("brush", "", "", 0f, 0f, 999L, deleted = true, type = "ART")
-
-        assertEquals(false, shouldPushLocalBrush(tombstone))
-        assertEquals(true, shouldPushLocalBrush(null))
-    }
-
     @Test fun unsafeRecoveryRollbackRestoresAnOlderRemoteCopyForALockedPastDiary() {
         assertEquals(
             SyncAction.PULL,
