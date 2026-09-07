@@ -4,6 +4,13 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **v2.17.1 배포 준비 — GitHub 빌드의 PageCurl 누락 수정** (2026-09-07, Codex): v2.17.0
+  태그 빌드는 `local.properties`가 없는 GitHub Actions에서 저장소 밖 `../pagecurl`을 찾다가 실패했다.
+  외부 PageCurl 저장소에서 Git으로 추적 중인 모듈 소스만 `pagecurl/`에 포함하고, 로컬 개발용
+  `pagecurl.dir` 재정의는 유지하되 기본 경로를 저장소 내부로 변경했다. 실패한 태그를 덮어쓰지 않고
+  versionCode 147, versionName 2.17.1의 새 태그로 재배포한다. 전체 238 tests/0 failures/0 errors,
+  APK·lint 빌드 성공 후 `git archive`로 만든 `local.properties` 없는 깨끗한 소스에서도
+  `:app:assembleDebug` 성공을 확인했다.
 - **v2.17.0 배포 준비 — 벡터 Appearance 편집기 개편** (2026-09-07, Codex): versionCode 146,
   versionName 2.17.0. Basic/Art/Pattern Appearance, 선택·이동·크기·회전, 적응형 세로/가로 UI,
   v1 비파괴 v2 저장·Firebase 동기화와 최종 데이터 보존 수정 전체를 포함한다.

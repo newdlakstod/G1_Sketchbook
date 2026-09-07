@@ -27,5 +27,6 @@ include(":pagecurl")
 val localProperties = Properties().apply {
     file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
 }
-val pageCurlDirectory = localProperties.getProperty("pagecurl.dir") ?: "../pagecurl"
+// Keep local overrides for module development, but make clean CI checkouts self-contained.
+val pageCurlDirectory = localProperties.getProperty("pagecurl.dir") ?: "pagecurl"
 project(":pagecurl").projectDir = file(pageCurlDirectory)
