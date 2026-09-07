@@ -67,7 +67,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -258,7 +257,6 @@ fun SketchbookTab(
         onNewPersonal = { wizardType = WType.PERSONAL; creating = true },
         onNewShared = { wizardType = WType.SHARED_NEW; creating = true },
         onJoinShared = { wizardType = WType.SHARED_JOIN; creating = true },
-        onNewVector = { wizardType = WType.VECTOR; creating = true },
         onOpen = { onOpenBook(it.id) },
         onOpenAtPage = { b, p -> onOpenBookAtPage(b.id, p) },
         onDelete = { repo?.let { r -> deleteSynced(scope, r, backup, myUid, it.id) }; refresh++ },
@@ -274,11 +272,7 @@ fun SketchbookTab(
 }
 
 private enum class WStep { TYPE, NAME, SIZE, BG, CODE }
-enum class WType { PERSONAL, SHARED_NEW, SHARED_JOIN, VECTOR }
-
-private val VectorCanvasPresets = listOf(
-    Triple("1:1", 1024, 1024), Triple("4:3", 1024, 768), Triple("3:4", 768, 1024), Triple("16:9", 1280, 720),
-)
+enum class WType { PERSONAL, SHARED_NEW, SHARED_JOIN }
 
 /** Step-by-step popup: pick type → (name → size → bg) for creation, or (code) for joining a shared book. */
 @Composable
@@ -298,26 +292,12 @@ private fun CreateWizard(
     var type by remember { mutableStateOf(initialType ?: WType.PERSONAL) }
     var name by remember { mutableStateOf("") }
     var sizeKey by remember { mutableStateOf("a4") }
-    var vectorInfinite by remember { mutableStateOf(true) }
-    var vectorWStr by remember { mutableStateOf("1024") }
-    var vectorHStr by remember { mutableStateOf("1024") }
     var bgKey by remember { mutableStateOf("watercolor") }
     var code by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun finishPersonal() { repo?.let { createSynced(scope, it, backup, myUid, name, sizeKey, bgKey) }?.let(onCreated) }
-    fun finishVector() {
-        val w = vectorWStr.toIntOrNull()?.coerceIn(64, 4096) ?: 1024
-        val h = vectorHStr.toIntOrNull()?.coerceIn(64, 4096) ?: 1024
-        repo?.let {
-            // sizeKey="a4"는 벡터 책에서 안 쓰이는 값이다(Catalog엔 "vector" 항목이 더 이상 없음) —
-            // 실제 캔버스 크기는 vectorInfinite/vectorCanvasW/vectorCanvasH가 대신 결정한다.
-            createSynced(scope, it, backup, myUid, name.ifBlank { "벡터 스케치북" }, "a4", "watercolor",
-                vector = true, vectorInfinite = vectorInfinite,
-                vectorCanvasW = if (vectorInfinite) null else w, vectorCanvasH = if (vectorInfinite) null else h)
-        }?.let(onCreated)
-    }
     // 그림 자체가 아니라 "이 계정이 이 코드에 참여 중"이라는 사실만 백업에 올려서, 같은 계정의
     // 다른 기기가 다음 동기화 때 이 카드를 자동으로 만들어 보게 한다(그림은 이미 ShareRepository
     // 실시간 세션이 기기 상관없이 공유).
@@ -410,46 +390,6 @@ private fun CreateWizard(
                 dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("취소") } },
             )
         }
-        type == WType.VECTOR -> {
-            AlertDialog(
-                onDismissRequest = onDismiss,
-                containerColor = MaterialTheme.colorScheme.background,
-                shape = RoundedCornerShape(Dimens.Wizard.cardRadius),
-                title = { Text("벡터 스케치북") },
-                text = {
-                    Column {
-                        OutlinedTextField(name, { name = it.take(20) }, singleLine = true,
-                            placeholder = { Text("스케치북 이름") }, shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(14.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(selected = vectorInfinite, onClick = { vectorInfinite = true }, label = { Text("무한") })
-                            FilterChip(selected = !vectorInfinite, onClick = { vectorInfinite = false }, label = { Text("커스텀 크기") })
-                        }
-                        if (!vectorInfinite) {
-                            Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                VectorCanvasPresets.forEach { (label, w, h) ->
-                                    FilterChip(
-                                        selected = vectorWStr == w.toString() && vectorHStr == h.toString(),
-                                        onClick = { vectorWStr = w.toString(); vectorHStr = h.toString() },
-                                        label = { Text(label) },
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(vectorWStr, { vectorWStr = it.filter(Char::isDigit).take(4) },
-                                    singleLine = true, label = { Text("가로") }, modifier = Modifier.weight(1f))
-                                OutlinedTextField(vectorHStr, { vectorHStr = it.filter(Char::isDigit).take(4) },
-                                    singleLine = true, label = { Text("세로") }, modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
-                },
-                confirmButton = { TextButton(onClick = { finishVector() }) { Text("만들기") } },
-                dismissButton = { TextButton(onClick = onDismiss) { Text("취소") } },
-            )
-        }
         else -> {
             PersonalCreateCard(
                 name = name, onName = { name = it.take(20) },
@@ -539,7 +479,6 @@ private fun SketchbookListScreen(
     onNewPersonal: () -> Unit = {},
     onNewShared: () -> Unit = {},
     onJoinShared: () -> Unit = {},
-    onNewVector: () -> Unit = {},
     onOpen: (Sketchbook) -> Unit,
     /** 3열 페이지 썸네일 더블탭 전용 — 넘겨준 페이지를 펼친 채로 바로 스케치 모드에 들어간다. */
     onOpenAtPage: (Sketchbook, Int) -> Unit = { b, _ -> onOpen(b) },
@@ -564,7 +503,7 @@ private fun SketchbookListScreen(
         title = if (showShared) "Draw together" else "Sketchbook list",
         sidePanel = {
             PageThumbnailPanel(
-                repo = repo, book = selectedBook?.takeIf { !it.vector },
+                repo = repo, book = selectedBook,
                 onOpen = { selectedBook?.let(onOpen) },
                 onOpenPage = { p -> selectedBook?.let { onOpenAtPage(it, p) } },
                 onEdit = { selectedBook?.let { editing = it } },
@@ -575,7 +514,6 @@ private fun SketchbookListScreen(
                 IconButton(onClick = onNewShared) { Icon(IconNewNoteLine, "공유 스케치북 만들기") }
                 IconButton(onClick = onJoinShared) { Icon(IconKeyLine, "참여코드로 입장하기") }
             } else {
-                IconButton(onClick = onNewVector) { Icon(com.g1.sketchbook.brush.IconVectorLine, "벡터 스케치북 만들기") }
                 IconButton(onClick = onNewPersonal) { Icon(Icons.Filled.Add, "스케치북 추가") }
             }
             // 표지 크기(크게/작게) 설정 — 실제 한 줄에 몇 개가 들어가는지는 화면 폭에 맞춰 자동
@@ -725,7 +663,7 @@ private fun CoverCard(
     var cover by remember(book.id) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(book.id, book.coverVersion, repo) {
         cover = withContext(Dispatchers.IO) {
-            if (book.vector) repo?.loadVectorPreview(book.id) else repo?.loadCoverThumb(book.id)
+            repo?.loadCoverThumb(book.id)
         }
     }
     // Same cover ratio as the home carousel (Dimens.Home.coverRatio) — every note cover keeps one
@@ -744,7 +682,6 @@ private fun CoverCard(
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val meta = when {
                     book.shared && book.code != null -> "🤝 ${book.code} · ${book.dateLabel}"
-                    book.vector -> "✏️ 벡터 · ${book.dateLabel}"
                     else -> book.dateLabel
                 }
                 Text(meta, color = Color(0xFFF3ECD9).copy(alpha = 0.8f), fontSize = 10.sp,
@@ -1121,10 +1058,6 @@ fun SketchbookCanvasScreen(
     if (book == null) { LaunchedEffect(Unit) { onBack() }; return }
     if (book.shared && book.code != null) {
         com.g1.sketchbook.share.SharedBookScreen(bookId, book.code, myUid, myName, startPage, onBack)
-        return
-    }
-    if (book.vector) {
-        com.g1.sketchbook.vector.VectorCanvasScreen(bookId, book, myUid, onBack)
         return
     }
     val scope = rememberCoroutineScope()

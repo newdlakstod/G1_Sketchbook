@@ -67,18 +67,6 @@ class BackupRepository {
             .setValue(mapOf("updatedAt" to updatedAt, "image" to encode(bmp, preserveAlpha = true)))
     }
 
-    /** Transitional API removed with the remaining vector screen call sites. */
-    fun pushVectorCanvas(uid: String, bookId: String, strokesJson: String, updatedAt: Long) {
-        root.child(uid).child("sketchbooks").child(bookId).child("vectorCanvas")
-            .setValue(mapOf("updatedAt" to updatedAt, "strokes" to strokesJson))
-    }
-
-    /** Transitional API removed with the remaining vector screen call sites. */
-    fun pushVectorDocument(uid: String, bookId: String, documentJson: String, updatedAt: Long) {
-        root.child(uid).child("sketchbooks").child(bookId).child("vectorCanvasV2")
-            .setValue(mapOf("updatedAt" to updatedAt, "document" to documentJson))
-    }
-
     /** No tombstone needed here (unlike [deleteSketchbookCover]): the only caller is a page reorder,
      *  which immediately re-pushes the full new page set from the same device in the same operation —
      *  there's no window for another device to see a bare absence and misread it. */
@@ -103,13 +91,6 @@ class BackupRepository {
     /** 툼스톤 — 하드 삭제하면 "원래 없었음"과 구분이 안 돼서 다른 기기가 되살린다(다른 delete* 함수와 동일 이유). */
     fun deleteSharedBookRef(uid: String, code: String) {
         root.child(uid).child("sharedBooks").child(code).setValue(mapOf("deleted" to true))
-    }
-
-    /** Transitional API removed with the remaining vector brush screen call sites. */
-    fun deleteStampBrush(uid: String, id: String, updatedAt: Long) {
-        root.child(uid).child("stampBrushes").child(id).setValue(
-            mapOf("deleted" to true, "updatedAt" to updatedAt),
-        )
     }
 
     /** [contentBmp] is the separate stroke-only layer ([DiaryRepository.loadContent]) — null for a

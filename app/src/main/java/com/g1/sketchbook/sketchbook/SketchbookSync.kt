@@ -2,10 +2,6 @@ package com.g1.sketchbook.sketchbook
 
 import android.graphics.Bitmap
 import com.g1.sketchbook.backup.BackupRepository
-import com.g1.sketchbook.vector.VectorDocument
-import com.g1.sketchbook.vector.VectorPage
-import com.g1.sketchbook.vector.encodeVectorDocument
-import com.g1.sketchbook.vector.toJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -19,11 +15,9 @@ import kotlinx.coroutines.launch
  */
 fun createSynced(
     scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String,
-    name: String, sizeKey: String, bgKey: String, vector: Boolean = false,
-    vectorInfinite: Boolean = false, vectorCanvasW: Int? = null, vectorCanvasH: Int? = null,
+    name: String, sizeKey: String, bgKey: String,
 ): Sketchbook {
-    val book = repo.create(name, sizeKey, bgKey, vector = vector,
-        vectorInfinite = vectorInfinite, vectorCanvasW = vectorCanvasW, vectorCanvasH = vectorCanvasH)
+    val book = repo.create(name, sizeKey, bgKey)
     if (uid.isNotBlank()) scope.launch(Dispatchers.IO) { backup.pushSketchbookMeta(uid, book) }
     return book
 }
@@ -94,35 +88,6 @@ fun savePageSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: Ba
     scope.launch(Dispatchers.IO) {
         repo.savePage(bookId, index, bmp)
         if (uid.isNotBlank()) backup.pushSketchbookPage(uid, bookId, index, bmp, repo.pageUpdatedAt(bookId, index))
-    }
-}
-
-/** 벡터 캔버스판 [savePageSynced] — repo.saveVectorCanvas도 마찬가지로 미리보기 비트맵 렌더+PNG
- *  인코딩+JSON 디스크 쓰기라 매 붓질(onStrokeEnd)마다 메인 스레드에서 부르면 안 된다. 저장과 동시에
- *  바로 백업까지 밀어 올려서(다음 foreground 재동기화를 기다리지 않고) 그림이 곧장 클라우드에
- *  반영되게 한다. */
-fun saveVectorCanvasSynced(scope: CoroutineScope, repo: SketchbookRepository, backup: BackupRepository, uid: String, bookId: String, page: VectorPage) {
-    scope.launch(Dispatchers.IO) {
-        repo.saveVectorCanvas(bookId, page)
-        if (uid.isNotBlank()) backup.pushVectorCanvas(uid, bookId, page.toJson(), repo.vectorCanvasUpdatedAt(bookId))
-    }
-}
-
-/** v2 documents write their own local file and Firebase sibling, leaving v1 bytes and its remote
- *  `vectorCanvas` node untouched. */
-fun saveVectorDocumentSynced(
-    scope: CoroutineScope,
-    repo: SketchbookRepository,
-    backup: BackupRepository,
-    uid: String,
-    bookId: String,
-    document: VectorDocument,
-) {
-    scope.launch(Dispatchers.IO) {
-        repo.saveVectorDocument(bookId, document)
-        if (uid.isNotBlank()) {
-            backup.pushVectorDocument(uid, bookId, encodeVectorDocument(document), repo.vectorDocumentUpdatedAt(bookId))
-        }
     }
 }
 

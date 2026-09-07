@@ -5,14 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import org.json.JSONArray
 import org.json.JSONObject
-import com.g1.sketchbook.vector.VectorPage
-import com.g1.sketchbook.vector.VectorDocument
-import com.g1.sketchbook.vector.VectorDocumentStore
-import com.g1.sketchbook.vector.renderVectorPage
-import com.g1.sketchbook.vector.renderVectorDocument
-import com.g1.sketchbook.vector.VectorBrushRepository
-import com.g1.sketchbook.vector.toJson
-import com.g1.sketchbook.vector.vectorPageFromJson
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.random.Random
@@ -62,16 +54,6 @@ data class Sketchbook(
     /** 표지 이미지 파일이 바뀔 때마다 올라간다 — id는 그대로라 LaunchedEffect(book.id)만으론 새
      *  파일을 다시 읽어오지 않으므로, 이 값을 키에 함께 넣어 캐시를 무효화한다. */
     val coverVersion: Int = 0,
-    /** 처음부터 벡터(획 점 목록)로 그리는 스케치북 — [shared]와 동시에 켜지지 않는다(생성 마법사가
-     *  그 조합을 만들지 않음). true면 페이지 개념이 없고, 책 한 권의 획 전체가 `vector_canvas.json`
-     *  파일 하나에 저장되며, [SketchbookRepository.loadVectorCanvas]/[saveVectorCanvas]로 읽고 쓴다. */
-    val vector: Boolean = false,
-    /** 무한 캔버스 여부(벡터 책 전용, [vector]=true일 때만 의미 있음) — true면 [vectorCanvasW]/
-     *  [vectorCanvasH]는 항상 null. 페이지 개념이 없는 벡터 책 하나가 곧 캔버스 한 장이다. */
-    val vectorInfinite: Boolean = false,
-    /** 커스텀(고정) 캔버스의 논리 가로·세로 — [vectorInfinite]=false일 때만 값이 있음. */
-    val vectorCanvasW: Int? = null,
-    val vectorCanvasH: Int? = null,
     /** 메타(이름/즐겨찾기/표지색/표지버전)가 마지막으로 바뀐 시각 — 구글 계정 백업 동기화의
      *  last-write-wins 비교에 쓰인다. 새로 만들 때(create)는 기본값(호출 시점)이 곧 맞는 값이라
      *  따로 안 넘겨도 된다. */
@@ -86,8 +68,6 @@ data class Sketchbook(
 }
 
 const val MAX_PAGES = 15
-
-private const val VECTOR_PREVIEW_SIZE = 512
 
 /**
  * Local-first persistence for personal sketchbooks: metadata in SharedPreferences (JSON), page
@@ -110,11 +90,8 @@ class SketchbookRepository(private val context: Context) {
                 Sketchbook(o.getString("id"), o.getString("name"), o.getString("size"),
                     o.getString("bg"), o.optLong("createdAt"), o.optInt("pages", 1), o.optBoolean("fav", false),
                     o.optBoolean("shared", false), o.optString("code", "").ifBlank { null },
-                    o.optLong("coverColor", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE }, o.optInt("coverVer", 0),
-                    o.optBoolean("vector", false),
-                    vectorInfinite = o.optBoolean("vectorInfinite", false),
-                    vectorCanvasW = o.optInt("vectorCanvasW", -1).takeIf { it > 0 },
-                    vectorCanvasH = o.optInt("vectorCanvasH", -1).takeIf { it > 0 },
+                    o.optLong("coverColor", Long.MIN_VALUE).takeIf { it != Long.MIN_VALUE },
+                    coverVersion = o.optInt("coverVer", 0),
                     updatedAt = o.optLong("updatedAt", o.optLong("createdAt")))
             }.sortedWith(compareByDescending<Sketchbook> { it.fav }.thenByDescending { it.createdAt })
         }.getOrDefault(emptyList())
@@ -124,15 +101,12 @@ class SketchbookRepository(private val context: Context) {
 
     fun create(
         name: String, sizeKey: String, bgKey: String, shared: Boolean = false, code: String? = null,
-        vector: Boolean = false, vectorInfinite: Boolean = false, vectorCanvasW: Int? = null, vectorCanvasH: Int? = null,
     ): Sketchbook {
-        val fallback = if (shared) "공유 스케치북" else if (vector) "벡터 스케치북" else "우리 스케치북"
+        val fallback = if (shared) "공유 스케치북" else "우리 스케치북"
         // A sketchbook is a fixed MAX_PAGES-page notebook from the start (like a physical one) —
         // pages aren't added/removed later, just navigated. Blank pages are lazy (no file until drawn on).
-        // (벡터 책은 pageCount를 안 쓰지만, 필드 자체는 다른 책들과 공유하는 구조라 그대로 채워 넣는다.)
         val sb = Sketchbook(newId(), name.ifBlank { fallback }, sizeKey, bgKey, System.currentTimeMillis(), MAX_PAGES,
-            fav = false, shared = shared, code = code, vector = vector,
-            vectorInfinite = vectorInfinite, vectorCanvasW = vectorCanvasW, vectorCanvasH = vectorCanvasH)
+            fav = false, shared = shared, code = code)
         save(list() + sb)
         File(root, sb.id).mkdirs()
         return sb
@@ -193,82 +167,6 @@ class SketchbookRepository(private val context: Context) {
     /** PULL로 받아 저장한 페이지에 **원격 타임스탬프**를 다시 찍는다 — 안 그러면 방금 저장한 mtime이
      *  "지금"이라 항상 원격보다 최신으로 보여서, 다음 동기화가 곧바로 그걸 되밀어 올린다(핑퐁). */
     fun setPageUpdatedAt(id: String, index: Int, timestamp: Long) { pageFile(id, index).setLastModified(timestamp) }
-
-    private fun vectorCanvasFile(id: String): File {
-        val dir = File(root, id).apply { mkdirs() }
-        return File(dir, "vector_canvas.json")
-    }
-
-    private fun vectorPreviewFile(id: String): File {
-        val dir = File(root, id).apply { mkdirs() }
-        return File(dir, "vector_preview.png")
-    }
-
-    fun loadVectorCanvas(id: String): VectorPage? {
-        val f = vectorCanvasFile(id)
-        if (!f.exists()) return null
-        return vectorPageFromJson(f.readText())
-    }
-
-    /** JSON(진짜 저장 데이터)과 함께, 목록/캐러셀/읽기모드가 쓸 미리보기 PNG도 같이 렌더링해 둔다
-     *  — 매번 획 목록을 파싱+렌더링하지 않고 캐시된 비트맵을 바로 읽게 하기 위함. PNG는 순수 캐시라
-     *  JSON만 진짜 상태다. */
-    fun saveVectorCanvas(id: String, page: VectorPage) {
-        vectorCanvasFile(id).writeText(page.toJson())
-        val stampBrushes = com.g1.sketchbook.vector.StampBrushRepository(context).list().associateBy { it.id }
-        FileOutputStream(vectorPreviewFile(id)).use {
-            renderVectorPage(page, VECTOR_PREVIEW_SIZE, stampBrushes).compress(Bitmap.CompressFormat.PNG, 100, it)
-        }
-    }
-
-    fun loadVectorPreview(id: String): Bitmap? {
-        val f = vectorPreviewFile(id)
-        val v2 = File(File(root, id), "vector_canvas_v2.json")
-        if (v2.exists() && (!f.exists() || v2.lastModified() > f.lastModified())) {
-            loadVectorDocumentV2(id)?.let { refreshVectorPreview(id, it) }
-        }
-        return if (f.exists()) BitmapFactory.decodeFile(f.absolutePath) else null
-    }
-
-    fun vectorCanvasUpdatedAt(id: String): Long = vectorCanvasFile(id).lastModified()
-
-    fun setVectorCanvasUpdatedAt(id: String, timestamp: Long) { vectorCanvasFile(id).setLastModified(timestamp) }
-
-    /** v2 stays independent from the deployed v1 canvas file so loading and saving it never migrates v1 in place. */
-    private fun vectorDocumentStore(id: String): VectorDocumentStore {
-        val dir = File(root, id).apply { mkdirs() }
-        return VectorDocumentStore(dir)
-    }
-
-    fun loadVectorDocument(id: String): VectorDocument? = vectorDocumentStore(id).load()
-
-    /** Sync must use this v2-only boundary so a corrupt v2 cannot be replaced remotely by v1 fallback data. */
-    fun loadVectorDocumentV2(id: String): VectorDocument? = vectorDocumentStore(id).loadV2()
-
-    /** Sync branch selection follows the same recoverable v2 candidate as [loadVectorDocumentV2]. */
-    fun recoverableVectorDocumentUpdatedAt(id: String): Long = vectorDocumentStore(id).recoverableV2UpdatedAt()
-
-    fun saveVectorDocument(id: String, document: VectorDocument) {
-        vectorDocumentStore(id).saveV2(document)
-        refreshVectorPreview(id, document)
-    }
-
-    private fun refreshVectorPreview(id: String, document: VectorDocument) {
-        // Preview is a cache. A render failure must never turn a successful durable JSON save into
-        // a reported document-save failure or trigger a retry that can reorder snapshots.
-        runCatching {
-            val profiles = VectorBrushRepository(context).list().associateBy { it.id }
-            FileOutputStream(vectorPreviewFile(id)).use {
-                renderVectorDocument(document, VECTOR_PREVIEW_SIZE, profiles).compress(Bitmap.CompressFormat.PNG, 100, it)
-            }
-        }
-    }
-
-    fun vectorDocumentUpdatedAt(id: String): Long = File(File(root, id), "vector_canvas_v2.json").lastModified()
-
-    fun setVectorDocumentUpdatedAt(id: String, timestamp: Long) {
-        File(File(root, id), "vector_canvas_v2.json").setLastModified(timestamp)
-    }
 
     /** 페이지 순서 바꾸기(길게 눌러 드래그) — [order]\[새 위치\] = 그 자리에 와야 할 예전 인덱스.
      *  파일을 직접 맞바꿔서 반영하므로 다른 코드는 그대로 인덱스로 읽기만 하면 된다. 중간에 원본을
@@ -339,9 +237,6 @@ class SketchbookRepository(private val context: Context) {
                 .put("bg", it.bgKey).put("createdAt", it.createdAt).put("pages", it.pageCount).put("fav", it.fav)
                 .put("shared", it.shared).put("code", it.code ?: "")
                 .put("coverColor", it.coverColor ?: Long.MIN_VALUE).put("coverVer", it.coverVersion)
-                .put("vector", it.vector)
-                .put("vectorInfinite", it.vectorInfinite)
-                .put("vectorCanvasW", it.vectorCanvasW ?: -1).put("vectorCanvasH", it.vectorCanvasH ?: -1)
                 .put("updatedAt", it.updatedAt))
         }
         prefs.edit().putString(KEY, arr.toString()).apply()

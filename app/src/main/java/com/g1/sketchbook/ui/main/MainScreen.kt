@@ -229,34 +229,17 @@ private fun HomeTab(
                     androidx.compose.foundation.layout.BoxWithConstraints(
                         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center,
                     ) {
-                        if (book.vector) {
-                            // 벡터 스케치북은 페이지 넘김 애니메이션(읽기모드) 자체가 스펙에서
-                            // 제외돼서(전용 캔버스 화면의 읽기모드 버튼도 같은 이유로 없음) 여기서도
-                            // PageCurl 대신 저장된 미리보기를 그냥 정지 이미지로 보여준다 — 페이지
-                            // 개념 자체가 없어졌으니(2026-08-30) 페이지 넘김 제스처도 없음.
-                            val side = minOf(maxWidth, maxHeight)
-                            val previewBmp = remember(book.id) { repo?.loadVectorPreview(book.id) }
-                            if (previewBmp != null) {
-                                Image(
-                                    bitmap = previewBmp.asImageBitmap(), contentDescription = null,
-                                    modifier = Modifier.size(side).clip(RoundedCornerShape(16.dp)),
-                                )
-                            } else {
-                                Box(Modifier.size(side).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant))
-                            }
-                        } else {
-                            // 이 블록은 항상 landscape일 때만 그려지고, PageCurl은 landscape에서 항상
-                            // 좌우 두 쪽(TwoPageSpread)으로 그려서 실제 표시 비율이 페이지 하나의 2배로
-                            // 넓다 — 여기서 상자를 페이지 1장 비율로만 잡으면 PageCurl이 그 안에서 또
-                            // 한 번 축소해 레터박스가 이중으로 생겼다(2026-08-29, "두 쪽으로 보여야지").
-                            val ratio = book.size.ratio * 2f
-                            val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
-                            val h = w / ratio
-                            ReadingPane(
-                                repo, book, selectedReadPage, onPageChanged = { selectedReadPage = it },
-                                modifier = Modifier.width(w).height(h).clip(RoundedCornerShape(16.dp)),
-                            )
-                        }
+                        // 이 블록은 항상 landscape일 때만 그려지고, PageCurl은 landscape에서 항상
+                        // 좌우 두 쪽(TwoPageSpread)으로 그려서 실제 표시 비율이 페이지 하나의 2배로
+                        // 넓다 — 여기서 상자를 페이지 1장 비율로만 잡으면 PageCurl이 그 안에서 또
+                        // 한 번 축소해 레터박스가 이중으로 생겼다(2026-08-29, "두 쪽으로 보여야지").
+                        val ratio = book.size.ratio * 2f
+                        val w = if (maxWidth / ratio <= maxHeight) maxWidth else maxHeight * ratio
+                        val h = w / ratio
+                        ReadingPane(
+                            repo, book, selectedReadPage, onPageChanged = { selectedReadPage = it },
+                            modifier = Modifier.width(w).height(h).clip(RoundedCornerShape(16.dp)),
+                        )
                     }
                     // 3열 표지리스트를 탭하면 여기서 읽을 뿐 — 그리기는 이 별도 버튼으로만 들어간다
                     // (탭=읽기, 그리기 진입은 명시적 버튼으로 분리하기로 결정, 2026-08-29). 텍스트 없이
@@ -441,7 +424,7 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                     var cover by remember(book.id) { mutableStateOf<android.graphics.Bitmap?>(null) }
                     LaunchedEffect(book.id, book.coverVersion, repo) {
                         cover = withContext(Dispatchers.IO) {
-                            if (book.vector) repo?.loadVectorPreview(book.id) else repo?.loadCoverThumb(book.id)
+                            repo?.loadCoverThumb(book.id)
                         }
                     }
                     // 표지가 사진이면 두께 스택은 검정으로 고정 — book.coverColor는 사진 적용 전에
@@ -495,9 +478,6 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
                                 if (book.shared) {
                                     Text("🤝", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
                                         .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
-                                } else if (book.vector) {
-                                    Text("✏️", fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd)
-                                        .padding(8.dp).background(Color(0x33000000), CircleShape).padding(horizontal = 4.dp, vertical = 2.dp))
                                 }
                             }
                         }
@@ -517,12 +497,8 @@ private fun HomeCarousel(books: List<Sketchbook>, repo: SketchbookRepository?, o
         Spacer(Modifier.height(4.dp))
         Text(
             centeredBook?.let { b ->
-                if (b.vector) {
-                    "✏️ 벡터 · ${b.dateLabel}"
-                } else {
-                    val bgLabel = Catalog.backgrounds.firstOrNull { it.key == b.bgKey }?.label ?: b.bgKey
-                    "${b.dateLabel} · ${b.size.label} · $bgLabel"
-                }
+                val bgLabel = Catalog.backgrounds.firstOrNull { it.key == b.bgKey }?.label ?: b.bgKey
+                "${b.dateLabel} · ${b.size.label} · $bgLabel"
             } ?: "",
             fontSize = Dimens.Home.carouselSubtitleSp, color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,

@@ -53,7 +53,7 @@ private fun reconcileSharedBooks(repo: SketchbookRepository, backup: BackupRepos
 }
 
 private fun reconcileSketchbooks(repo: SketchbookRepository, backup: BackupRepository, uid: String, remote: List<RemoteSketchbook>) {
-    val local = repo.list().filter { !it.shared && !it.vector }
+    val local = repo.list().filter { !it.shared }
     val remoteById = remote.associateBy { it.id }
     val allIds = (local.map { it.id } + remote.map { it.id }).toSet()
 
