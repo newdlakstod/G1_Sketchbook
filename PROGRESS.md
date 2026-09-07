@@ -11,7 +11,8 @@
   `stampBrushes`만 영구 삭제한 뒤 일반 비트맵 데이터만 동기화한다. 삭제 판정과 재실행 안전성,
   원격 필터 회귀 테스트를 추가했다. Android Studio JBR로 전체 30 tests/0 failures/0 errors,
   APK 조립, lint 0 errors(63 warnings, 5 information)를 확인했다. versionCode 148,
-  versionName 2.18.0.
+  versionName 2.18.0. `local.properties`가 없는 `git archive` 깨끗한 소스에서도
+  `:app:assembleDebug`가 성공했다.
 - **v2.17.1 배포 완료 — GitHub 빌드의 PageCurl 누락 수정** (2026-09-07, Codex): v2.17.0
   태그 빌드는 `local.properties`가 없는 GitHub Actions에서 저장소 밖 `../pagecurl`을 찾다가 실패했다.
   외부 PageCurl 저장소에서 Git으로 추적 중인 모듈 소스만 `pagecurl/`에 포함하고, 로컬 개발용
