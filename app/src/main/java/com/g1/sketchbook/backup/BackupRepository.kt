@@ -93,6 +93,17 @@ class BackupRepository {
         root.child(uid).child("sharedBooks").child(code).setValue(mapOf("deleted" to true))
     }
 
+    fun pushColorLibrary(uid: String, library: RemoteColorLibrary) {
+        root.child(uid).child("colorLibraries").child(library.id).setValue(
+            mapOf("name" to library.name, "colors" to library.colors, "updatedAt" to library.updatedAt, "deleted" to false),
+        )
+    }
+
+    /** 툼스톤 — 하드 삭제하면 다른 기기가 "원래 없었음"으로 잘못 읽고 되살린다([deleteSharedBookRef]와 동일 이유). */
+    fun deleteColorLibrary(uid: String, id: String, updatedAt: Long) {
+        root.child(uid).child("colorLibraries").child(id).setValue(mapOf("deleted" to true, "updatedAt" to updatedAt))
+    }
+
     /** [contentBmp] is the separate stroke-only layer ([DiaryRepository.loadContent]) — null for a
      *  diary day that predates that feature (or hasn't been redrawn since), same as the local file
      *  possibly not existing. Pushed with [preserveAlpha]=true (like sketchbook pages) since it's a
@@ -108,7 +119,7 @@ class BackupRepository {
     fun pushSettings(uid: String, record: RemoteSettings, avatarBmp: Bitmap?) {
         val payload = mutableMapOf<String, Any?>(
             "themeMode" to record.themeMode,
-            "favoriteColors" to record.paletteColors, "quickFavorites" to record.quickFavorites, "gesture2Tap" to record.gesture2Tap,
+            "activeLibraryIds" to record.activeLibraryIds, "quickFavorites" to record.quickFavorites, "gesture2Tap" to record.gesture2Tap,
             "gesture3Tap" to record.gesture3Tap, "gestureLongPress" to record.gestureLongPress,
             "largeCovers" to record.largeCovers, "brushColor" to record.brushColor,
             "brushSizes" to record.brushSizes, "brushOpacities" to record.brushOpacities,
@@ -179,7 +190,7 @@ class BackupRepository {
         val settings = if (!s.exists()) null else RemoteSettings(
             nickname = s.child("nickname").getValue(String::class.java),
             themeMode = s.child("themeMode").getValue(String::class.java) ?: "system",
-            paletteColors = s.child("favoriteColors").children.mapNotNull { it.getValue(Long::class.java) },
+            activeLibraryIds = s.child("activeLibraryIds").children.mapNotNull { it.getValue(String::class.java) },
             quickFavorites = s.child("quickFavorites").children.mapNotNull { it.getValue(Long::class.java) },
             gesture2Tap = s.child("gesture2Tap").getValue(String::class.java) ?: "NONE",
             gesture3Tap = s.child("gesture3Tap").getValue(String::class.java) ?: "NONE",
@@ -211,6 +222,17 @@ class BackupRepository {
             )
         }
 
-        return RemoteSnapshot(sketchbooks, diary, settings, sharedBooks)
+        val colorLibraries = snap.child("colorLibraries").children.mapNotNull { c ->
+            val id = c.key ?: return@mapNotNull null
+            RemoteColorLibrary(
+                id = id,
+                name = c.child("name").getValue(String::class.java) ?: "",
+                colors = c.child("colors").children.mapNotNull { it.getValue(Long::class.java) },
+                updatedAt = c.child("updatedAt").getValue(Long::class.java) ?: 0L,
+                deleted = c.child("deleted").getValue(Boolean::class.java) ?: false,
+            )
+        }
+
+        return RemoteSnapshot(sketchbooks, diary, settings, sharedBooks, colorLibraries)
     }
 }

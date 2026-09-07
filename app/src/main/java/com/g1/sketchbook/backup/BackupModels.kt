@@ -22,6 +22,17 @@ data class RemoteSharedBookRef(
     val createdAt: Long, val deleted: Boolean,
 )
 
+/** 색상 라이브러리 하나의 백업용 표현 — [SessionStore.libraries]의 [ColorLibrary]와 1:1 대응.
+ *  [deleted]는 툼스톤 — 이 기기에서 지운 라이브러리를 다른 기기에도 지우라고 알리는 용도
+ *  ([RemoteSharedBookRef]와 같은 패턴). */
+data class RemoteColorLibrary(
+    val id: String,
+    val name: String,
+    val colors: List<Long>,
+    val updatedAt: Long,
+    val deleted: Boolean,
+)
+
 /** [contentBase64] is the separate stroke-only transparent layer (same file [DiaryRepository.loadContent]
  *  reads/writes locally) — null for days pushed before this existed, or by an older app version. Synced
  *  alongside the composite [image] so "투명 배경 PNG로 다운로드" keeps working after a diary crosses devices,
@@ -33,13 +44,15 @@ data class RemoteSnapshot(
     val diary: Map<String, RemoteDiaryDay>,
     val settings: RemoteSettings?,
     val sharedBooks: List<RemoteSharedBookRef>,
+    val colorLibraries: List<RemoteColorLibrary>,
 )
 
 data class RemoteSettings(
     val nickname: String?, val themeMode: String,
-    /** 팔레트 21색 — Firebase 키는 예전("즐겨찾기"였을 때) 그대로 "favoriteColors" 재사용. */
-    val paletteColors: List<Long>,
-    /** 즐겨찾기 5색 — [paletteColors]와 독립(2026-08-31 분리). */
+    /** 팔레트를 구성하는 라이브러리 id(선택 순서대로, 최대 3개) — 라이브러리 자체(이름·색상)는
+     *  [RemoteColorLibrary] 목록으로 별도 동기화된다. */
+    val activeLibraryIds: List<String>,
+    /** 즐겨찾기 3색 — [activeLibraryIds]와 독립. */
     val quickFavorites: List<Long>,
     val gesture2Tap: String, val gesture3Tap: String, val gestureLongPress: String,
     val largeCovers: Boolean, val brushColor: Long,

@@ -3,6 +3,7 @@ package com.g1.sketchbook.backup
 import android.content.Context
 import com.g1.sketchbook.brush.BrushType
 import com.g1.sketchbook.brush.GestureAction
+import com.g1.sketchbook.data.ColorLibrary
 import com.g1.sketchbook.data.SessionStore
 import com.g1.sketchbook.diary.DiaryRepository
 import com.g1.sketchbook.sketchbook.MAX_PAGES
@@ -24,6 +25,7 @@ suspend fun reconcileBackup(context: Context, uid: String, backup: BackupReposit
     reconcileDiary(diaryRepo, backup, uid, remote.diary)
     reconcileSettings(session, backup, uid, remote.settings)
     reconcileSharedBooks(sketchbookRepo, backup, uid, remote.sharedBooks)
+    reconcileColorLibraries(context, backup, uid, remote.colorLibraries)
 }
 
 /** 공유 스케치북은 그림이 아니라 "참여 중"이라는 사실만 동기화한다(계정의 다른 기기에 같은 코드의
@@ -49,6 +51,33 @@ private fun reconcileSharedBooks(repo: SketchbookRepository, backup: BackupRepos
         if (code in justDeleted) continue
         val ref = remoteByCode[code]
         if (ref == null || ref.deleted) backup.pushSharedBookRef(uid, code, book.name, book.sizeKey, book.bgKey, book.createdAt)
+    }
+}
+
+/** [SessionStore.libraries]와 원격 `colorLibraries`를 맞춘다 — [reconcileSharedBooks]와 같은
+ *  툼스톤 방식: 원격에만 있고 로컬에 없으면 받아서 추가, 원격에서 지워졌으면(deleted=true) 로컬
+ *  에서도 삭제, 로컬에만 있거나(또는 원격이 이미 지운 걸 로컬은 아직 갖고 있으면) 원격에 올린다. */
+private fun reconcileColorLibraries(context: Context, backup: BackupRepository, uid: String, remote: List<RemoteColorLibrary>) {
+    val session = SessionStore(context)
+    val local = session.libraries
+    val remoteById = remote.associateBy { it.id }
+    val localIds = local.map { it.id }.toSet()
+    var next = local
+
+    for (r in remote) {
+        if (r.deleted) {
+            if (r.id in localIds) next = next.filter { it.id != r.id }
+        } else if (r.id !in localIds) {
+            next = next + ColorLibrary(r.id, r.name, r.colors)
+        }
+    }
+    if (next != local) session.libraries = next
+
+    for (library in next) {
+        val r = remoteById[library.id]
+        if (r == null || r.deleted) {
+            backup.pushColorLibrary(uid, RemoteColorLibrary(library.id, library.name, library.colors, System.currentTimeMillis(), false))
+        }
     }
 }
 
@@ -146,7 +175,7 @@ fun syncSettingsUp(session: SessionStore, backup: BackupRepository, uid: String)
     val now = System.currentTimeMillis()
     val record = RemoteSettings(
         nickname = session.nickname, themeMode = session.themeMode,
-        paletteColors = session.paletteColors, quickFavorites = session.quickFavorites,
+        activeLibraryIds = session.activeLibraryIds, quickFavorites = session.quickFavorites,
         gesture2Tap = session.twoFingerTapAction.name, gesture3Tap = session.threeFingerTapAction.name,
         gestureLongPress = session.longPressAction.name, largeCovers = session.largeCovers,
         brushColor = session.brushColor,
@@ -162,7 +191,7 @@ fun syncSettingsUp(session: SessionStore, backup: BackupRepository, uid: String)
 private fun applyRemoteSettings(session: SessionStore, backup: BackupRepository, r: RemoteSettings) {
     if (r.nickname != null) session.nickname = r.nickname
     session.themeMode = r.themeMode
-    if (r.paletteColors.size == SessionStore.PaletteCount) session.paletteColors = r.paletteColors
+    session.activeLibraryIds = r.activeLibraryIds
     if (r.quickFavorites.size == SessionStore.QuickFavoritesCount) session.quickFavorites = r.quickFavorites
     session.twoFingerTapAction = runCatching { GestureAction.valueOf(r.gesture2Tap) }.getOrDefault(GestureAction.NONE)
     session.threeFingerTapAction = runCatching { GestureAction.valueOf(r.gesture3Tap) }.getOrDefault(GestureAction.NONE)
