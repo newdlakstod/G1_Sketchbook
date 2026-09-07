@@ -33,11 +33,8 @@ class SessionStore(context: Context) {
     }
     fun loadAvatarImage(): Bitmap? = if (avatarFile.exists()) BitmapFactory.decodeFile(avatarFile.absolutePath) else null
 
-    /** 툴바에 항상 보이는 빠른 접근 색상 5개 — [paletteColors](21개)와 서로 독립이다(2026-08-31,
-     *  예전엔 같은 리스트의 앞 5개를 그대로 썼는데 분리 요청으로 갈라짐). 아직 한 번도 따로 저장한
-     *  적 없으면(분리 직후 첫 실행 포함) 그 시점의 [paletteColors] 앞 5개를 그대로 복사해서
-     *  시작한다 — 마이그레이션 코드 없이 이 기본값 계산만으로 "기존 21개 중 앞 5개를 즐겨찾기로"
-     *  요구사항이 자연스럽게 만족된다. */
+    /** 툴바에 항상 보이는 빠른 접근 색상 3개 — [paletteColors]와 서로 독립이다. 아직 한 번도 따로
+     *  저장한 적 없으면 그 시점의 [paletteColors] 앞 3개를 그대로 복사해서 시작한다. */
     var quickFavorites: List<Long>
         get() {
             val raw = prefs.getString(KEY_QUICK_FAVS, null)
@@ -46,16 +43,39 @@ class SessionStore(context: Context) {
         }
         set(value) = prefs.edit().putString(KEY_QUICK_FAVS, value.joinToString(",")).apply()
 
-    /** "즐겨찾기 전체" 그리드에 보이는 색상 21개 — [quickFavorites]와 독립. 분리 이전엔 이 저장
-     *  키([KEY_FAVS])가 곧 "즐겨찾기"였다 — 그 키를 그대로 재사용해서, 이미 저장돼 있던 21개가
-     *  자동으로(코드 변경 없이) 팔레트가 된다. */
-    var paletteColors: List<Long>
+    /** 색상 라이브러리 전체 목록 — 각각 정확히 [LibraryColorCount]개 색. [activeLibraryIds]가
+     *  가리키는 최대 [ActiveLibraryCount]개가 합쳐져 실제 "팔레트"([paletteColors])가 된다 —
+     *  팔레트 자체는 저장하지 않고 매번 이 값에서 계산한다(단일 진실 공급원은 라이브러리들 자체).
+     *  한 번도 저장한 적 없으면(첫 실행, 또는 라이브러리 개념이 생기기 전 버전에서 올라온 경우)
+     *  [DefaultFavorites] 21색을 [LibraryColorCount]개씩 3등분해서 기본 라이브러리 3개를 만든다
+     *  (사용자 결정: 예전 21색 팔레트 데이터는 마이그레이션하지 않고 버림). */
+    var libraries: List<ColorLibrary>
         get() {
-            val raw = prefs.getString(KEY_FAVS, null) ?: return DefaultFavorites
-            return runCatching { raw.split(",").map { it.toLong() } }
-                .getOrNull()?.takeIf { it.size == PaletteCount } ?: DefaultFavorites
+            val raw = prefs.getString(KEY_LIBRARIES, null) ?: return defaultLibraries()
+            return parseLibraries(raw) ?: defaultLibraries()
         }
-        set(value) = prefs.edit().putString(KEY_FAVS, value.joinToString(",")).apply()
+        set(value) = prefs.edit().putString(KEY_LIBRARIES, serializeLibraries(value)).apply()
+
+    /** 팔레트를 구성하는 라이브러리 id — 선택한 순서대로, 최대 [ActiveLibraryCount]개. 한 번도
+     *  저장한 적 없으면 [libraries]의 처음 [ActiveLibraryCount]개를 자동으로 선택한다(기본
+     *  라이브러리 3개가 막 만들어진 직후 포함 — 그 결과 첫 실행 화면은 예전 21색 팔레트와 똑같이
+     *  보인다). */
+    var activeLibraryIds: List<String>
+        get() {
+            val raw = prefs.getString(KEY_ACTIVE_LIBRARIES, null)
+            val parsed = raw?.split(",")?.filter { it.isNotBlank() }
+            return parsed ?: libraries.take(ActiveLibraryCount).map { it.id }
+        }
+        set(value) = prefs.edit().putString(KEY_ACTIVE_LIBRARIES, value.joinToString(",")).apply()
+
+    /** [libraries]/[activeLibraryIds]를 조합한 실제 팔레트 색상(선택한 라이브러리가 3개 미만이면
+     *  그만큼만) — 저장하지 않고 매번 계산한다. */
+    val paletteColors: List<Long> get() = deriveLibraryPalette(libraries, activeLibraryIds)
+
+    private fun defaultLibraries(): List<ColorLibrary> =
+        DefaultFavorites.chunked(LibraryColorCount).mapIndexed { i, colors ->
+            ColorLibrary(id = "default-${i + 1}", name = "라이브러리 ${i + 1}", colors = colors)
+        }
 
     /** Gesture shortcuts — two/three-finger tap and long-press, each mapped to an action (default: off). */
     var twoFingerTapAction: GestureAction
@@ -133,10 +153,9 @@ class SessionStore(context: Context) {
         private const val KEY_ERASER_OPACITY = "eraser_opacity"
         private const val KEY_ERASER_BLUR = "eraser_blur"
         private const val KEY_SETTINGS_SYNCED_AT = "settings_synced_at"
-        // 색상 피커 카드 폭(260dp, BrushControls.ColorPickerCard)에 24dp 스와치+8dp 간격이 한 줄에
-        // 7개 들어가서(FavoritesGrid) 7×3줄 = 21 — 그리드 칸 수가 바뀌면 이 값도 같이 맞춰야 한다.
-        const val PaletteCount = 21
-        const val QuickFavoritesCount = 5
+        private const val KEY_LIBRARIES = "color_libraries"
+        private const val KEY_ACTIVE_LIBRARIES = "active_color_libraries"
+        const val QuickFavoritesCount = 3
         val DefaultFavorites = listOf(
             0xFF1E2D4CL, 0xFFACBDAAL, 0xFFE05454L, 0xFFE0A53CL, 0xFF6E9646L,
             0xFF000000L, 0xFFFFFFFFL, 0xFF808080L, 0xFF2B4C9BL, 0xFF4DABF7L,
