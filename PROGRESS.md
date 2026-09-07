@@ -4,6 +4,11 @@
 전체 기획은 `plan.md`, 방향 대화로 아래처럼 재정의되어 **클린 재구축** 중.
 
 ## Done
+- **벡터 모드 완전 제거 설계 작성** (2026-09-07, Codex): 사용자가 벡터 기능과 기존 벡터 파일의
+  영구 삭제를 승인했다. 과거 버전 전체 롤백 대신 현재 비트맵·다이어리·공유 기능을 보존하면서 벡터
+  UI·편집·저장·동기화를 제거하고, 로컬/Firebase의 벡터 책·캔버스·브러시만 멱등 정리하는 설계를
+  `docs/superpowers/specs/2026-09-07-remove-vector-mode-design.md`에 기록했다. 구현 전 사용자 문서
+  확인을 기다린다.
 - **v2.17.1 배포 완료 — GitHub 빌드의 PageCurl 누락 수정** (2026-09-07, Codex): v2.17.0
   태그 빌드는 `local.properties`가 없는 GitHub Actions에서 저장소 밖 `../pagecurl`을 찾다가 실패했다.
   외부 PageCurl 저장소에서 Git으로 추적 중인 모듈 소스만 `pagecurl/`에 포함하고, 로컬 개발용
@@ -1703,7 +1708,8 @@
   흰색(#FFFFFF)으로 변경(로고가 검정 위주라 대비 확보). `assembleDebug` 빌드 검증 완료.
 
 ## Next (Phase 2~4)
-- 벡터 Appearance 편집기는 자동 검증까지 완료됐다. 다음에는 정상 에뮬레이터/실기기에서 portrait bottom sheet, landscape inspector, S Pen, two-finger viewport, SVG selected/all export와 Firebase v1/v2 round trip을 수동 확인한다.
+- 벡터 모드 제거 설계 승인 후 테스트 우선으로 로컬·Firebase 영구 정리와 전용 코드 제거를 구현하고
+  v2.18.0으로 검증·배포한다.
 - 읽기모드 신버전을 에뮬레이터/실기기에서 세로 왕복, 가로 두 페이지 왕복, 각 캔버스 비율별로 시각 확인한다.
 - **Phase 2 — 스케치북**: 생성(이름→사이즈→배경)·멀티페이지(≤15)·자동저장·공유 실시간. 캔버스에 BrushView 연결.
   - 사이즈 6종: A5/A4/A3/데스크톱1920×1080/모바일390×844/태블릿810×1080. 배경 5종(image/background/*).
@@ -1712,6 +1718,10 @@
   - 남은 후보: 화면 디테일 다듬기, 공유 페이지 동기화 옵션(같은 페이지 함께 넘기기), 저장/내보내기 등.
 
 ## Decisions
+- 벡터 스케치 모드는 현재 `master`에서 전용 UI·편집·렌더·저장·동기화 코드를 제거한다. 이전 태그로
+  전체 롤백하지 않아 이후의 비트맵·다이어리 수정은 보존한다. 사용자가 복구 불필요를 명시했으므로
+  업데이트 시 로컬과 로그인 계정 Firebase의 벡터 책·캔버스·브러시 데이터를 영구 삭제하고 원격
+  삭제 실패 중에도 로컬로 되받지 않는다.
 - 벡터 편집기는 `패스 형상 + Appearance` 모델로 재구성한다. 선택이 있으면 선택 패스를, 없으면
   새 패스 기본값을 같은 패널에서 편집한다. 브러시는 Basic/Art/Pattern으로 분리하고 Art는 SVG
   모양 하나를 경로 전체에 휘어 매핑하며 Pattern은 기존 반복 스탬프를 유지한다. 열린 패스 Fill은
@@ -1747,7 +1757,6 @@
 - 버전 매 업로드마다 bump + 새 태그(vX.Y.Z), 덮어쓰기 금지.
 
 ## Open / Blockers
-- **벡터 Appearance 수동 검증 미실행**: 이번 rollout은 unit/integration·APK·lint만 검증했다. 에뮬레이터/실기기의 portrait·landscape, S Pen, touch selection/transform, Art/Pattern 실제 SVG, local v1 SHA-256/mtime와 remote `vectorCanvasV2` 생성, Firebase v1/v2 왕복은 아직 실행하지 않았다. 따라서 수동 성공을 주장하지 않는다.
 - **이미 원격까지 덮인 일기**: 잘못된 첫 복구본이 다음 앱 시작 때 Firebase에 이미 push됐다면 RTDB
   현재 노드에는 이전 버전이 없어 자동 rollback으로 되살릴 수 없다. 다른 기기에 남은 로컬 원본이나
   별도 백업이 필요하다. 원격이 아직 이전 합성본이면 이번 1회 rollback이 자동으로 되받는다.
