@@ -1228,22 +1228,13 @@ fun SketchbookCanvasScreen(
                 val next = com.g1.sketchbook.data.toggleActiveLibrary(activeLibraryIds, id)
                 activeLibraryIds = next; session.activeLibraryIds = next
             },
-            onCreateLibrary = { name ->
-                val next = com.g1.sketchbook.data.addLibrary(libraries, name)
-                libraries = next; session.libraries = next
-            },
-            onRenameLibrary = { id, name ->
-                val next = com.g1.sketchbook.data.renameLibrary(libraries, id, name)
-                libraries = next; session.libraries = next
-            },
+            onCreateLibrary = { name -> libraries = com.g1.sketchbook.data.createLibrarySynced(scope, session, backup, myUid, name) },
+            onRenameLibrary = { id, name -> libraries = com.g1.sketchbook.data.renameLibrarySynced(scope, session, backup, myUid, id, name) },
             onDeleteLibrary = { id ->
-                libraries = com.g1.sketchbook.data.removeLibrary(libraries, id); session.libraries = libraries
-                if (id in activeLibraryIds) { activeLibraryIds = activeLibraryIds - id; session.activeLibraryIds = activeLibraryIds }
+                libraries = com.g1.sketchbook.data.removeLibrarySynced(scope, session, backup, myUid, id)
+                activeLibraryIds = session.activeLibraryIds
             },
-            onEditLibraryColor = { id, i, c ->
-                val next = com.g1.sketchbook.data.updateLibraryColor(libraries, id, i, c)
-                libraries = next; session.libraries = next
-            },
+            onEditLibraryColor = { id, i, c -> libraries = com.g1.sketchbook.data.updateLibraryColorSynced(scope, session, backup, myUid, id, i, c) },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             lassoActive = lassoActive,
             onToggleLasso = {

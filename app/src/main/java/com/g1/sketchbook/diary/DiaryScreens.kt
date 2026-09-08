@@ -339,25 +339,15 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
                 val next = com.g1.sketchbook.data.toggleActiveLibrary(activeLibraryIds, id)
                 activeLibraryIds = next; session?.let { it.activeLibraryIds = next }
             },
-            onCreateLibrary = { name ->
-                val next = com.g1.sketchbook.data.addLibrary(libraries, name)
-                libraries = next; session?.let { it.libraries = next }
-            },
-            onRenameLibrary = { id, name ->
-                val next = com.g1.sketchbook.data.renameLibrary(libraries, id, name)
-                libraries = next; session?.let { it.libraries = next }
-            },
+            onCreateLibrary = { name -> session?.let { s -> libraries = com.g1.sketchbook.data.createLibrarySynced(scope, s, backup, myUid, name) } },
+            onRenameLibrary = { id, name -> session?.let { s -> libraries = com.g1.sketchbook.data.renameLibrarySynced(scope, s, backup, myUid, id, name) } },
             onDeleteLibrary = { id ->
-                libraries = com.g1.sketchbook.data.removeLibrary(libraries, id); session?.let { it.libraries = libraries }
-                if (id in activeLibraryIds) {
-                    activeLibraryIds = activeLibraryIds - id
-                    session?.let { it.activeLibraryIds = activeLibraryIds }
+                session?.let { s ->
+                    libraries = com.g1.sketchbook.data.removeLibrarySynced(scope, s, backup, myUid, id)
+                    activeLibraryIds = s.activeLibraryIds
                 }
             },
-            onEditLibraryColor = { id, i, c ->
-                val next = com.g1.sketchbook.data.updateLibraryColor(libraries, id, i, c)
-                libraries = next; session?.let { it.libraries = next }
-            },
+            onEditLibraryColor = { id, i, c -> session?.let { s -> libraries = com.g1.sketchbook.data.updateLibraryColorSynced(scope, s, backup, myUid, id, i, c) } },
             eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
             lassoActive = lassoActive,
             onToggleLasso = {

@@ -131,6 +131,7 @@ fun SharedBookScreen(
     val book = remember(bookId) { sbRepo.get(bookId) }
     if (book == null) { LaunchedEffect(Unit) { onBack() }; return }
     val scope = rememberCoroutineScope()
+    val backup = remember { com.g1.sketchbook.backup.BackupRepository() }
 
     var view by remember { mutableStateOf<BrushView?>(null) }
     // 색상/굵기/투명도는 SessionStore에 저장(개인 스케치북과 동일한 키)해 앱을 다시 켜도, 개인·공유
@@ -439,22 +440,13 @@ fun SharedBookScreen(
                     val next = com.g1.sketchbook.data.toggleActiveLibrary(activeLibraryIds, id)
                     activeLibraryIds = next; session.activeLibraryIds = next
                 },
-                onCreateLibrary = { name ->
-                    val next = com.g1.sketchbook.data.addLibrary(libraries, name)
-                    libraries = next; session.libraries = next
-                },
-                onRenameLibrary = { id, name ->
-                    val next = com.g1.sketchbook.data.renameLibrary(libraries, id, name)
-                    libraries = next; session.libraries = next
-                },
+                onCreateLibrary = { name -> libraries = com.g1.sketchbook.data.createLibrarySynced(scope, session, backup, myUid, name) },
+                onRenameLibrary = { id, name -> libraries = com.g1.sketchbook.data.renameLibrarySynced(scope, session, backup, myUid, id, name) },
                 onDeleteLibrary = { id ->
-                    libraries = com.g1.sketchbook.data.removeLibrary(libraries, id); session.libraries = libraries
-                    if (id in activeLibraryIds) { activeLibraryIds = activeLibraryIds - id; session.activeLibraryIds = activeLibraryIds }
+                    libraries = com.g1.sketchbook.data.removeLibrarySynced(scope, session, backup, myUid, id)
+                    activeLibraryIds = session.activeLibraryIds
                 },
-                onEditLibraryColor = { id, i, c ->
-                    val next = com.g1.sketchbook.data.updateLibraryColor(libraries, id, i, c)
-                    libraries = next; session.libraries = next
-                },
+                onEditLibraryColor = { id, i, c -> libraries = com.g1.sketchbook.data.updateLibraryColorSynced(scope, session, backup, myUid, id, i, c) },
                 eyedropArmed = eyedropArmed, onToggleEyedrop = { eyedropArmed = !eyedropArmed },
                 lassoActive = lassoActive,
                 onToggleLasso = { lassoActive = !lassoActive; if (lassoActive) { erasing = false; fillActive = false } },
