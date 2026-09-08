@@ -437,7 +437,7 @@ fun SharedBookScreen(
                 libraries = libraries,
                 activeLibraryIds = activeLibraryIds,
                 onToggleActiveLibrary = { id ->
-                    val next = com.g1.sketchbook.data.toggleActiveLibrary(activeLibraryIds, id)
+                    val next = com.g1.sketchbook.data.toggleActiveLibrary(session.activeLibraryIds, id)
                     activeLibraryIds = next; session.activeLibraryIds = next
                 },
                 onCreateLibrary = { name -> libraries = com.g1.sketchbook.data.createLibrarySynced(scope, session, backup, myUid, name) },

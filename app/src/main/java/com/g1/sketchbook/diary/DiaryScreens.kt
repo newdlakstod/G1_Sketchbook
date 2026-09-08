@@ -336,7 +336,7 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
             libraries = libraries,
             activeLibraryIds = activeLibraryIds,
             onToggleActiveLibrary = { id ->
-                val next = com.g1.sketchbook.data.toggleActiveLibrary(activeLibraryIds, id)
+                val next = com.g1.sketchbook.data.toggleActiveLibrary(session?.activeLibraryIds ?: activeLibraryIds, id)
                 activeLibraryIds = next; session?.let { it.activeLibraryIds = next }
             },
             onCreateLibrary = { name -> session?.let { s -> libraries = com.g1.sketchbook.data.createLibrarySynced(scope, s, backup, myUid, name) } },

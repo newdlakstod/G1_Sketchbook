@@ -39,7 +39,8 @@ class SessionStore(context: Context) {
         get() {
             val raw = prefs.getString(KEY_QUICK_FAVS, null)
             val parsed = raw?.let { runCatching { it.split(",").map { s -> s.toLong() } }.getOrNull() }
-            return parsed?.takeIf { it.size == QuickFavoritesCount } ?: paletteColors.take(QuickFavoritesCount)
+            return parsed?.takeIf { it.size == QuickFavoritesCount }
+                ?: paletteColors.take(QuickFavoritesCount).ifEmpty { DefaultFavorites.take(QuickFavoritesCount) }
         }
         set(value) = prefs.edit().putString(KEY_QUICK_FAVS, value.joinToString(",")).apply()
 

@@ -80,4 +80,12 @@ class ColorLibraryTest {
     @Test fun parseLibrariesReturnsNullForGarbage() {
         assertEquals(null, parseLibraries("완전히 잘못된 형식모자란필드"))
     }
+
+    @Test fun serializeAndParseRoundTripOfEmptyList() {
+        assertEquals(emptyList(), parseLibraries(serializeLibraries(emptyList())))
+    }
+
+    @Test fun parseLibrariesReturnsNullForNonNumericColor() {
+        assertEquals(null, parseLibraries("x이름not,a,number,4,5,6,7"))
+    }
 }

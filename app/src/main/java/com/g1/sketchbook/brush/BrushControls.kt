@@ -255,7 +255,8 @@ private val ScreenControlsClearance = 60.dp
 
 // 즐겨찾기 그리드 — 카드 폭에 실제로 몇 칸이 들어가는지 계산해서 항상 3줄을 채운다("폭에 7개
 // 들어가면 21개, 8개 들어가면 24개" 식, 2026-08-26). 카드 폭이 바뀌면 총 개수도 이 값들 그대로
-// 다시 계산되므로, 저장 쪽(SessionStore.PaletteCount)도 지금 카드 폭 기준 결과(7×3=21)에 맞춰뒀다.
+// 다시 계산되므로, 지금 카드 폭 기준 결과(7×3=21)가 라이브러리 최대 개수(ActiveLibraryCount×
+// LibraryColorCount=21, 2026-09-08)와 맞아떨어지게 맞춰뒀다.
 private val FavoriteSwatchSize = 24.dp
 private val FavoriteSwatchGap = 8.dp
 private const val FavoriteGridRows = 3
