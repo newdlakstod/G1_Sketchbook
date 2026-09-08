@@ -13,8 +13,8 @@ android {
         applicationId = "com.g1.sketchbook"
         minSdk = 24
         targetSdk = 35
-        versionCode = 148
-        versionName = "2.18.0"
+        versionCode = 149
+        versionName = "2.19.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
