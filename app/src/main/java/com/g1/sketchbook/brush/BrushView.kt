@@ -2,6 +2,7 @@ package com.g1.sketchbook.brush
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlendMode
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Matrix
@@ -10,6 +11,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
+import android.os.Build
 import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -868,10 +870,21 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         redo.clear(); onStrokeEnd?.invoke(); invalidate()
     }
     private fun strokePrep() { strokeLayer?.drawColor(0, PorterDuff.Mode.CLEAR); base = contentBmp?.copy(Bitmap.Config.ARGB_8888, false) }
+    /** 수채화는 밑그림을 덮어 가리는 게 아니라 포토샵 Multiply처럼 아래 색을 어둡게 물들여야 한다는
+     *  피드백(2026-09-09) — [content]는 투명 배경 잉크 레이어라(paper는 [onDraw]에서 따로 밑에
+     *  깔림), 옛 [PorterDuffXfermode]의 MULTIPLY(프리멀티플라이드 알파라 dst가 투명하면 결과도
+     *  통째로 투명해짐 — 빈 종이 위에 그으면 그림 자체가 사라짐)로는 못 만든다. [BlendMode]
+     *  (API 29+)는 W3C 합성식(`Co = Cs·(1-αb) + Cb·(1-αs) + αs·αb·Multiply(Cb,Cs)`)이라 dst가
+     *  비어 있으면 그냥 평범하게 보이고, dst에 기존 잉크가 있을 때만 곱연산으로 어두워진다 — 정확히
+     *  원하는 동작. minSdk 24라 이 API가 없는 기기(< API 29)는 예전처럼 일반 블렌드로 그대로 둔다. */
     private fun composite() {
         val c = content ?: return; val b = base ?: return; val sb = strokeBmp ?: return
         c.drawColor(0, PorterDuff.Mode.CLEAR); c.drawBitmap(b, 0f, 0f, null)
-        compositeP.alpha = (inkAlpha() * 255).toInt(); c.drawBitmap(sb, 0f, 0f, compositeP)
+        compositeP.alpha = (inkAlpha() * 255).toInt()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            compositeP.blendMode = if (brush == BrushType.WATER) BlendMode.MULTIPLY else BlendMode.SRC_OVER
+        }
+        c.drawBitmap(sb, 0f, 0f, compositeP)
     }
 
     private fun r0() = strokeSize / 2f   // base radius in canvas px — already canvas-px, no fitScale
