@@ -25,7 +25,7 @@ suspend fun reconcileBackup(context: Context, uid: String, backup: BackupReposit
     reconcileDiary(diaryRepo, backup, uid, remote.diary)
     reconcileSettings(session, backup, uid, remote.settings)
     reconcileSharedBooks(sketchbookRepo, backup, uid, remote.sharedBooks)
-    reconcileColorLibraries(context, backup, uid, remote.colorLibraries)
+    reconcileColorLibraries(session, backup, uid, remote.colorLibraries)
 }
 
 /** 공유 스케치북은 그림이 아니라 "참여 중"이라는 사실만 동기화한다(계정의 다른 기기에 같은 코드의
@@ -56,9 +56,11 @@ private fun reconcileSharedBooks(repo: SketchbookRepository, backup: BackupRepos
 
 /** [SessionStore.libraries]와 원격 `colorLibraries`를 맞춘다 — [reconcileSharedBooks]와 같은
  *  툼스톤 방식: 원격에만 있고 로컬에 없으면 받아서 추가, 원격에서 지워졌으면(deleted=true) 로컬
- *  에서도 삭제, 로컬에만 있거나(또는 원격이 이미 지운 걸 로컬은 아직 갖고 있으면) 원격에 올린다. */
-private fun reconcileColorLibraries(context: Context, backup: BackupRepository, uid: String, remote: List<RemoteColorLibrary>) {
-    val session = SessionStore(context)
+ *  에서도 삭제, 양쪽에 다 있는데 이름/색이 다르면(다른 기기에서 수정 후 푸시된 경우) 원격 내용으로
+ *  덮어쓴다 — 모든 편집이 [com.g1.sketchbook.data.ColorLibrarySync]를 통해 즉시(디바운스 후) 푸시
+ *  되므로 원격을 신뢰해도 안전하다, 로컬에만 있거나(또는 원격이 이미 지운 걸 로컬은 아직 갖고
+ *  있으면) 원격에 올린다. */
+private fun reconcileColorLibraries(session: SessionStore, backup: BackupRepository, uid: String, remote: List<RemoteColorLibrary>) {
     val local = session.libraries
     val remoteById = remote.associateBy { it.id }
     val localIds = local.map { it.id }.toSet()
@@ -69,9 +71,16 @@ private fun reconcileColorLibraries(context: Context, backup: BackupRepository, 
             if (r.id in localIds) next = next.filter { it.id != r.id }
         } else if (r.id !in localIds) {
             next = next + ColorLibrary(r.id, r.name, r.colors)
+        } else {
+            next = next.map { if (it.id == r.id) ColorLibrary(r.id, r.name, r.colors) else it }
         }
     }
     if (next != local) session.libraries = next
+
+    // 원격 삭제가 방금 위에서 반영됐다면(next에서 사라짐) activeLibraryIds에 남은 참조도 같이 정리
+    // 한다 — 안 그러면 라이브러리 관리 팝업의 "N/3 선택됨" 카운트가 다음 수동 토글 전까지 틀어진다.
+    val prunedActive = session.activeLibraryIds.filter { id -> next.any { it.id == id } }
+    if (prunedActive != session.activeLibraryIds) session.activeLibraryIds = prunedActive
 
     for (library in next) {
         val r = remoteById[library.id]
@@ -191,7 +200,11 @@ fun syncSettingsUp(session: SessionStore, backup: BackupRepository, uid: String)
 private fun applyRemoteSettings(session: SessionStore, backup: BackupRepository, r: RemoteSettings) {
     if (r.nickname != null) session.nickname = r.nickname
     session.themeMode = r.themeMode
-    session.activeLibraryIds = r.activeLibraryIds
+    // 원격 activeLibraryIds가 비어있는 건 "사용자가 정말 0개를 골랐음"과 "이 기능 이전 버전이
+    // 마지막으로 쓴 계정이라 이 키 자체가 없었음"을 구분할 수 없다 — 후자인 채로 덮어쓰면 새 기기/
+    // 재설치가 팔레트를 통째로 비운 채 시작한다(quickFavorites가 바로 아래서 이미 같은 이유로
+    // size 체크하는 것과 동일한 방어). 빈 값은 무시하고 로컬 기본값을 유지한다.
+    if (r.activeLibraryIds.isNotEmpty()) session.activeLibraryIds = r.activeLibraryIds
     if (r.quickFavorites.size == SessionStore.QuickFavoritesCount) session.quickFavorites = r.quickFavorites
     session.twoFingerTapAction = runCatching { GestureAction.valueOf(r.gesture2Tap) }.getOrDefault(GestureAction.NONE)
     session.threeFingerTapAction = runCatching { GestureAction.valueOf(r.gesture3Tap) }.getOrDefault(GestureAction.NONE)
