@@ -20,6 +20,7 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
@@ -860,7 +861,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun composite() {
         val c = content ?: return; val b = base ?: return; val sb = strokeBmp ?: return
         c.drawColor(0, PorterDuff.Mode.CLEAR); c.drawBitmap(b, 0f, 0f, null)
-        compositeP.alpha = (opacity.coerceIn(0f, 1f) * 255).toInt(); c.drawBitmap(sb, 0f, 0f, compositeP)
+        compositeP.alpha = (inkAlpha() * 255).toInt(); c.drawBitmap(sb, 0f, 0f, compositeP)
     }
 
     private fun r0() = strokeSize / 2f   // base radius in canvas px — already canvas-px, no fitScale
@@ -919,6 +920,14 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun scaleFor(): Float = when (brush) { BrushType.PEN -> 1f; BrushType.PENCIL -> 1f; BrushType.CRAYON -> 2f; BrushType.WATER -> 6f }
     private val EraserScale = 2f
 
+    // 어두운 색을 낮은 불투명도로 그리면, 슬라이더 숫자(선형 알파)만큼 옅어 보이지 않는다는 피드백
+    // (2026-09-08) — 흰 종이 위 검정 잉크 50%는 산술적으로 정확히 RGB 128이지만, 사람 눈에는 그보다
+    // 훨씬 안 옅어 보인다. 표시되는 슬라이더 숫자(0~100%)는 그대로 선형으로 두고, 실제로 그릴 때 쓰는
+    // 알파만 감마 보정해 체감과 맞춘다 — 지우개(applyEraseStyle)는 대상이 아니다(이건 잉크 농도가
+    // 아니라 얼마나 지울지의 개념이라 이번 피드백과 무관).
+    private val InkOpacityGamma = 1.6f
+    private fun inkAlpha(): Float = opacity.coerceIn(0f, 1f).pow(InkOpacityGamma)
+
     private fun seg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         var r = r0() * scaleFor()
         if (brush == BrushType.PENCIL) r *= (1 - minOf(0.45f, speed * 0.06f))
@@ -946,7 +955,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         for (i in 0 until n) {
             val a = rnd.nextFloat() * 6.2832f; val rr = Math.pow(rnd.nextDouble(), 0.7).toFloat() * r * 1.15f
             val sx = x + cos(a) * rr; val sy = y + sin(a) * rr
-            val al = (0.06f + rnd.nextFloat() * 0.5f) * opacity; val ss = (if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f) * g
+            val al = (0.06f + rnd.nextFloat() * 0.5f) * inkAlpha(); val ss = (if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f) * g
             fill.color = withAlpha(color, al); c.drawRect(sx, sy, sx + ss, sy + ss, fill)
         }
     }
@@ -959,7 +968,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             val a = rnd.nextFloat() * 6.2832f; val rr = rnd.nextFloat() * r * 1.15f; val edge = rr / (r * 1.15f)
             if (rnd.nextFloat() > (0.15f + 0.85f * edge)) continue
             val cxp = x + cos(a) * rr; val cyp = y + sin(a) * rr
-            fill.color = withAlpha(color, (0.18f + rnd.nextFloat() * 0.6f) * opacity)
+            fill.color = withAlpha(color, (0.18f + rnd.nextFloat() * 0.6f) * inkAlpha())
             val s = (1.5f + rnd.nextFloat() * 3f) * g; c.drawRect(cxp, cyp, cxp + s, cyp + s, fill)
         }
     }
