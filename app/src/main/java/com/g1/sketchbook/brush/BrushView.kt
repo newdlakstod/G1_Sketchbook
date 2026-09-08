@@ -426,10 +426,19 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         } else pendingContent = saved
     }
 
+    /** 종이 위에 필기 전체를 얹어 하나로 합친 최종 이미지 — 실시간 편집 화면([onDraw])은 그대로
+     *  일반 블렌드로 두고, 이 "완성해서 내보내는" 시점에만 종이와 Multiply로 합쳐서 종이 질감이
+     *  수채화(와 다른 붓들) 아래로 비쳐 보이게 한다(2026-09-09). 붓 종류별로 구분해서 수채화만
+     *  곱하는 게 아니라 필기 전체를 곱한다 — 흰색/밝은 종이에서는 펜 등 다른 붓의 결과가 거의 그대로
+     *  보이고, 어두운/짙은 색 종이를 쓸 때만 차이가 도드라진다(의도적으로 단순하게 선택, 붓별로
+     *  나누려면 어느 픽셀이 수채화인지 별도로 기록해야 해서 지금은 하지 않음). minSdk 24라 이
+     *  블렌드 API가 없는 기기(< API 29)에서는 예전처럼 일반 블렌드로 내보낸다. */
     fun exportBitmap(): Bitmap? {
         if (contentBmp == null || cw <= 0) return null
         val out = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888)
-        val c = Canvas(out); drawPaper(c); contentBmp?.let { c.drawBitmap(it, 0f, 0f, null) }
+        val c = Canvas(out); drawPaper(c)
+        val paperBlend = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Paint().apply { blendMode = BlendMode.MULTIPLY } else null
+        contentBmp?.let { c.drawBitmap(it, 0f, 0f, paperBlend) }
         return out
     }
 
