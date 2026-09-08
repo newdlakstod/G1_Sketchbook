@@ -100,6 +100,16 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     var onStylusButtonChanged: ((Boolean) -> Unit)? = null
     private var stylusButtonDown = false
 
+    /** 실제로 지금 지워야 하는지 — [erasing]은 툴바 토글(Compose 쪽 상태, [onStylusButtonChanged]가
+     *  콜백으로 "눌렀다"고 알려준 뒤 Compose가 재구성을 돌려 [erasing]을 세팅해줄 때까지 최소 한
+     *  프레임이 걸린다)이고 [stylusButtonDown]은 이 터치 이벤트 안에서 방금 막 동기적으로 감지한
+     *  값이다. S펜 버튼을 누른 채로(화면에 닿기 전부터) 새 스트로크를 시작하면, 그 스트로크의 첫
+     *  ACTION_DOWN을 처리하는 바로 이 순간엔 아직 Compose 재구성이 안 돌아서 [erasing]이 false로
+     *  남아있어 — 지우개가 아니라 그냥 그려져 버렸다("드로잉 중에 버튼을 눌러야만 지워지고, 버튼을
+     *  누른 채로 그리기 시작하면 안 지워짐" 리포트, 2026-09-08). [stylusButtonDown]을 같이 봐서 그
+     *  프레임 지연 없이 즉시 지우개로 취급한다. */
+    private val effectiveErasing: Boolean get() = erasing || stylusButtonDown
+
     /** 올가미(라소) 선택 모드 — 켜져 있으면 손가락으로 자유형 영역을 그려 선택하고, 선택 영역
      *  안쪽을 다시 눌러 드래그하면 그 자리로 옮길 수 있다. 다른 브러시로 바꿔 꺼지면(false로
      *  세팅되면) 남아있던 선택은 자동으로 풀린다. */
@@ -626,7 +636,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                     // strokeMove 안에서 그대로 다 찍되, 화면에 보여주는 composite()는 이 배치 전체가
                     // 끝난 뒤 딱 한 번만 부른다 — 최종적으로 그려지는 픽셀은 동일하고, 중간 프레임을
                     // 안 보여주는 것뿐이라 시각적 차이는 없다.
-                    if (strokeStarted && (brush == BrushType.PEN || brush == BrushType.WATER) && !erasing) composite()
+                    if (strokeStarted && (brush == BrushType.PEN || brush == BrushType.WATER) && !effectiveErasing) composite()
                     invalidate()
                     if (longPressPending && hypot(e.x - downX, e.y - downY) > tapSlopPx) {
                         longPressPending = false; removeCallbacks(longPressRunnable)
@@ -890,7 +900,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
 
     private fun strokeStart(x: Float, y: Float) {
         when {
-            erasing -> { applyEraseStyle(eraseFill); content?.drawCircle(x, y, max(1f, eraserDiameter() / 2f), eraseFill) }
+            effectiveErasing -> { applyEraseStyle(eraseFill); content?.drawCircle(x, y, max(1f, eraserDiameter() / 2f), eraseFill) }
             brush == BrushType.PEN -> { penDot(x, y); composite() }
             brush == BrushType.WATER -> { stampWater(x, y, r0() * scaleFor()); composite() }
             else -> stampDispatch(x, y, r0() * scaleFor())
@@ -899,7 +909,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun strokeMove(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         if (fillMode) return   // 페인트통은 드래그로 아무것도 안 그림 — 손을 뗄 때 endStroke에서 한 번만 채운다.
         when {
-            erasing -> {
+            effectiveErasing -> {
                 eraseStroke.strokeWidth = max(1f, eraserDiameter())
                 applyEraseStyle(eraseStroke)
                 content?.drawLine(x0, y0, x1, y1, eraseStroke)
