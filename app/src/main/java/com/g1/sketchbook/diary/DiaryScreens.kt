@@ -876,6 +876,7 @@ internal data class OverlayPlacement(
     val fracX: Float, val fracY: Float,
     val gridWidthFraction: Float, val gridHeightFraction: Float,
     val year: OverlayElementStyle, val month: OverlayElementStyle, val day: OverlayElementStyle,
+    val showYear: Boolean,
     val showTodayCircle: Boolean,
     val backgroundEnabled: Boolean, val backgroundColorArgb: Long, val backgroundOpacity: Float,
 )
@@ -919,6 +920,7 @@ internal fun CalendarOverlayPlacementScreen(bmp: Bitmap, date: String, onCancel:
     var yearStyle by remember(date) { mutableStateOf(DefaultYearStyle) }
     var monthStyle by remember(date) { mutableStateOf(DefaultMonthStyle) }
     var dayStyle by remember(date) { mutableStateOf(DefaultDayStyle) }
+    var showYear by remember(date) { mutableStateOf(true) }
     var showTodayCircle by remember(date) { mutableStateOf(true) }
     var backgroundEnabled by remember(date) { mutableStateOf(false) }
     var backgroundColorArgb by remember(date) { mutableStateOf(0xFFFFFFFFL) }
@@ -959,7 +961,7 @@ internal fun CalendarOverlayPlacementScreen(bmp: Bitmap, date: String, onCancel:
                 ) {
                     MiniCalendarSticker(
                         year, month, day, gridWidth, gridHeight, yearStyle, monthStyle, dayStyle,
-                        showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
+                        showYear, showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
                     )
                 }
                 OverlayHandle(Modifier.align(Alignment.CenterEnd).offset(16.dp, 0.dp), pillWidth = 5.dp, pillHeight = 23.dp, "가로 크기") { drag ->
@@ -983,7 +985,7 @@ internal fun CalendarOverlayPlacementScreen(bmp: Bitmap, date: String, onCancel:
                     onSave(
                         OverlayPlacement(
                             fracX, fracY, gridWFrac, gridHFrac, yearStyle, monthStyle, dayStyle,
-                            showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
+                            showYear, showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
                         ),
                     )
                 },
@@ -996,6 +998,7 @@ internal fun CalendarOverlayPlacementScreen(bmp: Bitmap, date: String, onCancel:
         CalendarSettingsDialog(
             year, month, day, yearStyle, monthStyle, dayStyle,
             onYearChange = { yearStyle = it }, onMonthChange = { monthStyle = it }, onDayChange = { dayStyle = it },
+            showYear = showYear, onShowYearChange = { showYear = it },
             showTodayCircle = showTodayCircle, onShowTodayCircleChange = { showTodayCircle = it },
             backgroundEnabled = backgroundEnabled, onBackgroundEnabledChange = { backgroundEnabled = it },
             backgroundColorArgb = backgroundColorArgb, onBackgroundColorChange = { backgroundColorArgb = it },
@@ -1036,6 +1039,7 @@ private fun CalendarSettingsDialog(
     year: Int, month: Int, day: Int,
     yearStyle: OverlayElementStyle, monthStyle: OverlayElementStyle, dayStyle: OverlayElementStyle,
     onYearChange: (OverlayElementStyle) -> Unit, onMonthChange: (OverlayElementStyle) -> Unit, onDayChange: (OverlayElementStyle) -> Unit,
+    showYear: Boolean, onShowYearChange: (Boolean) -> Unit,
     showTodayCircle: Boolean, onShowTodayCircleChange: (Boolean) -> Unit,
     backgroundEnabled: Boolean, onBackgroundEnabledChange: (Boolean) -> Unit,
     backgroundColorArgb: Long, onBackgroundColorChange: (Long) -> Unit,
@@ -1062,7 +1066,7 @@ private fun CalendarSettingsDialog(
                     Spacer(Modifier.height(12.dp))
                     MiniCalendarSticker(
                         year, month, day, 160.dp, 190.dp, yearStyle, monthStyle, dayStyle,
-                        showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
+                        showYear, showTodayCircle, backgroundEnabled, backgroundColorArgb, backgroundOpacity,
                     )
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1093,6 +1097,8 @@ private fun CalendarSettingsDialog(
                         }
                     }
                     Spacer(Modifier.height(18.dp))
+                    OverlayToggleRow("연도 표시", showYear, onShowYearChange)
+                    Spacer(Modifier.height(10.dp))
                     OverlayToggleRow("오늘 날짜 강조 원", showTodayCircle, onShowTodayCircleChange)
                     Spacer(Modifier.height(10.dp))
                     OverlayToggleRow("달력 배경", backgroundEnabled, onBackgroundEnabledChange)
@@ -1186,7 +1192,7 @@ private fun FontSizeEditor(style: OverlayElementStyle, selectedElement: OverlayE
 private fun MiniCalendarSticker(
     year: Int, month: Int, day: Int, widthDp: Dp, heightDp: Dp,
     yearStyle: OverlayElementStyle, monthStyle: OverlayElementStyle, dayStyle: OverlayElementStyle,
-    showTodayCircle: Boolean, backgroundEnabled: Boolean, backgroundColorArgb: Long, backgroundOpacity: Float,
+    showYear: Boolean, showTodayCircle: Boolean, backgroundEnabled: Boolean, backgroundColorArgb: Long, backgroundOpacity: Float,
 ) {
     val cells = remember(year, month) { monthCells(year, month) }
     Column(
@@ -1198,10 +1204,12 @@ private fun MiniCalendarSticker(
                 } else it
             },
     ) {
-        Text(
-            "$year", fontFamily = fontFamilyFor(yearStyle.fontRes), fontSize = yearStyle.fontSp.sp,
-            color = Color(yearStyle.colorArgb), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
-        )
+        if (showYear) {
+            Text(
+                "$year", fontFamily = fontFamilyFor(yearStyle.fontRes), fontSize = yearStyle.fontSp.sp,
+                color = Color(yearStyle.colorArgb), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Text(
             MonthNames[month], fontFamily = fontFamilyFor(monthStyle.fontRes), fontSize = monthStyle.fontSp.sp,
             color = Color(monthStyle.colorArgb), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
@@ -1264,7 +1272,9 @@ private fun renderCalendarOverlayDiaryBitmap(ctx: Context, bmp: Bitmap, date: St
     val dayPx = placement.day.fontSp * density
     val weekdayPx = dayPx * 0.7f
 
-    val yearRowH = yearPx * OverlayLineHeightMultiplier
+    // 연도를 끄면(showYear=false) 그 줄이 차지하던 공간을 그리드 쪽으로 돌려준다 — 아래 미리보기용
+    // MiniCalendarSticker도 Column에서 그냥 Text를 안 넣는 방식으로 같은 효과를 낸다.
+    val yearRowH = if (placement.showYear) yearPx * OverlayLineHeightMultiplier else 0f
     val monthRowH = monthPx * OverlayLineHeightMultiplier
     val weekdayRowH = weekdayPx * OverlayLineHeightMultiplier
     val gridH = (stickerH - yearRowH - monthRowH - weekdayRowH).coerceAtLeast(cellW)
@@ -1282,7 +1292,7 @@ private fun renderCalendarOverlayDiaryBitmap(ctx: Context, bmp: Bitmap, date: St
         canvas.drawRoundRect(android.graphics.RectF(left, top, left + gridW, top + stickerH), radius, radius, bgPaint)
     }
 
-    canvas.drawText("$year", left + gridW / 2, top + yearRowH * 0.75f, paint(placement.year, yearPx))
+    if (placement.showYear) canvas.drawText("$year", left + gridW / 2, top + yearRowH * 0.75f, paint(placement.year, yearPx))
     canvas.drawText(MonthNames[month], left + gridW / 2, top + yearRowH + monthRowH * 0.75f, paint(placement.month, monthPx))
 
     val weekdayPaint = paint(placement.day, weekdayPx, alphaOverride = 160)

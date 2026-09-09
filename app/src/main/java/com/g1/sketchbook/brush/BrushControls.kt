@@ -1317,7 +1317,12 @@ internal fun ColorPickerCard(
                             .pointerInput(Unit) {
                                 awaitPointerEventScope {
                                     while (true) {
-                                        val p = awaitPointerEvent().changes.first().position
+                                        // S펜은 화면에 닿기 전에도(호버) 포인터 이벤트를 보낸다 — pressed
+                                        // 체크 없이 위치만 읽으면 펜이 화면 위에 뜬 채로 지나가기만 해도
+                                        // 색이 바뀌어버린다("화면보다 약간 위에서 인식", 2026-09-10).
+                                        val change = awaitPointerEvent().changes.first()
+                                        if (!change.pressed) continue
+                                        val p = change.position
                                         val cx = size.width / 2f; val cy = size.height / 2f
                                         val radius = min(cx, cy)
                                         val dx = p.x - cx; val dy = p.y - cy
@@ -1361,8 +1366,9 @@ internal fun ColorPickerCard(
                             .pointerInput(Unit) {
                                 awaitPointerEventScope {
                                     while (true) {
-                                        val x = awaitPointerEvent().changes.first().position.x
-                                        value = (1f - x / size.width).coerceIn(0f, 1f)
+                                        val change = awaitPointerEvent().changes.first()
+                                        if (!change.pressed) continue   // 호버 무시 — 위 원형 휠과 같은 이유
+                                        value = (1f - change.position.x / size.width).coerceIn(0f, 1f)
                                         emit()
                                     }
                                 }

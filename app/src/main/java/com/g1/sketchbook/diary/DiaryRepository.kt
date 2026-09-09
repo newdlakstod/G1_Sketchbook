@@ -80,19 +80,22 @@ internal fun buildLegacyDiaryPreviewPixels(
     for (index in preview.indices) {
         if (connected[index]) preview[index] = paperPixels[index]
     }
+    // 종이 위 필기는 Multiply로 합성한다 — BrushView.exportBitmap()이 저장 시점에 쓰는 것과 같은
+    // 블렌드(2026-09-10). 이 복구 경로는 예전 SRC_OVER로 다시 합성했었는데, 여기서 배경(paper든
+    // storedComposite든 항상 불투명)과 다시 섞인 결과라 exportBitmap()의 결과와 달라 보였다 —
+    // "달력/일반 다운로드에서만 종이 질감 Multiply가 안 보인다" 리포트로 확인.
     contentPixels?.forEachIndexed { index, source ->
         val alpha = source ushr 24 and 0xFF
         if (alpha == 0) return@forEachIndexed
-        if (alpha == 0xFF) {
-            preview[index] = source
-        } else {
-            val destination = preview[index]
-            val inverse = 0xFF - alpha
-            val red = ((source ushr 16 and 0xFF) * alpha + (destination ushr 16 and 0xFF) * inverse + 127) / 255
-            val green = ((source ushr 8 and 0xFF) * alpha + (destination ushr 8 and 0xFF) * inverse + 127) / 255
-            val blue = ((source and 0xFF) * alpha + (destination and 0xFF) * inverse + 127) / 255
-            preview[index] = 0xFF000000.toInt() or (red shl 16) or (green shl 8) or blue
-        }
+        val destination = preview[index]
+        val inverse = 0xFF - alpha
+        val destRed = destination ushr 16 and 0xFF; val srcRed = source ushr 16 and 0xFF
+        val destGreen = destination ushr 8 and 0xFF; val srcGreen = source ushr 8 and 0xFF
+        val destBlue = destination and 0xFF; val srcBlue = source and 0xFF
+        val red = (destRed * inverse + alpha * ((destRed * srcRed + 127) / 255) + 127) / 255
+        val green = (destGreen * inverse + alpha * ((destGreen * srcGreen + 127) / 255) + 127) / 255
+        val blue = (destBlue * inverse + alpha * ((destBlue * srcBlue + 127) / 255) + 127) / 255
+        preview[index] = 0xFF000000.toInt() or (red shl 16) or (green shl 8) or blue
     }
     return preview
 }
