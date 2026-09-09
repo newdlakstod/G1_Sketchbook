@@ -110,6 +110,11 @@ fun ImageEyedropperOverlay(bitmap: Bitmap, context: LibrarySwatchContext, onDone
                                 // (BrushView.onTouchEvent의 핀치줌 처리와 같은 방식, MotionEvent 대신 Compose의
                                 // PointerEvent.changes를 씀).
                                 var prevMidX = 0f; var prevMidY = 0f; var prevDist = 0f
+                                // 이 제스처(포인터 0개→0개 사이의 한 번)가 도중에 2손가락 이상이었던 적이
+                                // 있는지 — 있었다면 손가락 하나가 남아도(핀치 중 하나를 뗀 직후) 그 남은
+                                // 손가락 위치를 색으로 잘못 확정하지 않도록 샘플링을 계속 막는다. 포인터가
+                                // 완전히 0개가 되어야(새 제스처 시작) 다시 풀린다.
+                                var hadMultiTouch = false
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     val pressed = event.changes.filter { it.pressed }
@@ -124,19 +129,24 @@ fun ImageEyedropperOverlay(bitmap: Bitmap, context: LibrarySwatchContext, onDone
                                             }
                                             prevMidX = mx; prevMidY = my; prevDist = dist
                                             preview = null
+                                            hadMultiTouch = true
                                             pressed.forEach { it.consume() }
                                         }
                                         pressed.size == 1 -> {
                                             prevDist = 0f
-                                            val p = pressed[0].position
-                                            val picked = imageEyedropperPixel(
-                                                p.x, p.y, boxWidthPx, boxHeightPx,
-                                                bitmap.width, bitmap.height, zoom, panX, panY,
-                                            )
-                                            if (picked != null) {
-                                                val (px, py) = picked
-                                                val c = bitmap.getPixel(px, py)
-                                                preview = Triple(c, p.x, p.y)
+                                            if (!hadMultiTouch) {
+                                                val p = pressed[0].position
+                                                val picked = imageEyedropperPixel(
+                                                    p.x, p.y, boxWidthPx, boxHeightPx,
+                                                    bitmap.width, bitmap.height, zoom, panX, panY,
+                                                )
+                                                if (picked != null) {
+                                                    val (px, py) = picked
+                                                    val c = bitmap.getPixel(px, py)
+                                                    preview = Triple(c, p.x, p.y)
+                                                } else {
+                                                    preview = null
+                                                }
                                             }
                                             pressed[0].consume()
                                         }
@@ -145,6 +155,7 @@ fun ImageEyedropperOverlay(bitmap: Bitmap, context: LibrarySwatchContext, onDone
                                             preview?.let { (c, _, _) -> context.onEditColor(targetIndex, (c.toLong() and 0xFFFFFFFF) or 0xFF000000L) }
                                             preview = null
                                             prevDist = 0f
+                                            hadMultiTouch = false
                                         }
                                     }
                                 }
