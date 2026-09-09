@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
 import android.os.SystemClock
@@ -18,7 +19,9 @@ import android.view.MotionEvent
 import android.view.View
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -156,8 +159,28 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private var strokeLayer: Canvas? = null
     private var base: Bitmap? = null
     private var pendingContent: Bitmap? = null
-    private val undo = ArrayDeque<Bitmap>()
-    private val redo = ArrayDeque<Bitmap>()
+
+    /** [rect] is in canvas px, already clamped to the canvas bounds. Undo used to snapshot the
+     *  *entire* canvas on every single stroke (via [pushUndo]) — on a large canvas (A3 200dpi caps
+     *  at 3308×3308px, ~44MB/snapshot) that's a heavy synchronous bitmap copy on every stroke start,
+     *  and with up to MAX_UNDO of them alive it's real GC pressure that gets worse the more you draw
+     *  in one sitting ("선 많이 그으면 렉" report, 2026-09-09). A regular stroke only ever touches a
+     *  small part of the canvas, so [commitStrokeUndo] now stores just that touched rect instead —
+     *  see [dirtyRect]/[markDirty]. The rare whole-canvas ops (clear, lasso move/delete, flood fill)
+     *  still use [pushUndo]'s full-canvas rect; they're infrequent enough that it doesn't matter. */
+    private data class UndoEntry(val patch: Bitmap, val rect: Rect)
+    private val undo = ArrayDeque<UndoEntry>()
+    private val redo = ArrayDeque<UndoEntry>()
+
+    /** Bounding box (canvas px) touched by the in-progress stroke so far, grown via [markDirty] as
+     *  each dot/segment/particle is painted. Reset to null in [strokePrep], consumed by
+     *  [commitStrokeUndo] in [endStroke]. */
+    private var dirtyRect: RectF? = null
+    private fun markDirty(cx: Float, cy: Float, radius: Float) {
+        val r = dirtyRect
+        if (r == null) dirtyRect = RectF(cx - radius, cy - radius, cx + radius, cy + radius)
+        else r.union(cx - radius, cy - radius, cx + radius, cy + radius)
+    }
 
     private var rotationQ = 0                 // 0..3 quarter turns
     private val disp = Matrix()
@@ -401,18 +424,54 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         disp.mapRect(rect)
         return floatArrayOf(rect.centerX(), rect.top)
     }
-    fun undo() { val b = undo.removeLastOrNull() ?: return; snapshotTo(redo); restore(b); invalidate() }
-    fun redo() { val b = redo.removeLastOrNull() ?: return; snapshotTo(undo); restore(b); invalidate() }
-    private fun restore(b: Bitmap) { content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) } }
+    fun undo() {
+        val e = undo.removeLastOrNull() ?: return
+        cropContent(e.rect)?.let { patch -> pushTo(redo, UndoEntry(patch, e.rect)) }
+        restore(e); invalidate()
+    }
+    fun redo() {
+        val e = redo.removeLastOrNull() ?: return
+        cropContent(e.rect)?.let { patch -> pushTo(undo, UndoEntry(patch, e.rect)) }
+        restore(e); invalidate()
+    }
+    /** Clears+redraws only [e]'s rect — a whole-canvas entry (rect = full canvas, from [pushUndo])
+     *  still works, since clipping to the full canvas rect is a no-op. */
+    private fun restore(e: UndoEntry) {
+        content?.let { c ->
+            c.save(); c.clipRect(e.rect); c.drawColor(0, PorterDuff.Mode.CLEAR)
+            c.drawBitmap(e.patch, e.rect.left.toFloat(), e.rect.top.toFloat(), null); c.restore()
+        }
+    }
+    /** Current pixels within [rect], clamped to the canvas — used to capture the "other direction"
+     *  patch when undo/redo swaps a rect in or out. */
+    private fun cropContent(rect: Rect): Bitmap? {
+        val cb = contentBmp ?: return null
+        val r = Rect(rect); if (!r.intersect(0, 0, cw, ch) || r.width() <= 0 || r.height() <= 0) return null
+        return Bitmap.createBitmap(cb, r.left, r.top, r.width(), r.height())
+    }
+    private fun pushTo(stack: ArrayDeque<UndoEntry>, entry: UndoEntry) {
+        stack.addLast(entry); if (stack.size > MAX_UNDO) stack.removeFirst()
+    }
     // NOTE: does NOT clear the redo stack — every touch-down provisionally calls this (via
     // beginStroke) before we know whether it'll become a real stroke or get discarded by a pinch/
     // long-press/multi-tap gesture. Clearing redo here used to wipe it on every touch, silently
     // breaking "redo" whenever it was triggered by a gesture. Redo is invalidated only once a
     // stroke actually commits — see endStroke().
-    private fun pushUndo() { snapshotTo(undo) }
-    private fun snapshotTo(stack: ArrayDeque<Bitmap>) {
-        val b = contentBmp ?: return
-        stack.addLast(b.copy(Bitmap.Config.ARGB_8888, false)); if (stack.size > MAX_UNDO) stack.removeFirst()
+    //
+    // Only whole-canvas ops (clear, lasso move/delete, flood fill) call this now — regular strokes
+    // commit a small dirty-rect patch instead, see [commitStrokeUndo].
+    private fun pushUndo() {
+        val cb = contentBmp ?: return
+        pushTo(undo, UndoEntry(cb.copy(Bitmap.Config.ARGB_8888, false), Rect(0, 0, cw, ch)))
+    }
+    /** Called once per committed stroke (from [endStroke], before [base] is cleared) — crops the
+     *  pre-stroke pixels out of [base] within [dirtyRect] instead of snapshotting the whole canvas. */
+    private fun commitStrokeUndo() {
+        val b = base ?: return
+        val dr = dirtyRect ?: return
+        val r = Rect(floor(dr.left).toInt(), floor(dr.top).toInt(), ceil(dr.right).toInt(), ceil(dr.bottom).toInt())
+        if (!r.intersect(0, 0, cw, ch) || r.width() <= 0 || r.height() <= 0) return
+        pushTo(undo, UndoEntry(Bitmap.createBitmap(b, r.left, r.top, r.width(), r.height()), r))
     }
 
     fun loadContent(saved: Bitmap?) {
@@ -698,8 +757,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private fun discardStroke() {
         if (fillMode) { strokeStarted = false; invalidate(); return }
         base?.let { b -> content?.let { it.drawColor(0, PorterDuff.Mode.CLEAR); it.drawBitmap(b, 0f, 0f, null) } }
-        undo.removeLastOrNull()
-        strokeStarted = false; base = null; invalidate()
+        strokeStarted = false; base = null; dirtyRect = null; invalidate()
     }
 
     /** [dir] is only meaningful for PAGE_TURN (a tap gesture has no direction, so it defaults to
@@ -871,14 +929,19 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
      *  pushUndo()한다. */
     private fun beginStroke(x: Float, y: Float) {
         if (fillMode) { strokeStarted = true; return }
-        pushUndo(); strokePrep(); strokeStart(x, y); strokeStarted = true; invalidate()
+        strokePrep(); strokeStart(x, y); strokeStarted = true; invalidate()
     }
     private fun endStroke() {
-        strokeStarted = false; base = null
-        if (fillMode) { floodFillAt(downX, downY); return }   // floodFillAt이 자체적으로 pushUndo/redo.clear/invalidate/onStrokeEnd 처리
+        strokeStarted = false
+        if (fillMode) { base = null; floodFillAt(downX, downY); return }   // floodFillAt이 자체적으로 pushUndo/redo.clear/invalidate/onStrokeEnd 처리
+        commitStrokeUndo(); base = null
         redo.clear(); onStrokeEnd?.invoke(); invalidate()
     }
-    private fun strokePrep() { strokeLayer?.drawColor(0, PorterDuff.Mode.CLEAR); base = contentBmp?.copy(Bitmap.Config.ARGB_8888, false) }
+    private fun strokePrep() {
+        strokeLayer?.drawColor(0, PorterDuff.Mode.CLEAR)
+        base = contentBmp?.copy(Bitmap.Config.ARGB_8888, false)
+        dirtyRect = null
+    }
     /** 수채화는 밑그림을 덮어 가리는 게 아니라 포토샵 Multiply처럼 아래 색을 어둡게 물들여야 한다는
      *  피드백(2026-09-09) — [content]는 투명 배경 잉크 레이어라(paper는 [onDraw]에서 따로 밑에
      *  깔림), 옛 [PorterDuffXfermode]의 MULTIPLY(프리멀티플라이드 알파라 dst가 투명하면 결과도
@@ -920,9 +983,16 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         strokeMove(lx, ly, rawX, rawY, smoothedSpeed); lx = rawX; ly = rawY; lt = eventTimeMs
     }
 
+    /** 지우개가 실제로 지우는 반경(블러 여유 포함) — [markDirty]가 undo에 담을 영역을 계산할 때도 이
+     *  값을 써서, eraserBlur로 부드러워진 가장자리까지 undo 패치에 확실히 포함되게 한다. */
+    private fun eraserDirtyRadius() = max(1f, eraserDiameter() / 2f) + eraserBlur * 2f
+
     private fun strokeStart(x: Float, y: Float) {
         when {
-            effectiveErasing -> { applyEraseStyle(eraseFill); content?.drawCircle(x, y, max(1f, eraserDiameter() / 2f), eraseFill) }
+            effectiveErasing -> {
+                applyEraseStyle(eraseFill); content?.drawCircle(x, y, max(1f, eraserDiameter() / 2f), eraseFill)
+                markDirty(x, y, eraserDirtyRadius())
+            }
             brush == BrushType.PEN -> { penDot(x, y); composite() }
             brush == BrushType.WATER -> { stampWater(x, y, r0() * scaleFor()); composite() }
             else -> stampDispatch(x, y, r0() * scaleFor())
@@ -935,6 +1005,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
                 eraseStroke.strokeWidth = max(1f, eraserDiameter())
                 applyEraseStyle(eraseStroke)
                 content?.drawLine(x0, y0, x1, y1, eraseStroke)
+                markDirty(x1, y1, eraserDirtyRadius())
             }
             brush == BrushType.PEN -> penSeg(x0, y0, x1, y1, speed)
             brush == BrushType.WATER -> seg(x0, y0, x1, y1, speed)
@@ -942,11 +1013,16 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         }
     }
 
-    private fun penDot(x: Float, y: Float) { fill.color = color or (0xFF shl 24); strokeLayer?.drawCircle(x, y, max(1f, r0()), fill) }
+    private fun penDot(x: Float, y: Float) {
+        val r = max(1f, r0())
+        fill.color = color or (0xFF shl 24); strokeLayer?.drawCircle(x, y, r, fill)
+        markDirty(x, y, r)
+    }
     private fun penSeg(x0: Float, y0: Float, x1: Float, y1: Float, speed: Float) {
         // PEN 속도별 굵기 조절 — 0.65f: 최대 감소율(65%까지), 0.2f: speed(캔버스 px/ms) 민감도.
         val r = max(1f, r0() * (1 - minOf(0.65f, speed * 0.2f)))
         pen.color = color or (0xFF shl 24); pen.strokeWidth = r * 2; strokeLayer?.drawLine(x0, y0, x1, y1, pen)
+        markDirty(x1, y1, r)
     }
 
     private fun scaleFor(): Float = when (brush) { BrushType.PEN -> 1f; BrushType.PENCIL -> 1f; BrushType.CRAYON -> 2f; BrushType.WATER -> 6f }
@@ -990,6 +1066,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             val al = (0.06f + rnd.nextFloat() * 0.5f) * inkAlpha(); val ss = (if (rnd.nextFloat() < 0.2f) 1.6f else 1.0f) * g
             fill.color = withAlpha(color, al); c.drawRect(sx, sy, sx + ss, sy + ss, fill)
         }
+        markDirty(x, y, r * 1.2f + g * 3f)
     }
     private fun stampCrayon(x: Float, y: Float, r: Float) {
         val c = content ?: return
@@ -1003,6 +1080,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             fill.color = withAlpha(color, (0.18f + rnd.nextFloat() * 0.6f) * inkAlpha())
             val s = (1.5f + rnd.nextFloat() * 3f) * g; c.drawRect(cxp, cyp, cxp + s, cyp + s, fill)
         }
+        markDirty(x, y, r * 1.2f + g * 5f)
     }
     private fun stampWater(x: Float, y: Float, r: Float) {
         val c = strokeLayer ?: return
@@ -1014,6 +1092,10 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             buildBlob(x + cos(a) * dd, y + sin(a) * dd, R * 0.5f); fill.style = Paint.Style.FILL; fill.color = withAlpha(color, 0.06f); c.drawPath(path, fill)
         }
         fill.style = Paint.Style.FILL
+        // dd(위성 blob 중심 거리) 최대 1.3R + 그 blob 반경 0.5R = 1.8R가 이론상 최대 도달 거리 —
+        // buildBlob의 무작위 jitter까지 감안해 2.2R로 여유 있게 잡는다(과대추정은 undo 패치가 조금
+        // 커지는 정도라 무해하지만, 과소추정은 undo가 스트로크 일부를 못 되돌리는 버그가 됨).
+        markDirty(x, y, R * 2.2f)
     }
     private fun buildBlob(cx: Float, cy: Float, r: Float) {
         var pts = ArrayList<FloatArray>(7)
