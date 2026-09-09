@@ -40,4 +40,12 @@ class ImageEyedropperTest {
         assertNull(imageEyedropperPixel(0f, 0f, 0f, 100f, 100, 100, 1f, 0f, 0f))
         assertNull(imageEyedropperPixel(0f, 0f, 100f, 100f, 0, 100, 1f, 0f, 0f))
     }
+
+    @Test fun cropMarginWithPanRejectsOutOfBounds() {
+        // box 200x100, bitmap 100x200 → baseScale 2.0, baseOffsetY = (100-400)/2 = -150.
+        // 화면 y=0은 비트맵 y=75 (잘려나간 위쪽 여백 안이 아니라 이미 이미지 안).
+        assertEquals(50 to 75, imageEyedropperPixel(100f, 0f, 200f, 100f, 100, 200, 1f, 0f, 0f))
+        // 같은 지점을 아래로 200px 팬하면 비트맵 위 경계 밖 → null.
+        assertNull(imageEyedropperPixel(100f, 0f, 200f, 100f, 100, 200, 1f, 0f, 200f))
+    }
 }
