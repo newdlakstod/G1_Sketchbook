@@ -1314,10 +1314,16 @@ internal fun ColorPickerCard(
                         }
                     }
                     Spacer(Modifier.height(14.dp))
-                    // 밝기(Value) 막대 — 색상은 이제 휠이 담당하므로 이 막대는 흰색(밝음)~검정(어두움)만 표현.
+                    // 밝기(Value) 막대 — RGB/HSL 탭처럼 "여기로 옮기면 이 색"을 미리 볼 수 있게
+                    // 지금 휠에서 고른 색상·채도를 반영한다(2026-09-09, 예전엔 색상과 무관하게 항상
+                    // 흰색~검정만 보여줘서 흑백 막대처럼 보인다는 피드백). 오른쪽 끝(V=0)은 색상·채도가
+                    // 뭐든 항상 검정이라 그대로 두고, 왼쪽 끝(V=1)만 지금 색상·채도의 가장 밝은 색으로.
+                    val brightnessTrackColors = remember(hue, sat) {
+                        listOf(Color(AndroidColor.HSVToColor(floatArrayOf(hue, sat, 1f))), Color.Black)
+                    }
                     Box(
                         Modifier.fillMaxWidth().height(22.dp).clip(RoundedCornerShape(11.dp))
-                            .background(Brush.horizontalGradient(listOf(Color.White, Color.Black)))
+                            .background(Brush.horizontalGradient(brightnessTrackColors))
                             .pointerInput(Unit) {
                                 awaitPointerEventScope {
                                     while (true) {
