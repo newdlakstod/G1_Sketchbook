@@ -1,6 +1,11 @@
 package com.g1.sketchbook.brush
 
+import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
@@ -38,6 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
@@ -69,6 +75,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -89,6 +96,7 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -105,6 +113,7 @@ import com.g1.sketchbook.R
 import com.g1.sketchbook.data.ColorLibrary
 import com.g1.sketchbook.data.MaxLibraries
 import com.g1.sketchbook.data.deriveLibraryPalette
+import com.g1.sketchbook.sketchbook.decodeCoverBitmap
 import com.g1.sketchbook.ui.bounceClick
 import com.g1.sketchbook.ui.theme.Dimens
 import kotlin.math.abs
@@ -115,6 +124,9 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 버튼바를 붙여둘 화면 가장자리 — 길게 눌러 드래그하면 놓은 위치에서 가장 가까운 쪽으로 붙는다. */
 enum class ToolbarDock { TOP, BOTTOM, LEFT, RIGHT }
@@ -682,7 +694,10 @@ fun BrushControls(
                         Popup(popupAnchor, { editingColorAt = -1 }, PopupProperties(focusable = true)) {
                             ColorPickerCard(editingLibrary.colors[editingColorAt],
                                 onColor = { newColor -> onEditLibraryColor(editingLibrary.id, editingColorAt, newColor) },
-                                onEyedrop = { editingColorAt = -1; onToggleEyedrop() })
+                                onEyedrop = { editingColorAt = -1; onToggleEyedrop() },
+                                librarySwatch = LibrarySwatchContext(editingLibrary, editingColorAt) { i, c ->
+                                    onEditLibraryColor(editingLibrary.id, i, c)
+                                })
                         }
                     }
                 }
@@ -1239,7 +1254,17 @@ internal fun RingSliderThumb(valueText: String, accentColor: Color = SliderAccen
 internal fun ColorPickerCard(
     color: Long, onColor: (Long) -> Unit,
     onEyedrop: (() -> Unit)? = null,
+    librarySwatch: LibrarySwatchContext? = null,
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pickedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
+        if (uri != null) scope.launch {
+            val decoded = withContext(Dispatchers.IO) { runCatching { decodeCoverBitmap(context, uri, 1200) }.getOrNull() }
+            pickedBitmap = decoded
+        }
+    }
     val init = remember { FloatArray(3).also { AndroidColor.colorToHSV((color and 0xFFFFFFFF).toInt(), it) } }
     var hue by remember { mutableFloatStateOf(init[0]) }
     var sat by remember { mutableFloatStateOf(init[1]) }
@@ -1348,13 +1373,19 @@ internal fun ColorPickerCard(
                 PickerTab.RGB -> RgbSliders(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
                 PickerTab.HSL -> HslSliders(hue, sat, value) { h, s, v -> hue = h; sat = s; value = v; emit() }
             }
-            if (onEyedrop != null) {
+            if (onEyedrop != null || librarySwatch != null) {
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.size(34.dp).clip(CircleShape).background(current)
                         .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
-                    IconBtn(Icons.Filled.Colorize, "스포이드", onClick = onEyedrop)
+                    if (onEyedrop != null) IconBtn(Icons.Filled.Colorize, "스포이드", onClick = onEyedrop)
+                    if (librarySwatch != null) IconBtn(Icons.Filled.AddPhotoAlternate, "이미지에서") {
+                        pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
                 }
+            }
+            pickedBitmap?.let { bmp ->
+                ImageEyedropperOverlay(bmp, librarySwatch!!, onDone = { pickedBitmap = null })
             }
         }
     }
