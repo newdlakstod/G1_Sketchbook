@@ -26,10 +26,12 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -85,7 +87,7 @@ data class LibrarySwatchContext(
 private val EyedropperSwatchSize = 24.dp
 
 /** 갤러리에서 고른 [bitmap]을 핀치줌/드래그로 확대·이동하며, 손가락으로 누른 지점의 색을
- *  [context]가 가리키는 라이브러리 칸에 바로 저장하는 전체화면 오버레이. 대상 칸은 위쪽 스와치
+ *  [context]가 가리키는 라이브러리 칸에 바로 저장하는 전체화면 오버레이. 대상 칸은 아래쪽 스와치
  *  줄에서 바꿀 수 있고, 이미지·확대 상태는 대상을 바꿔도 유지된다. */
 @Composable
 fun ImageEyedropperOverlay(bitmap: Bitmap, context: LibrarySwatchContext, onDone: () -> Unit) {
@@ -95,6 +97,10 @@ fun ImageEyedropperOverlay(bitmap: Bitmap, context: LibrarySwatchContext, onDone
     var targetIndex by remember { mutableIntStateOf(context.colorIndex) }
     // 손가락으로 누르고 있는 동안의 미리보기 — null이면 지금 안 누르고 있는 것.
     var preview by remember { mutableStateOf<Triple<Int, Float, Float>?>(null) }
+    // pointerInput(bitmap) 코루틴은 bitmap이 안 바뀌면 재구성돼도 계속 살아있어, 시작 시 캡처한
+    // context가 그 뒤 재구성에서 새로 만들어진 LibrarySwatchContext로 안 바뀔 수 있다(BrushControls.kt가
+    // 매 재구성마다 LibrarySwatchContext를 새로 만듦). rememberUpdatedState로 항상 최신 값을 참조.
+    val ctx by rememberUpdatedState(context)
 
     Dialog(onDismissRequest = onDone, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()) {
@@ -104,61 +110,80 @@ fun ImageEyedropperOverlay(bitmap: Bitmap, context: LibrarySwatchContext, onDone
                 val boxHeightPx = with(density) { maxHeight.toPx() }
                 Box(
                     Modifier.fillMaxSize()
+                        // graphicsLayer의 scale/translate는 Image 자체의 clip-to-bounds 이후에 적용돼,
+                        // zoom > 1일 때 이미지가 이 박스 밖(아래 스와치 줄·완료 버튼 쪽)으로 그대로
+                        // 삐져나온다 — CoverImageCropContent(SketchbookScreens.kt)가 같은 패턴에 컨테이너
+                        // clip으로 대응한 것과 동일하게, 이 박스 전체를 클립해 넘치는 부분을 잘라낸다.
+                        .clipToBounds()
                         .pointerInput(bitmap) {
-                            awaitPointerEventScope {
-                                // 이전 프레임의 2손가락 중점/거리 — 다음 프레임과 비교해 확대/이동 델타를 구한다
-                                // (BrushView.onTouchEvent의 핀치줌 처리와 같은 방식, MotionEvent 대신 Compose의
-                                // PointerEvent.changes를 씀).
-                                var prevMidX = 0f; var prevMidY = 0f; var prevDist = 0f
-                                // 이 제스처(포인터 0개→0개 사이의 한 번)가 도중에 2손가락 이상이었던 적이
-                                // 있는지 — 있었다면 손가락 하나가 남아도(핀치 중 하나를 뗀 직후) 그 남은
-                                // 손가락 위치를 색으로 잘못 확정하지 않도록 샘플링을 계속 막는다. 포인터가
-                                // 완전히 0개가 되어야(새 제스처 시작) 다시 풀린다.
-                                var hadMultiTouch = false
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val pressed = event.changes.filter { it.pressed }
-                                    when {
-                                        pressed.size >= 2 -> {
-                                            val a = pressed[0].position; val b = pressed[1].position
-                                            val mx = (a.x + b.x) / 2f; val my = (a.y + b.y) / 2f
-                                            val dist = hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble()).toFloat()
-                                            if (prevDist > 0f) {
-                                                zoom = (zoom * (dist / prevDist)).coerceIn(1f, 5f)
-                                                panX += mx - prevMidX; panY += my - prevMidY
-                                            }
-                                            prevMidX = mx; prevMidY = my; prevDist = dist
-                                            preview = null
-                                            hadMultiTouch = true
-                                            pressed.forEach { it.consume() }
-                                        }
-                                        pressed.size == 1 -> {
-                                            prevDist = 0f
-                                            if (!hadMultiTouch) {
-                                                val p = pressed[0].position
-                                                val picked = imageEyedropperPixel(
-                                                    p.x, p.y, boxWidthPx, boxHeightPx,
-                                                    bitmap.width, bitmap.height, zoom, panX, panY,
-                                                )
-                                                if (picked != null) {
-                                                    val (px, py) = picked
-                                                    val c = bitmap.getPixel(px, py)
-                                                    preview = Triple(c, p.x, p.y)
-                                                } else {
-                                                    preview = null
+                            try {
+                                awaitPointerEventScope {
+                                    // 이전 프레임의 2손가락 중점/거리 — 다음 프레임과 비교해 확대/이동 델타를 구한다
+                                    // (BrushView.onTouchEvent의 핀치줌 처리와 같은 방식, MotionEvent 대신 Compose의
+                                    // PointerEvent.changes를 씀).
+                                    var prevMidX = 0f; var prevMidY = 0f; var prevDist = 0f
+                                    // 이 제스처(포인터 0개→0개 사이의 한 번)가 도중에 2손가락 이상이었던 적이
+                                    // 있는지 — 있었다면 손가락 하나가 남아도(핀치 중 하나를 뗀 직후) 그 남은
+                                    // 손가락 위치를 색으로 잘못 확정하지 않도록 샘플링을 계속 막는다. 포인터가
+                                    // 완전히 0개가 되어야(새 제스처 시작) 다시 풀린다.
+                                    var hadMultiTouch = false
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val pressed = event.changes.filter { it.pressed }
+                                        when {
+                                            pressed.size >= 2 -> {
+                                                val a = pressed[0].position; val b = pressed[1].position
+                                                val mx = (a.x + b.x) / 2f; val my = (a.y + b.y) / 2f
+                                                val dist = hypot((a.x - b.x).toDouble(), (a.y - b.y).toDouble()).toFloat()
+                                                if (prevDist > 0f) {
+                                                    zoom = (zoom * (dist / prevDist)).coerceIn(1f, 5f)
+                                                    // 팬을 zoom에 상관없이 무한정 누적하면, 확대했다가 다시 1x로
+                                                    // 되돌려도 이미지가 중앙에서 벗어난 채 남는다(되돌아갈 리셋
+                                                    // 버튼도 없음) — 확대된 이미지가 박스를 벗어나지 않는 범위로
+                                                    // 매 프레임 다시 clamp한다(zoom=1이면 범위가 0이 되어 자동으로
+                                                    // 중앙 고정, cropSelectedRegion의 offset clamp와 같은 원리).
+                                                    val maxPanX = ((boxWidthPx * zoom) - boxWidthPx) / 2f
+                                                    val maxPanY = ((boxHeightPx * zoom) - boxHeightPx) / 2f
+                                                    panX = (panX + (mx - prevMidX)).coerceIn(-maxPanX, maxPanX)
+                                                    panY = (panY + (my - prevMidY)).coerceIn(-maxPanY, maxPanY)
                                                 }
+                                                prevMidX = mx; prevMidY = my; prevDist = dist
+                                                preview = null
+                                                hadMultiTouch = true
+                                                pressed.forEach { it.consume() }
                                             }
-                                            pressed[0].consume()
-                                        }
-                                        else -> {
-                                            // 손을 뗌 — 누르고 있던 색이 있었으면 지금 대상 칸에 확정 저장.
-                                            preview?.let { (c, _, _) -> context.onEditColor(targetIndex, (c.toLong() and 0xFFFFFFFF) or 0xFF000000L) }
-                                            preview = null
-                                            prevDist = 0f
-                                            hadMultiTouch = false
+                                            pressed.size == 1 -> {
+                                                prevDist = 0f
+                                                if (!hadMultiTouch) {
+                                                    val p = pressed[0].position
+                                                    val picked = imageEyedropperPixel(
+                                                        p.x, p.y, boxWidthPx, boxHeightPx,
+                                                        bitmap.width, bitmap.height, zoom, panX, panY,
+                                                    )
+                                                    if (picked != null) {
+                                                        val (px, py) = picked
+                                                        val c = bitmap.getPixel(px, py)
+                                                        preview = Triple(c, p.x, p.y)
+                                                    } else {
+                                                        preview = null
+                                                    }
+                                                }
+                                                pressed[0].consume()
+                                            }
+                                            else -> {
+                                                // 손을 뗌 — 누르고 있던 색이 있었으면 지금 대상 칸에 확정 저장.
+                                                preview?.let { (c, _, _) -> ctx.onEditColor(targetIndex, (c.toLong() and 0xFFFFFFFF) or 0xFF000000L) }
+                                                preview = null
+                                                prevDist = 0f
+                                                hadMultiTouch = false
+                                            }
                                         }
                                     }
                                 }
+                            } finally {
+                                // Compose가 손가락이 눌린 채로 이 코루틴을 취소할 수도 있어(0손가락 이벤트가
+                                // 안 오는 경우), 취소돼도 확대경 미리보기가 화면에 남지 않도록 항상 정리한다.
+                                preview = null
                             }
                         },
                 ) {

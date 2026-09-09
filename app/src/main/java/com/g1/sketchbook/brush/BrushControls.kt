@@ -3,6 +3,7 @@ package com.g1.sketchbook.brush
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1259,10 +1260,18 @@ internal fun ColorPickerCard(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var pickedBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
+    // PickVisualMedia()는 equals()가 없어 매번 새 인스턴스를 넘기면 rememberLauncherForActivityResult가
+    // "계약이 바뀌었다"고 보고 매 재구성마다 ActivityResultRegistry에 재등록한다 — 이 카드는 색상휠/
+    // RGB/HSL 슬라이더를 드래그하는 매 프레임 재구성되므로(hue/sat/value를 직접 읽음) remember로
+    // 인스턴스를 고정해 그 churn을 없앤다.
+    val pickImage = rememberLauncherForActivityResult(remember { ActivityResultContracts.PickVisualMedia() }) { uri: Uri? ->
         if (uri != null) scope.launch {
             val decoded = withContext(Dispatchers.IO) { runCatching { decodeCoverBitmap(context, uri, 1200) }.getOrNull() }
-            pickedBitmap = decoded
+            if (decoded != null) {
+                pickedBitmap = decoded
+            } else {
+                Toast.makeText(context, "이미지를 불러오지 못했습니다. 다른 이미지를 선택해주세요.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
     val init = remember { FloatArray(3).also { AndroidColor.colorToHSV((color and 0xFFFFFFFF).toInt(), it) } }
@@ -1384,9 +1393,7 @@ internal fun ColorPickerCard(
                     }
                 }
             }
-            pickedBitmap?.let { bmp ->
-                ImageEyedropperOverlay(bmp, librarySwatch!!, onDone = { pickedBitmap = null })
-            }
+            librarySwatch?.let { ls -> pickedBitmap?.let { bmp -> ImageEyedropperOverlay(bmp, ls, onDone = { pickedBitmap = null }) } }
         }
     }
 }
