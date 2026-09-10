@@ -871,11 +871,42 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         val replacement = blendOver(target, color, opacity)
         if (target == replacement) return
         pushUndo()
-        scanlineFill(pixels, cw, ch, x0, y0, target, replacement)
+        val filled = BooleanArray(cw * ch)
+        scanlineFill(pixels, cw, ch, x0, y0, target, replacement, filled)
+        bleedFillUnderEdges(pixels, cw, ch, filled, replacement)
         bmp.setPixels(pixels, 0, cw, 0, 0, cw, ch)
         redo.clear()
         invalidate()
         onStrokeEnd?.invoke()
+    }
+
+    /** 채우기 경계에 안티에일리어싱된 선(부분 투명 픽셀)이 있으면, 정확히 일치하는 색만 채우는
+     *  스캔라인 채우기는 그 경계 픽셀들을 "다른 색"으로 보고 건너뛴다 — 그 결과 선과 채워진 면
+     *  사이에 채워지지 않은 실핏줄/점이 남는다("선과 면 사이에 작은 점이 생김" 리포트, 2026-09-10).
+     *  채워진 영역과 맞닿은, 아직 안 채워졌지만 알파가 0보다 큰 이웃 픽셀(=선의 안티에일리어싱
+     *  경계)에는 채우기색을 그 픽셀 "밑에" 한 겹 더 깔아준다 — 선 자체는 그대로 위에 남아 보이고,
+     *  그 아래로 비치던 빈틈만 채우기색으로 메워진다. 완전히 투명한(알파=0) 이웃은 절대 건드리지
+     *  않는다 — 그건 선의 진짜 틈(채우기가 새는 곳)일 수 있는데, 그런 픽셀은 애초에 스캔라인
+     *  채우기 단계에서 이미 연결된 영역으로 채워졌을 것이므로 여기 도달할 일이 없다. */
+    private fun bleedFillUnderEdges(pixels: IntArray, w: Int, h: Int, filled: BooleanArray, replacement: Int) {
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                if (!filled[y * w + x]) continue
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        if (dx == 0 && dy == 0) continue
+                        val nx = x + dx; val ny = y + dy
+                        if (nx !in 0 until w || ny !in 0 until h) continue
+                        val ni = ny * w + nx
+                        if (filled[ni]) continue
+                        val edge = pixels[ni]
+                        val edgeAlpha = (edge ushr 24) and 0xFF
+                        if (edgeAlpha == 0) continue
+                        pixels[ni] = blendOver(replacement, edge, edgeAlpha / 255f)
+                    }
+                }
+            }
+        }
     }
 
     /** 표준 source-over 알파 합성 — [srcColor]를 [srcAlpha01](0~1) 불투명도로 [dst] 위에 얹는다. */
@@ -894,7 +925,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         return (outAi shl 24) or (outR shl 16) or (outG shl 8) or outB
     }
 
-    private fun scanlineFill(pixels: IntArray, w: Int, h: Int, x0: Int, y0: Int, target: Int, replacement: Int) {
+    private fun scanlineFill(pixels: IntArray, w: Int, h: Int, x0: Int, y0: Int, target: Int, replacement: Int, filled: BooleanArray) {
         val stack = ArrayDeque<IntArray>()
         stack.addLast(intArrayOf(x0, y0))
         while (stack.isNotEmpty()) {
@@ -905,7 +936,7 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
             while (xl - 1 >= 0 && pixels[sy * w + xl - 1] == target) xl--
             var xr = sx
             while (xr + 1 < w && pixels[sy * w + xr + 1] == target) xr++
-            for (xx in xl..xr) pixels[sy * w + xx] = replacement
+            for (xx in xl..xr) { pixels[sy * w + xx] = replacement; filled[sy * w + xx] = true }
             if (sy - 1 >= 0) seedSpan(pixels, w, xl, xr, sy - 1, target, stack)
             if (sy + 1 < h) seedSpan(pixels, w, xl, xr, sy + 1, target, stack)
         }
