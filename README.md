@@ -1,103 +1,79 @@
-# G1 Sketchbook 🎨
+# Daymory · G1 Sketchbook
 
-친구·커플과 **함께 실시간으로 낙서**하는 공유 스케치북 (Android).
+종이와 문구의 질감을 살린 Android 스케치북. 개인 스케치북, 날짜별 그림일기,
+서로의 그림을 보며 그리는 공유 세션을 제공한다.
 
-- **Google 로그인** (Firebase Auth)
-- **실시간 공동 드로잉** — 상대가 긋는 선이 실시간으로 보임 (Firebase Realtime Database)
-- **데일리 모드** — 오늘 날짜별 캔버스. 매일 새 도화지.
-- **갤러리 아카이브** — 완성한 그림을 압축 WebP 1장으로 영구 저장 (용량 최소화, 휘발되지 않음)
-- **방 코드**로 초대 — 6자리 코드만 알려주면 함께 그림
+현재 코드 기준: **2.21.1 / versionCode 153**, 2026-09-14 확인.
+소스 설정이며 배포 완료 여부를 뜻하지 않는다.
 
----
+## 먼저 읽을 문서
 
-## 빠른 시작
+- [PROGRESS.md](PROGRESS.md): 완료 내역, 현재 우선순위, 결정과 미해결 사항.
+- [코드·UI·UX 검토](docs/reviews/2026-09-14-code-ui-ux-review.md): 구조, 디자인 평가, 근거와 후속 검증.
+- [기능별 설계 기록](docs/superpowers/specs/): 기능별 확정 설계.
+- [plan.md](plan.md): 초기 v1 기획의 역사 자료. 현재 구현 안내로 사용하지 않는다.
 
-### 1. Firebase 프로젝트 만들기
-1. [Firebase 콘솔](https://console.firebase.google.com)에서 프로젝트 생성
-2. **Android 앱 추가** — 패키지 이름은 반드시 `com.g1.sketchbook`
-3. 디버그 **SHA-1** 지문을 등록 (Google 로그인에 필요). 아래 명령으로 확인:
-   ```bash
-   # 프로젝트 루트에서 (Windows는 Git Bash / PowerShell)
-   ./gradlew signingReport
-   ```
-   출력의 `Variant: debug` 항목 SHA1 값을 Firebase 앱 설정에 추가.
-4. `google-services.json`을 내려받아 **`app/google-services.json`을 교체** (저장소의 값은 빌드만 되는 더미).
+## 현재 구현
 
-### 2. Firebase 기능 켜기
-- **Authentication → Sign-in method → Google** 사용 설정
-- **Realtime Database** 생성 (아시아 리전 권장). 규칙 예시(테스트용):
-  ```json
-  {
-    "rules": {
-      "rooms": {
-        "$roomId": {
-          ".read": "auth != null",
-          ".write": "auth != null"
-        }
-      }
-    }
-  }
-  ```
-- **Storage** 생성. 규칙 예시:
-  ```
-  rules_version = '2';
-  service firebase.storage {
-    match /b/{bucket}/o {
-      match /archive/{roomId}/{file} {
-        allow read, write: if request.auth != null;
-      }
-    }
-  }
-  ```
+| 영역 | 동작 |
+|---|---|
+| 시작·계정 | 시작 화면 → Google 로그인 → 별명 → 메인 화면, 프로필 사진과 테마 설정 |
+| 홈 | 개인/공유 책 표지 탐색. 가로에서는 읽기 패널과 책 목록 |
+| 개인 스케치북 | 6종 용지 크기, 5종 종이, 새 책 15페이지, 표지 편집, 페이지 순서 변경, 이미지 내보내기 |
+| 드로잉 | 펜·색연필·크레용·수채화, 지우개, 채우기, 올가미, 확대·이동, S펜 버튼, Undo/Redo |
+| 색상 | 7색 라이브러리 최대 30개, 최대 3개 활성화, 빠른 색 3개, 이미지 스포이드 |
+| 그림일기 | 날짜별 그림과 달력 탐색, 오늘 일기 편집, 달력 합성·이미지 내보내기 |
+| 공유 | 최대 4명이 각자의 캔버스를 그림. 획 종료 등에 갱신한 페이지 스냅샷을 서로 확인. 초대 코드·선생님 모드·호스트 이전 |
+| 읽기 | 공용 `:pagecurl` 모듈로 페이지 넘김 |
+| 백업 | Google 계정별 스케치북·일기·설정·색상 라이브러리 병합 |
 
-### 3. Web client ID 넣기
-Firebase 콘솔 → **프로젝트 설정 → 일반 → 웹 클라이언트 ID**(자동 생성) 또는
-Google Cloud 콘솔의 OAuth 2.0 "Web client" ID를 복사해서
-[`app/src/main/res/values/strings.xml`](app/src/main/res/values/strings.xml)의
-`web_client_id` 값에 붙여넣기.
+공유는 동일 캔버스의 획을 공동 편집하는 방식이 아니다. 이전 벡터 모드는 제거되었다.
+자동저장과 동기화의 알려진 한계는 검토 문서와 PROGRESS.md를 참고한다.
 
-### 4. 빌드 & 설치
-```bash
-./gradlew :app:assembleDebug
-# 기기 연결 후
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-또는 Android Studio로 열어서 실행.
+## 코드 지도
 
----
+기준 디렉터리: `app/src/main/java/com/g1/sketchbook/`
 
-## GitHub로 배포하기
-1. 이 프로젝트를 GitHub 저장소에 push
-2. 버전 태그를 밀면 GitHub Actions가 APK를 빌드해 **Release에 자동 첨부**:
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-3. Actions 탭에서 `workflow_dispatch`로 수동 빌드도 가능 (APK가 artifact로 올라감)
+| 위치 | 책임 |
+|---|---|
+| `MainActivity.kt`, `ui/RootViewModel.kt` | 인증·테마·현재 화면 상태, 앱 생명주기 동기화 |
+| `SketchApp.kt`, `auth/` | Application 서비스 구성, Google/Firebase 인증 |
+| `ui/main/` | 5개 탭 배치, 홈, 설정 |
+| `ui/theme/` | 색·서체·공통 치수 |
+| `ui/Interactions.kt` | 공통 눌림 애니메이션과 터치 처리 |
+| `brush/BrushView.kt` | Android Canvas 기반 비트맵 드로잉, 제스처, Undo/Redo |
+| `brush/BrushControls.kt`, `brush/ImageEyedropper.kt` | 도구 UI, 색상 편집, 사진에서 색 추출 |
+| `sketchbook/` | 책 생성·목록·표지·편집 화면, 로컬 저장소와 백업 연결 |
+| `diary/` | 날짜별 저장소, 편집·달력·합성 내보내기 |
+| `share/` | 참가자별 공유 세션, 상대 그림 표시 |
+| `data/` | 설정 저장, 색상 라이브러리 모델·동기화 |
+| `backup/` | 계정별 원격 데이터, 삭제 표시, 로컬/원격 병합 |
+| `readmode/` | 페이지 비트맵 공급과 읽기 화면 |
+| `preview/` | 실제 화면 Composable을 사용하는 Android Studio Preview |
 
-> ⚠️ 배포된 APK가 **실제로 로그인/동기화되려면** 위 Firebase 설정과 실제
-> `google-services.json`이 필요합니다. CI는 저장소의 더미 설정으로도 빌드는 되지만,
-> 로그인은 실제 프로젝트 설정을 채운 뒤에 동작합니다.
+메인 UI는 Jetpack Compose/Material 3, 드로잉은 `AndroidView(BrushView)`를 사용한다.
+로컬 메타데이터는 SharedPreferences/JSON, 그림은 PNG 파일에 저장한다.
+원격 데이터는 Firebase Realtime Database의 `shareSessions/{code}`와 `backups/{uid}`에
+보관하며 이미지는 Base64로 인코딩한다. 현재 앱 의존성에 Firebase Storage는 없다.
 
----
+## 개발과 검증
 
-## 구조
-```
-app/src/main/java/com/g1/sketchbook/
-├─ SketchApp.kt            # Application + 수동 DI(Graph)
-├─ MainActivity.kt         # 로그인 → 홈 → 캔버스/갤러리 라우팅
-├─ auth/GoogleAuthClient   # Credential Manager + Firebase Auth
-├─ data/
-│  ├─ RoomRepository       # 방 생성/참여, 실시간 획 동기화(RTDB)
-│  ├─ ArchiveRepository    # 완성본 WebP 압축 → Storage 저장
-│  └─ model/Models         # Stroke / Member / ArchiveEntry
-└─ ui/
-   ├─ AppViewModel         # 인증/방 상태
-   ├─ canvas/              # 실시간 드로잉 캔버스 + 렌더링
-   └─ gallery/             # 아카이브 그리드
+- Android Studio, JDK 17 호환 환경, Android SDK 35. 최소 Android API 24.
+- 이 PC에서는 Android Studio 번들 JBR를 사용한다.
+- `local.properties`에 로컬 SDK 경로를 지정한다.
+- `:pagecurl` 기본 경로는 저장소 안의 `pagecurl/`이다. `local.properties`의 `pagecurl.dir`이 있으면 해당 외부 경로가 우선한다.
+- Firebase Google 로그인에는 해당 앱의 OAuth 설정과 빌드 서명 SHA 등록이 필요하다.
+  원격 접근 권한은 실제 배포된 RTDB 규칙에 달려 있다. 이 문서는 운영 규칙의 적정성을 검증하지 않는다.
+
+```powershell
+$env:JAVA_HOME = 'C:/Program Files/Android/Android Studio/jbr'
+./gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --no-daemon
 ```
 
-## 저장 용량 설계
-- 실시간 중에는 **획(벡터) 데이터만** 주고받음 → 가볍고 빠름
-- 하루가 끝나 "저장" 시 캔버스를 **최대 1080px WebP(품질 70)** 1장으로 압축 → 보통 수십 KB
-- 갤러리는 이 스냅샷만 영구 보관 → 용량 최소화 + 추억은 계속 쌓임
+APK: `app/build/outputs/apk/debug/app-debug.apk`.
+태그 배포는 `.github/workflows/`의 GitHub Actions를 사용한다.
+매 배포마다 버전과 새 태그를 올리며 기존 태그는 덮어쓰지 않는다.
+
+2026-09-14 검토에서는 테스트·lint를 시도했으나 `:app:processDebugResources`의
+`R.jar` 삭제 오류로 중단됐다. 현재 변경분의 테스트 통과를 확인한 상태는 아니다.
+실행 환경과 남은 검증은 [검토 문서](docs/reviews/2026-09-14-code-ui-ux-review.md)에 기록했다.
