@@ -135,6 +135,8 @@ class SessionStore(context: Context) {
         BrushType.PENCIL -> Dimens.Brush.pencilWidth
         BrushType.CRAYON -> Dimens.Brush.crayonWidth
         BrushType.WATER -> Dimens.Brush.waterWidth
+        BrushType.LITHO_ROUGH -> Dimens.Brush.lithoRoughWidth
+        BrushType.LITHO_WET -> Dimens.Brush.lithoWetWidth
     }
 
     companion object {
