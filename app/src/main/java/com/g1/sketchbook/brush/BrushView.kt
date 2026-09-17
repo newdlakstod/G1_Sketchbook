@@ -2,6 +2,7 @@ package com.g1.sketchbook.brush
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.BlendMode
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -12,6 +13,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
 import android.os.Build
 import android.os.SystemClock
 import android.util.AttributeSet
@@ -29,8 +31,9 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
+import java.nio.ByteBuffer
 
-enum class BrushType { PEN, PENCIL, CRAYON, WATER }
+enum class BrushType { PEN, PENCIL, CRAYON, WATER, LITHO_ROUGH, LITHO_WET }
 
 /** Action a gesture can trigger — mapped per-gesture in Settings, off (NONE) by default. */
 enum class GestureAction { NONE, UNDO, REDO, EYEDROP, TOGGLE_TOOLBARS }
@@ -254,6 +257,47 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     private val pageRect = RectF()
     private val path = Path()
     private val rnd = Random(7)
+
+    // 리소 브러시(거친/젖은) 전용 질감 타일 — 인스턴스당 한 번만 만들어 재사용한다. 시드는
+    // 세션마다 새로 뽑되(기기 간·재실행 간 동일함은 요구 안 됨), 한 번 뽑으면 이 BrushView가
+    // 살아있는 동안 고정이라 캔버스 위 같은 자리를 두 번 칠하면 항상 같은 무늬가 겹쳐 보인다
+    // ("리소그래피 판" 느낌, 2026-09-17).
+    private val lithoRoughSeed = Random.nextLong()
+    private val lithoWetSeed = Random.nextLong()
+    private val LithoTileSize = 256
+    private val LithoWetBlurRadius = 8
+
+    /** 극단적 저메모리로 타일 생성(`Bitmap.createBitmap`)이 실패하면 null — 이 경우 스탬프
+     *  함수가 셰이더 없는 단색 채우기로 대체한다. */
+    private val lithoRoughTile: Bitmap? by lazy { runCatching { grainBitmap(lithoRoughSeed, 0) }.getOrNull() }
+    private val lithoWetTile: Bitmap? by lazy { runCatching { grainBitmap(lithoWetSeed, LithoWetBlurRadius) }.getOrNull() }
+
+    private fun grainBitmap(seed: Long, blurRadius: Int): Bitmap {
+        val bytes = generateGrainTexture(LithoTileSize, seed, blurRadius)
+        val bmp = Bitmap.createBitmap(LithoTileSize, LithoTileSize, Bitmap.Config.ALPHA_8)
+        bmp.copyPixelsFromBuffer(ByteBuffer.wrap(bytes))
+        return bmp
+    }
+
+    // 현재 색으로 입힌 셰이더 Paint 캐시 — color가 바뀔 때만 다시 만든다(256x256 비트맵이라
+    // 매번 새로 만들어도 가볍지만, 스탬프마다 다시 만들 이유는 없음).
+    private var lithoRoughPaint: Paint? = null
+    private var lithoRoughPaintColor = 0
+    private var lithoWetPaint: Paint? = null
+    private var lithoWetPaintColor = 0
+
+    /** [tile](ALPHA_8, 흑백 질감)을 지금 [color]로 입힌 뒤 반복 타일링 셰이더를 건 Paint를
+     *  새로 만든다 — ALPHA_8 비트맵을 그리면 Paint의 색이 RGB로, 비트맵의 알파가 마스크로
+     *  쓰이는 표준 동작을 이용한다. */
+    private fun shaderPaintFor(tile: Bitmap): Paint {
+        val colored = Bitmap.createBitmap(tile.width, tile.height, Bitmap.Config.ARGB_8888)
+        val tintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = this@BrushView.color or (0xFF shl 24) }
+        Canvas(colored).drawBitmap(tile, 0f, 0f, tintPaint)
+        return Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            shader = BitmapShader(colored, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+        }
+    }
 
     private var strokeStarted = false
     private var acc = 0f
@@ -1056,7 +1100,10 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         markDirty(x1, y1, r)
     }
 
-    private fun scaleFor(): Float = when (brush) { BrushType.PEN -> 1f; BrushType.PENCIL -> 1f; BrushType.CRAYON -> 2f; BrushType.WATER -> 6f }
+    private fun scaleFor(): Float = when (brush) {
+        BrushType.PEN -> 1f; BrushType.PENCIL -> 1f; BrushType.CRAYON -> 2f; BrushType.WATER -> 6f
+        BrushType.LITHO_ROUGH -> 2f; BrushType.LITHO_WET -> 2f
+    }
     private val EraserScale = 2f
 
     // 어두운 색을 낮은 불투명도로 그리면, 슬라이더 숫자(선형 알파)만큼 옅어 보이지 않는다는 피드백
@@ -1080,7 +1127,14 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
     }
 
     private fun stampDispatch(x: Float, y: Float, r: Float) {
-        when (brush) { BrushType.PENCIL -> stampPencil(x, y, r); BrushType.CRAYON -> stampCrayon(x, y, r); BrushType.WATER -> stampWater(x, y, r); else -> {} }
+        when (brush) {
+            BrushType.PENCIL -> stampPencil(x, y, r)
+            BrushType.CRAYON -> stampCrayon(x, y, r)
+            BrushType.WATER -> stampWater(x, y, r)
+            BrushType.LITHO_ROUGH -> stampLithoRough(x, y, r)
+            BrushType.LITHO_WET -> stampLithoWet(x, y, r)
+            else -> {}
+        }
     }
     /** Canvas px per screen px — grains scale by this so they stay visible when the canvas (e.g. A4)
      *  is much larger than the view it's shown in (like a small split pane). */
@@ -1113,6 +1167,46 @@ class BrushView(context: Context, attrs: AttributeSet? = null) : View(context, a
         }
         markDirty(x, y, r * 1.2f + g * 5f)
     }
+    private fun stampLithoRough(x: Float, y: Float, r: Float) {
+        val c = content ?: return
+        val tile = lithoRoughTile
+        if (tile == null) {
+            fill.style = Paint.Style.FILL; fill.strokeWidth = 0f
+            fill.color = withAlpha(color, inkAlpha())
+            c.drawCircle(x, y, r, fill)
+            markDirty(x, y, r)
+            return
+        }
+        if (lithoRoughPaint == null || lithoRoughPaintColor != color) {
+            lithoRoughPaint = shaderPaintFor(tile)
+            lithoRoughPaintColor = color
+        }
+        val paint = lithoRoughPaint!!
+        paint.alpha = (inkAlpha() * 255).toInt()
+        c.drawCircle(x, y, r, paint)
+        markDirty(x, y, r)
+    }
+
+    private fun stampLithoWet(x: Float, y: Float, r: Float) {
+        val c = content ?: return
+        val tile = lithoWetTile
+        if (tile == null) {
+            fill.style = Paint.Style.FILL; fill.strokeWidth = 0f
+            fill.color = withAlpha(color, inkAlpha())
+            c.drawCircle(x, y, r, fill)
+            markDirty(x, y, r)
+            return
+        }
+        if (lithoWetPaint == null || lithoWetPaintColor != color) {
+            lithoWetPaint = shaderPaintFor(tile)
+            lithoWetPaintColor = color
+        }
+        val paint = lithoWetPaint!!
+        paint.alpha = (inkAlpha() * 255).toInt()
+        c.drawCircle(x, y, r, paint)
+        markDirty(x, y, r)
+    }
+
     private fun stampWater(x: Float, y: Float, r: Float) {
         val c = strokeLayer ?: return
         val R = r * 1.3f; fill.style = Paint.Style.FILL
