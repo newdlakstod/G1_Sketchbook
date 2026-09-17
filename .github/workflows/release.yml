@@ -24,6 +24,12 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # 액션 기본값(packages: "tools platform-tools")의 legacy "tools" 패키지가 Google SDK
+          # 저장소에서 없어져서 "Failed to find package 'tools'"로 매번 실패하게 됨(2026-09-17,
+          # 이전 릴리스들까지는 문제없었는데 러너 이미지가 바뀌며 갑자기 깨짐) — Gradle 빌드 자체는
+          # platform-tools 하나면 충분하고, compileSdk/build-tools는 AGP가 알아서 받아온다.
+          packages: platform-tools
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
