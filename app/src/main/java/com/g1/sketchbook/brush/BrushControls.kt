@@ -561,11 +561,15 @@ fun BrushControls(
                 if (brushCategoryExpanded) {
                     // Brush icons: tap to switch. 굵기/불투명도는 이제 브러시별 팝업이 아니라 항상
                     // 보이는 상단 바(ActiveToolSlidersBar)에서 조절하므로 여기선 그냥 단순 토글.
-                    // 붓 종류가 늘어날수록(판화 질감 브러시 추가 예정) 고정 Row로는 넘칠 수 있어
-                    // 이 목록만 따로 가로 스크롤 가능한 고정 폭 컨테이너로 감쌌다(2026-09-17) —
-                    // 지우개·접기 버튼은 스크롤과 무관하게 항상 보이도록 밖에 남긴다.
+                    // 붓 종류가 늘어날수록(판화 질감 브러시 추가) 이 줄이 넘칠 수 있다. 가로 도킹
+                    // (TOP/BOTTOM)일 때는 툴바 전체가 이미 가로 스크롤 중이라, 여기 안에 또 가로
+                    // 스크롤을 넣으면(2026-09-17) 같은 축 제스처가 서로 부딪혀 스크롤이 절반만
+                    // 먹힌다("붓이 하나만 뜬다" 리포트, 2026-09-18) — 그래서 가로 도킹일 땐 스크롤을
+                    // 안 넣고 그냥 흘러넘치게 둬서 바깥 툴바 스와이프로 보이게 한다. 세로 도킹
+                    // (LEFT/RIGHT)은 바깥이 세로 스크롤이라 축이 달라 부딪히지 않으므로, 좁은 세로
+                    // 툴바 폭 안에 다 못 들어가는 이 줄만 따로 가로 스크롤 가능하게 유지한다.
                     Row(
-                        Modifier.width(200.dp).horizontalScroll(rememberScrollState()),
+                        if (vertical) Modifier.width(200.dp).horizontalScroll(rememberScrollState()) else Modifier,
                         horizontalArrangement = Arrangement.spacedBy(15.dp),
                     ) {
                         BrushBtn(!erasing && brush == BrushType.PEN, onClick = { onBrush(BrushType.PEN); openEraserPanel = false }) { t ->
