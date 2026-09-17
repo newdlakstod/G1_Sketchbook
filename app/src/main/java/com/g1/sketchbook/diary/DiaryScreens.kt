@@ -152,7 +152,7 @@ fun DiaryEditorScreen(date: String, myUid: String = "", onBack: () -> Unit, prev
     var preStylusErasing by remember { mutableStateOf(false) }
     var preStylusLasso by remember { mutableStateOf(false) }
     var preStylusFill by remember { mutableStateOf(false) }
-    val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth) }
+    val sizeByBrush = remember { mutableStateMapOf(BrushType.PEN to Dimens.Brush.penWidth, BrushType.PENCIL to Dimens.Brush.pencilWidth, BrushType.CRAYON to Dimens.Brush.crayonWidth, BrushType.WATER to Dimens.Brush.waterWidth, BrushType.LITHO_ROUGH to Dimens.Brush.lithoRoughWidth, BrushType.LITHO_WET to Dimens.Brush.lithoWetWidth) }
     val opacityByBrush = remember { mutableStateMapOf(BrushType.PEN to 100f, BrushType.PENCIL to 100f, BrushType.CRAYON to 100f, BrushType.WATER to 100f) }
     var eraserSize by remember { mutableFloatStateOf(Dimens.Brush.eraserWidth) }
     var eraserOpacity by remember { mutableFloatStateOf(100f) }
