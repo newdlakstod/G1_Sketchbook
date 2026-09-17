@@ -765,19 +765,22 @@ internal fun EditCoverDialog(
                 Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 14.dp)) {
                     Text("스케치북 표지 변경", fontWeight = FontWeight.Bold, fontSize = 18.sp,
                         modifier = Modifier.align(Alignment.Center))
-                    Row(Modifier.align(Alignment.CenterStart)) {
-                        IconButton(onClick = onToggleFav) {
-                            Icon(
-                                if (book.fav) Icons.Filled.Star else Icons.Filled.StarBorder, "즐겨찾기에 추가",
-                                tint = if (book.fav) Color(0xFFFFD43B) else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                    IconButton(onClick = onToggleFav, modifier = Modifier.align(Alignment.CenterStart)) {
+                        Icon(
+                            if (book.fav) Icons.Filled.Star else Icons.Filled.StarBorder, "즐겨찾기에 추가",
+                            tint = if (book.fav) Color(0xFFFFD43B) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    // 삭제는 파괴적 동작이라 자주 누르는 즐겨찾기 옆에 붙어있으면 오탭 위험이 있어서
+                    // 반대쪽(닫기 옆)으로 옮겼다 — 그래도 실수로 닫기 대신 누르지 않게 둘 사이에 여백을
+                    // 둔다("삭제 버튼 위치가 어색하다" 피드백, 2026-09-10).
+                    Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         IconButton(onClick = onDelete) {
                             Icon(Icons.Filled.Delete, "이 스케치북 삭제", tint = MaterialTheme.colorScheme.error)
                         }
-                    }
-                    IconButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterEnd)) {
-                        Icon(Icons.Filled.Close, "닫기")
+                        IconButton(onClick = onCancel) {
+                            Icon(Icons.Filled.Close, "닫기")
+                        }
                     }
                 }
                 HorizontalDivider()
