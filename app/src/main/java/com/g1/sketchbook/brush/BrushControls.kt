@@ -561,17 +561,31 @@ fun BrushControls(
                 if (brushCategoryExpanded) {
                     // Brush icons: tap to switch. 굵기/불투명도는 이제 브러시별 팝업이 아니라 항상
                     // 보이는 상단 바(ActiveToolSlidersBar)에서 조절하므로 여기선 그냥 단순 토글.
-                    BrushBtn(!erasing && brush == BrushType.PEN, onClick = { onBrush(BrushType.PEN); openEraserPanel = false }) { t ->
-                        Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
-                    }
-                    BrushBtn(!erasing && brush == BrushType.PENCIL, onClick = { onBrush(BrushType.PENCIL); openEraserPanel = false }) { t ->
-                        Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
-                    }
-                    BrushBtn(!erasing && brush == BrushType.CRAYON, onClick = { onBrush(BrushType.CRAYON); openEraserPanel = false }) { t ->
-                        Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
-                    }
-                    BrushBtn(!erasing && brush == BrushType.WATER, onClick = { onBrush(BrushType.WATER); openEraserPanel = false }) { t ->
-                        Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                    // 붓 종류가 늘어날수록(판화 질감 브러시 추가 예정) 고정 Row로는 넘칠 수 있어
+                    // 이 목록만 따로 가로 스크롤 가능한 고정 폭 컨테이너로 감쌌다(2026-09-17) —
+                    // 지우개·접기 버튼은 스크롤과 무관하게 항상 보이도록 밖에 남긴다.
+                    Row(
+                        Modifier.width(200.dp).horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(15.dp),
+                    ) {
+                        BrushBtn(!erasing && brush == BrushType.PEN, onClick = { onBrush(BrushType.PEN); openEraserPanel = false }) { t ->
+                            Image(painterResource(R.drawable.brush_pen), "볼펜", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                        }
+                        BrushBtn(!erasing && brush == BrushType.PENCIL, onClick = { onBrush(BrushType.PENCIL); openEraserPanel = false }) { t ->
+                            Image(painterResource(R.drawable.brush_pencil), "연필", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                        }
+                        BrushBtn(!erasing && brush == BrushType.CRAYON, onClick = { onBrush(BrushType.CRAYON); openEraserPanel = false }) { t ->
+                            Image(painterResource(R.drawable.brush_crayon), "크레파스", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                        }
+                        BrushBtn(!erasing && brush == BrushType.WATER, onClick = { onBrush(BrushType.WATER); openEraserPanel = false }) { t ->
+                            Image(painterResource(R.drawable.brush_water), "수채화", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                        }
+                        BrushBtn(!erasing && brush == BrushType.LITHO_ROUGH, onClick = { onBrush(BrushType.LITHO_ROUGH); openEraserPanel = false }) { t ->
+                            Image(painterResource(R.drawable.brush_litho_rough), "리소 거친", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                        }
+                        BrushBtn(!erasing && brush == BrushType.LITHO_WET, onClick = { onBrush(BrushType.LITHO_WET); openEraserPanel = false }) { t ->
+                            Image(painterResource(R.drawable.brush_litho_wet), "리소 젖은", colorFilter = ColorFilter.tint(t), modifier = Modifier.size(25.dp)) // 브러시 아이콘 크기
+                        }
                     }
                     // 지우개만 자기 자신의 "경계 블러" 팝업을 가진다(굵기/불투명도는 다른 브러시와
                     // 동일하게 상단 바에서) — 이미 선택된 지우개를 다시 탭하면 블러 패널이 뜬다.
@@ -883,6 +897,8 @@ private fun currentToolIcon(brush: BrushType, erasing: Boolean): Int = when {
     brush == BrushType.PEN -> R.drawable.brush_pen
     brush == BrushType.PENCIL -> R.drawable.brush_pencil
     brush == BrushType.CRAYON -> R.drawable.brush_crayon
+    brush == BrushType.LITHO_ROUGH -> R.drawable.brush_litho_rough
+    brush == BrushType.LITHO_WET -> R.drawable.brush_litho_wet
     else -> R.drawable.brush_water
 }
 
@@ -892,14 +908,19 @@ private fun currentToolIcon(brush: BrushType, erasing: Boolean): Int = when {
 private fun MiniBrushPopup(current: BrushType, erasing: Boolean, onPick: (BrushType) -> Unit, onEraser: () -> Unit) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surface, shadowElevation = 10.dp, tonalElevation = 3.dp) {
         Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            listOf(
-                BrushType.PEN to R.drawable.brush_pen, BrushType.PENCIL to R.drawable.brush_pencil,
-                BrushType.CRAYON to R.drawable.brush_crayon, BrushType.WATER to R.drawable.brush_water,
-            ).forEach { (t, res) ->
-                val tint = if (!erasing && t == current) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-                Box(Modifier.size(48.dp).bounceClick { onPick(t) }, contentAlignment = Alignment.Center) {
-                    Image(painterResource(res), null, colorFilter = ColorFilter.tint(tint), modifier = Modifier.size(38.dp))
+            // 붓 종류가 늘어날수록(판화 질감 브러시 추가 예정) 고정 Row로는 넘칠 수 있어 이
+            // 목록만 따로 가로 스크롤 가능한 고정 폭 컨테이너로 감쌌다(2026-09-17).
+            Row(Modifier.width(200.dp).horizontalScroll(rememberScrollState())) {
+                listOf(
+                    BrushType.PEN to R.drawable.brush_pen, BrushType.PENCIL to R.drawable.brush_pencil,
+                    BrushType.CRAYON to R.drawable.brush_crayon, BrushType.WATER to R.drawable.brush_water,
+                    BrushType.LITHO_ROUGH to R.drawable.brush_litho_rough, BrushType.LITHO_WET to R.drawable.brush_litho_wet,
+                ).forEach { (t, res) ->
+                    val tint = if (!erasing && t == current) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                    Box(Modifier.size(48.dp).bounceClick { onPick(t) }, contentAlignment = Alignment.Center) {
+                        Image(painterResource(res), null, colorFilter = ColorFilter.tint(tint), modifier = Modifier.size(38.dp))
+                    }
                 }
             }
             val eraserTint = if (erasing) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
@@ -1158,6 +1179,8 @@ internal fun brushSizeRange(brush: BrushType): ClosedFloatingPointRange<Float> =
     BrushType.PENCIL -> Dimens.Brush.pencilMinWidth..Dimens.Brush.pencilMaxWidth
     BrushType.CRAYON -> Dimens.Brush.crayonMinWidth..Dimens.Brush.crayonMaxWidth
     BrushType.WATER -> Dimens.Brush.waterMinWidth..Dimens.Brush.waterMaxWidth
+    BrushType.LITHO_ROUGH -> Dimens.Brush.lithoRoughMinWidth..Dimens.Brush.lithoRoughMaxWidth
+    BrushType.LITHO_WET -> Dimens.Brush.lithoWetMinWidth..Dimens.Brush.lithoWetMaxWidth
 }
 internal val EraserSizeRange = Dimens.Brush.eraserMinWidth..Dimens.Brush.eraserMaxWidth
 

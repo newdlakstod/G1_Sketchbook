@@ -133,6 +133,12 @@ object Dimens {
         val crayonWidth = 8f
         val crayonMinWidth = 1.5f
         val crayonMaxWidth = 60f
+        val lithoRoughWidth = 8f
+        val lithoRoughMinWidth = 1.5f
+        val lithoRoughMaxWidth = 60f
+        val lithoWetWidth = 8f
+        val lithoWetMinWidth = 1.5f
+        val lithoWetMaxWidth = 60f
         val waterWidth = 5f
         val waterMinWidth = 1f
         val waterMaxWidth = 95f
